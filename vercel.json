@@ -1,7 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "api/**/*.js": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/bin/**"
+    },
+    "api/*.js": {
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "node_modules/@sparticuz/chromium/bin/**"

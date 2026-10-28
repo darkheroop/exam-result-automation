@@ -53,18 +53,31 @@ class AutomationService {
         try {
           const sparticuzPkg = require('@sparticuz/chromium');
           const sparticuzChromium = sparticuzPkg.default || sparticuzPkg;
-          const execPath = await sparticuzChromium.executablePath();
+
+          const candidateBinPaths = [
+            path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
+            path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
+            path.resolve(process.cwd(), 'node_modules/@sparticuz/chromium/bin'),
+            '/var/task/node_modules/@sparticuz/chromium/bin',
+            '/var/task/bin',
+          ];
+          const binPath = candidateBinPaths.find(p => fs.existsSync(p));
+
+          const execPath = binPath
+            ? await sparticuzChromium.executablePath(binPath)
+            : await sparticuzChromium.executablePath();
+
           launchOptions = {
             args: [...(sparticuzChromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
             executablePath: execPath,
             headless: true
           };
         } catch (serverlessErr) {
-          console.warn('Sparticuz Chromium init error, falling back to standard launch:', serverlessErr.message);
+          console.error('Sparticuz Chromium init error:', serverlessErr);
           if (config.chromePath) {
             launchOptions.executablePath = config.chromePath;
           } else {
-            launchOptions.channel = 'chrome';
+            throw new Error(`Headless browser initialization failed on serverless: ${serverlessErr.message}`);
           }
         }
       } else {
