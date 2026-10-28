@@ -247,45 +247,57 @@ class AutomationService {
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
-      log('Waiting for login form inputs to mount...');
-      await page.waitForFunction(() => document.querySelectorAll('input').length > 0, { timeout: 15000 });
+      const isAlreadyDashboard = await page.evaluate(() => window.location.hash.includes('dashboard')).catch(() => false);
+      if (isAlreadyDashboard) {
+        log('Session is already authenticated at dashboard.');
+      } else {
+        log('Waiting for login form inputs to mount...');
+        await page.waitForFunction(() => {
+          return document.querySelectorAll('input').length > 0 || window.location.hash.includes('dashboard');
+        }, null, { timeout: 15000 }).catch(() => {});
 
-      const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
-      const passInput = page.locator('input[type="password"]').first();
-      const loginButton = page.locator('button:has-text("Login")').first();
+        const atDashboardNow = await page.evaluate(() => window.location.hash.includes('dashboard')).catch(() => false);
+        if (!atDashboardNow) {
+          const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
+          const passInput = page.locator('input[type="password"]').first();
+          const loginButton = page.locator('button:has-text("Login")').first();
 
-      await userInput.fill(username);
-      await passInput.fill(password);
+          await userInput.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+          await userInput.fill(username);
+          await passInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+          await passInput.fill(password);
 
-      // Submit login via both standard click and Enter key
-      log('Submitting login credentials...');
-      await loginButton.click().catch(() => {});
-      await passInput.press('Enter').catch(() => {});
+          // Submit login via both standard click and Enter key
+          log('Submitting login credentials...');
+          await loginButton.click().catch(() => {});
+          await passInput.press('Enter').catch(() => {});
 
-      // Wait for authentication response or redirect away from login page
-      let authenticated = false;
-      for (let i = 0; i < 20; i++) {
-        await page.waitForTimeout(500);
-        const currentHash = await page.evaluate(() => window.location.hash).catch(() => '');
-        if (currentHash.includes('dashboard') || (!currentHash.includes('/auth/login') && currentHash.length > 2)) {
-          authenticated = true;
-          break;
+          // Wait for authentication response or redirect away from login page
+          let authenticated = false;
+          for (let i = 0; i < 20; i++) {
+            await page.waitForTimeout(500);
+            const currentHash = await page.evaluate(() => window.location.hash).catch(() => '');
+            if (currentHash.includes('dashboard') || (!currentHash.includes('/auth/login') && currentHash.length > 2)) {
+              authenticated = true;
+              break;
+            }
+          }
+
+          if (!authenticated) {
+            const errorText = await page.evaluate(() => {
+              const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
+              return toast ? toast.innerText.trim() : null;
+            }).catch(() => null);
+
+            if (errorText) {
+              throw new Error(`Authentication failed: ${errorText}`);
+            }
+            if (authErrorMessage) {
+              throw new Error(`Authentication failed: ${authErrorMessage}`);
+            }
+            throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
+          }
         }
-      }
-
-      if (!authenticated) {
-        const errorText = await page.evaluate(() => {
-          const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
-          return toast ? toast.innerText.trim() : null;
-        }).catch(() => null);
-
-        if (errorText) {
-          throw new Error(`Authentication failed: ${errorText}`);
-        }
-        if (authErrorMessage) {
-          throw new Error(`Authentication failed: ${authErrorMessage}`);
-        }
-        throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
       }
 
       log('Portal authentication confirmed!');
@@ -327,16 +339,18 @@ class AutomationService {
         const completedCard = page.locator('section.annual-year-card:has-text("PASS"), section.annual-year-card:has-text("YGPA"), section.annual-year-card').first();
         const actionBtn = completedCard.locator('button[aria-label="Annual card actions"]').first();
 
-        if (await actionBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 7000 }).then(() => true).catch(() => false);
+        if (isActionVisible) {
           log('Annual card action button visible. Clicking...');
           await actionBtn.click({ force: true });
-          await page.waitForTimeout(800);
+          await page.waitForTimeout(600);
 
           const viewResultItem = page.locator('text="View Exam Result"').first();
-          if (await viewResultItem.isVisible({ timeout: 5000 }).catch(() => false)) {
+          const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+          if (isViewVisible) {
             log('Clicking View Exam Result...');
             await viewResultItem.click({ force: true });
-            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 12000 });
+            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), null, { timeout: 12000 });
             log('Navigated to Annual Result page via official workflow!');
             navigatedViaCard = true;
           }
