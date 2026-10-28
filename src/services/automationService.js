@@ -323,8 +323,20 @@ class AutomationService {
         document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
       }).catch(() => {});
 
-      let navigatedViaCard = false;
-      try {
+      const openAnnualResultViaDashboard = async () => {
+        log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
+        await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
+          waitUntil: 'networkidle',
+          timeout: 20000
+        }).catch(async () => {
+          await page.waitForTimeout(1000);
+        });
+
+        // Suppress any lingering loader masks or backdrops on dashboard
+        await page.evaluate(() => {
+          document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
+        }).catch(() => {});
+
         // Switch to "Annual" dashboard view
         log('Switching to Annual dashboard tab...');
         await page.evaluate(() => {
@@ -342,27 +354,59 @@ class AutomationService {
           if (fetchBtns.length > 0) fetchBtns[0].click();
         }).catch(() => {});
 
-        // Locate Annual card action button anywhere on dashboard
-        const actionBtn = page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
+        // Wait for loader to disappear and purge lingering backdrop masks
+        await page.waitForFunction(() => !document.querySelector('de-loader'), null, { timeout: 15000 }).catch(() => {});
+        await page.evaluate(() => {
+          document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
+        }).catch(() => {});
+
+        await page.waitForTimeout(600);
+
+        // Strictly target Year 1 / Published Annual examination card (avoiding ongoing unpublished Year 2)
+        const year1Card = page.locator('section, article, div.rounded-xl, div.border').filter({
+          hasText: /Year\s*1/i
+        }).filter({
+          has: page.locator('button[aria-label*="card actions" i]')
+        }).first();
+
+        const isYear1Visible = await year1Card.isVisible().catch(() => false);
+        const actionBtn = isYear1Visible
+          ? year1Card.locator('button[aria-label*="card actions" i]').first()
+          : page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
 
         const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
-        if (isActionVisible) {
-          log('Annual card action button visible. Clicking...');
-          await actionBtn.click({ force: true });
-          await page.waitForTimeout(500);
-
-          const viewResultItem = page.locator('text="View Exam Result"').first();
-          const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
-          if (isViewVisible) {
-            log('Clicking View Exam Result...');
-            await viewResultItem.click({ force: true });
-            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), null, { timeout: 12000 });
-            log('Navigated to Annual Result page via official workflow!');
-            navigatedViaCard = true;
-          }
+        if (!isActionVisible) {
+          throw new Error('Annual card action button not visible on dashboard');
         }
+
+        log('Annual card action button visible. Clicking...');
+        await actionBtn.click({ force: true });
+        await page.waitForTimeout(600);
+
+        const viewResultItem = page.locator('.p-popover li, li').filter({ hasText: 'View Exam Result' }).first();
+        const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
+        if (!isViewVisible) {
+          throw new Error('View Exam Result action item not visible in popover menu');
+        }
+
+        log('Clicking View Exam Result...');
+        await viewResultItem.click({ force: true });
+        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), null, { timeout: 15000 });
+        log('Navigated to Annual Result page via official workflow!');
+        return true;
+      };
+
+      let navigatedViaCard = false;
+      try {
+        navigatedViaCard = await openAnnualResultViaDashboard();
       } catch (cardNavErr) {
-        log(`Card navigation notice: ${cardNavErr.message}. Falling back to direct URL.`);
+        log(`Card navigation notice: ${cardNavErr.message}. Retrying once...`);
+        try {
+          await page.waitForTimeout(1000);
+          navigatedViaCard = await openAnnualResultViaDashboard();
+        } catch (retryErr) {
+          log(`Retry card navigation failed: ${retryErr.message}. Falling back to direct URL.`);
+        }
       }
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
@@ -395,6 +439,22 @@ class AutomationService {
           text.includes('Result is Not Published Yet') ||
           text.includes('PENDING VERIFICATION');
       }, { timeout: 6000 }).catch(() => {});
+
+      // Safe recovery: if the portal ever shows "Result is Not Published Yet", recover via dashboard Year 1 card
+      const checkUnpublished = await page.evaluate(() => {
+        return (document.body.innerText || '').includes('Result is Not Published Yet');
+      }).catch(() => false);
+
+      if (checkUnpublished) {
+        log('Detected "Result is Not Published Yet" state. Initiating automatic recovery via dashboard Year 1 card...');
+        try {
+          await openAnnualResultViaDashboard();
+          await waitForAssessment(6000);
+          await page.waitForTimeout(2000);
+        } catch (recErr) {
+          log(`Recovery navigation failed: ${recErr.message}`);
+        }
+      }
 
       // Extract high-fidelity rendered HTML from the portal
       const renderedHtml = await page.evaluate(() => {
