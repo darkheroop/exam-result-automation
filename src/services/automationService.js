@@ -311,8 +311,8 @@ class AutomationService {
       log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
 
       await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-        waitUntil: 'domcontentloaded',
-        timeout: 10000
+        waitUntil: 'networkidle',
+        timeout: 20000
       }).catch(async () => {
         await page.waitForTimeout(1000);
       });
@@ -326,11 +326,6 @@ class AutomationService {
       try {
         // Switch to "Annual" dashboard view
         log('Switching to Annual dashboard tab...');
-        await page.waitForFunction(() => {
-          const els = Array.from(document.querySelectorAll('button, span, div, p-togglebutton'));
-          return els.some(el => (el.innerText || '').trim() === 'Annual');
-        }, { timeout: 5000 }).catch(() => {});
-
         await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
             return (el.innerText || '').trim() === 'Annual';
@@ -338,28 +333,21 @@ class AutomationService {
           if (buttons.length > 0) buttons[0].click();
         }).catch(() => {});
 
-        log('Clicked Annual dashboard toggle.');
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(1500);
 
-        // Click Fetch button if present to populate annual cards
-        await page.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button')).filter(b => (b.innerText || '').trim() === 'Fetch');
-          if (btns.length > 0) btns[0].click();
-        }).catch(() => {});
+        const completedCard = page.locator('section.annual-year-card:has-text("PASS"), section.annual-year-card:has-text("YGPA"), section.annual-year-card').first();
+        const actionBtn = completedCard.locator('button[aria-label="Annual card actions"]').first();
 
-        // Check for annual card action button
-        log('Checking for annual card action button...');
-        const actionBtn = page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
-        if (await actionBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await actionBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
           log('Annual card action button visible. Clicking...');
           await actionBtn.click({ force: true });
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(800);
 
-          const viewResultItem = page.locator('li:has-text("View Exam Result"), span:has-text("View Exam Result"), text="View Exam Result"').first();
-          if (await viewResultItem.isVisible({ timeout: 3000 }).catch(() => false)) {
+          const viewResultItem = page.locator('text="View Exam Result"').first();
+          if (await viewResultItem.isVisible({ timeout: 5000 }).catch(() => false)) {
             log('Clicking View Exam Result...');
             await viewResultItem.click({ force: true });
-            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 5000 });
+            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 12000 });
             log('Navigated to Annual Result page via official workflow!');
             navigatedViaCard = true;
           }
@@ -433,23 +421,15 @@ class AutomationService {
       let pdfBuffer = null;
       let pdfFilename = `${session.resultData?.student?.name || 'Annual-Examination-Result'}-${validNumber}.pdf`;
 
-      // Wait up to 3.5s for the portal's native Annual PDF button to become enabled
-      await page.waitForFunction(() => {
-        const btn = Array.from(document.querySelectorAll('button')).find(b =>
-          (b.innerText || '').includes('Annual PDF') || (b.getAttribute('label') || '').includes('Annual PDF')
-        );
-        return btn && !btn.disabled && !btn.hasAttribute('disabled');
-      }, { timeout: 3500 }).catch(() => {});
-
+      // Check if portal native Annual PDF button is active and ready
       const downloadButton = page.locator('button:has-text("Annual PDF"), button[label*="Annual PDF"], button:has-text("Download PDF")').first();
-      const hasDownloadBtn = (await downloadButton.count()) > 0;
-      const isPortalDownloadDisabled = hasDownloadBtn ? await downloadButton.isDisabled().catch(() => true) : true;
+      const isNativeReady = await downloadButton.isVisible().catch(() => false) && !(await downloadButton.isDisabled().catch(() => true));
 
-      if (hasDownloadBtn && !isPortalDownloadDisabled) {
+      if (isNativeReady) {
         try {
           log('Portal native Annual PDF button active. Initiating official client-side PDF generation...');
           const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 4000 }),
+            page.waitForEvent('download', { timeout: 3000 }),
             downloadButton.click({ force: true })
           ]);
 
@@ -474,10 +454,10 @@ class AutomationService {
         }
       }
 
-      // Fallback: If portal native download was unavailable or pending
+      // Fast, high-fidelity fallback: generate marksheet PDF via Chrome print engine
       if (!pdfBuffer) {
         try {
-          log('Generating marksheet PDF via browser print engine fallback...');
+          log('Generating marksheet PDF via browser print engine...');
           pdfBuffer = await page.pdf({
             format: 'A4',
             printBackground: true,
