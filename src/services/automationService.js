@@ -299,48 +299,67 @@ class AutomationService {
       log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
 
       await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-        waitUntil: 'commit',
-        timeout: config.pageTimeoutMs
+        waitUntil: 'networkidle',
+        timeout: 20000
+      }).catch(async () => {
+        await page.waitForTimeout(2000);
       });
-      await page.waitForTimeout(2000);
 
       // Suppress any lingering loader masks or backdrops on dashboard
       await page.evaluate(() => {
         document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
       }).catch(() => {});
 
-      // Switch to "Annual" dashboard view using Playwright locator
-      log('Switching to Annual dashboard tab via Playwright locator...');
-      const annualToggle = page.locator('p-togglebutton:has-text("Annual"), button:has-text("Annual")').first();
-      await annualToggle.click();
-      log('Clicked Annual dashboard toggle.');
-
-      // Wait for annual card action button to appear
-      log('Waiting for annual card action button...');
-      const actionBtn = page.locator('button[aria-label="Annual card actions"]').first();
       let navigatedViaCard = false;
-
       try {
-        await actionBtn.waitFor({ state: 'visible', timeout: 15000 });
+        // Switch to "Annual" dashboard view
+        log('Switching to Annual dashboard tab...');
+        await page.waitForFunction(() => {
+          const els = Array.from(document.querySelectorAll('button, span, div, p-togglebutton'));
+          return els.some(el => (el.innerText || '').trim() === 'Annual');
+        }, { timeout: 10000 }).catch(() => {});
+
+        const clicked = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
+            return (el.innerText || '').trim() === 'Annual';
+          });
+          if (buttons.length > 0) {
+            buttons[0].click();
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+
+        if (!clicked) {
+          const annualToggle = page.locator('p-togglebutton:has-text("Annual"), button:has-text("Annual"), span:has-text("Annual")').first();
+          await annualToggle.click({ timeout: 5000 }).catch(() => {});
+        }
+        log('Clicked Annual dashboard toggle.');
+        await page.waitForTimeout(1000);
+
+        // Wait for annual card action button to appear
+        log('Waiting for annual card action button...');
+        const actionBtn = page.locator('button[aria-label="Annual card actions"]').first();
+        await actionBtn.waitFor({ state: 'visible', timeout: 8000 });
         log('Annual card action button visible. Clicking...');
         await actionBtn.click();
         await page.waitForTimeout(800);
 
         const viewResultItem = page.locator('text="View Exam Result"').first();
-        await viewResultItem.waitFor({ state: 'visible', timeout: 8000 });
+        await viewResultItem.waitFor({ state: 'visible', timeout: 6000 });
         log('Clicking View Exam Result...');
         await viewResultItem.click();
 
-        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 15000 });
+        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 10000 });
         log('Navigated to Annual Result page via official workflow!');
         navigatedViaCard = true;
       } catch (cardNavErr) {
-        log(`Card navigation warning: ${cardNavErr.message}. Falling back to direct URL.`);
+        log(`Card navigation notice: ${cardNavErr.message}. Falling back to direct URL.`);
       }
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
         log(`Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
-        await page.goto(config.portalResultsUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
+        await page.goto(config.portalResultsUrl, { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {});
       }
 
       // Stage 6: Retrieve and prepare genuine result data
