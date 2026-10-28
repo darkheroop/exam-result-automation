@@ -47,7 +47,12 @@ router.post('/start', async (req, res, next) => {
       status: session.status,
       message: session.status === 'ready'
         ? 'Examination result retrieval completed successfully.'
-        : 'Examination result retrieval initialized.'
+        : (session.error ? session.error.message : 'Examination result retrieval initialized.'),
+      error: session.error ? {
+        message: session.error.message,
+        code: session.error.code
+      } : null,
+      data: defaultSessionManager.toPublicState(session)
     });
   } catch (err) {
     next(err);

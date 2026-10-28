@@ -48,7 +48,7 @@ const config = Object.freeze({
   // Browser Automation
   chromePath: findSystemBrowser(),
   headless: process.env.HEADLESS !== 'false',
-  pageTimeoutMs: parseInt(process.env.PAGE_TIMEOUT_MS, 10) || 35000,
+  pageTimeoutMs: parseInt(process.env.PAGE_TIMEOUT_MS, 10) || 15000,
   
   // Session & Storage
   sessionTtlMs: parseInt(process.env.SESSION_TTL_MS, 10) || 600000, // 10 minutes

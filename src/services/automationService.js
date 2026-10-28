@@ -135,7 +135,9 @@ class AutomationService {
 
       // Stage 3: Connect to the educational portal
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
+      console.log(`[Session ${sessionId}] Stage 3: Launching browser...`);
       const browser = await this.getBrowser();
+      console.log(`[Session ${sessionId}] Browser ready, creating context...`);
       const context = await browser.newContext({
         acceptDownloads: true,
         viewport: { width: 1280, height: 900 },
@@ -172,7 +174,9 @@ class AutomationService {
         }
       });
 
+      console.log(`[Session ${sessionId}] Navigating to portal login: ${config.portalLoginUrl}`);
       await page.goto(config.portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+      console.log(`[Session ${sessionId}] Login page loaded`);
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
