@@ -252,19 +252,20 @@ class AutomationService {
       const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
-      // Ensure "With Password" tab is active so username/password fields are visible
-      const isUserVisible = await userInput.isVisible().catch(() => false);
-      if (!isUserVisible) {
-        log('Waiting for "With Password" tab...');
+      // In AI Edunova login page, "With Password" is the default tab.
+      // Wait directly for the username field to be mounted and visible.
+      log('Waiting for username input field...');
+      const userFound = await userInput.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false);
+      if (!userFound) {
+        log('Username field not immediately visible, checking for "With Password" tab...');
         const withPasswordTab = page.locator('text="With Password", [role="tab"]:has-text("Password"), button:has-text("Password")').first();
-        await withPasswordTab.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+        await withPasswordTab.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
         await withPasswordTab.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(300);
+        await userInput.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
       }
 
-      await userInput.waitFor({ state: 'visible', timeout: 8000 });
       await userInput.fill(username);
-      await passInput.waitFor({ state: 'visible', timeout: 5000 });
+      await passInput.waitFor({ state: 'visible', timeout: 4000 });
       await passInput.fill(password);
 
       // Submit login via both standard click and Enter key
@@ -274,8 +275,8 @@ class AutomationService {
 
       // Wait for authentication response or redirect away from login page
       let authenticated = false;
-      for (let i = 0; i < 15; i++) {
-        await page.waitForTimeout(1000);
+      for (let i = 0; i < 20; i++) {
+        await page.waitForTimeout(500);
         const currentHash = await page.evaluate(() => window.location.hash).catch(() => '');
         if (currentHash.includes('dashboard') || (!currentHash.includes('/auth/login') && currentHash.length > 2)) {
           authenticated = true;

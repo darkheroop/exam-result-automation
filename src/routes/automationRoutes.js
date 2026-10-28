@@ -38,9 +38,13 @@ router.post('/start', async (req, res, next) => {
       console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
     });
 
-    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 45000));
+    let timeoutId;
+    const timeoutPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(resolve, 45000);
+    });
 
     await Promise.race([workflowPromise, timeoutPromise]);
+    if (timeoutId) clearTimeout(timeoutId);
 
     res.status(202).json({
       success: true,
@@ -62,10 +66,10 @@ router.post('/start', async (req, res, next) => {
 });
 
 /**
- * GET /api/automation/status/:sessionId
+ * GET /api/automation/status/:sessionId and GET /api/automation/:sessionId/status
  * Returns the current workflow progress for a specific session
  */
-router.get('/status/:sessionId', (req, res, next) => {
+const statusHandler = (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
@@ -88,7 +92,10 @@ router.get('/status/:sessionId', (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
+
+router.get('/status/:sessionId', statusHandler);
+router.get('/:sessionId/status', statusHandler);
 
 /**
  * GET /api/automation/view/:sessionId
