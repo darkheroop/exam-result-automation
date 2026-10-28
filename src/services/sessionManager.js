@@ -81,6 +81,7 @@ class SessionManager {
       page: null,
       renderedHtml: null,
       examSummary: null,
+      resultData: null,
       downloadedFile: null,
       error: null,
       createdAt: now,
@@ -163,6 +164,7 @@ class SessionManager {
           studentIdentifier: session.studentIdentifier,
           expiresAt: session.expiresAt,
           renderedHtml: session.renderedHtml,
+          resultData: session.resultData,
           tempDir: session.tempDir
         }), 'utf8');
       }
@@ -227,8 +229,9 @@ class SessionManager {
       stage: session.stage,
       stageMessage: session.stageMessage,
       progressPercent: session.progressPercent,
-      hasRenderedView: Boolean(session.renderedHtml),
+      hasRenderedView: Boolean(session.renderedHtml || session.resultData),
       renderedHtml: session.renderedHtml || null,
+      resultData: session.resultData || null,
       hasDownloadableFile: Boolean(session.downloadedFile?.ready),
       downloadFileName: session.downloadedFile?.fileName || null,
       downloadUrl: session.downloadedFile?.ready ? `/api/automation/${session.sessionId}/file?token=${session.sessionToken}` : null,

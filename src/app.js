@@ -49,6 +49,34 @@ app.use('/api', rateLimitMiddleware);
 // API Routes
 app.use('/api/automation', automationRoutes);
 
+// Direct API Aliases
+app.post('/api/result', (req, res, next) => {
+  req.url = '/start';
+  return automationRoutes(req, res, next);
+});
+
+app.post('/api/download-pdf', async (req, res, next) => {
+  const { defaultAutomationService } = require('./services/automationService');
+  const sessionId = req.body?.sessionId || req.query?.sessionId;
+  const token = req.headers['x-session-token'] || req.body?.sessionToken || req.query?.token;
+  if (!sessionId) {
+    return res.status(400).json({ success: false, error: { message: 'Missing sessionId parameter.', code: 'MISSING_SESSION_ID' } });
+  }
+  try {
+    const result = await defaultAutomationService.triggerPortalDownload(sessionId, token);
+    res.json({
+      success: true,
+      message: 'Examination result PDF downloaded and verified successfully.',
+      fileName: result.fileName,
+      size: result.size,
+      downloadUrl: result.downloadUrl,
+      base64: result.base64 || null
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Serve Frontend Static Assets
 app.use(express.static(path.resolve(__dirname, '../public')));
 

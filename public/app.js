@@ -1,5 +1,5 @@
 /**
- * Educational Examination Result Retrieval & PDF Download Automation Client
+ * Educational Examination Result Retrieval & Official Portal Recreation Client
  */
 
 (() => {
@@ -11,7 +11,7 @@
   let isSubmitting = false;
   let isDownloading = false;
 
-  // DOM Elements
+  // DOM Elements - Search & Form
   const fetchForm = document.getElementById('fetchForm');
   const studentNumberInput = document.getElementById('studentNumberInput');
   const inputClearBtn = document.getElementById('inputClearBtn');
@@ -42,12 +42,31 @@
   const resultSemesterTitle = document.getElementById('resultSemesterTitle');
   const actionDownloadBtn = document.getElementById('actionDownloadBtn');
   const closeSessionBtn = document.getElementById('closeSessionBtn');
-  const portalViewFrame = document.getElementById('portalViewFrame');
+  const marksheetAnnualPdfBtn = document.getElementById('marksheetAnnualPdfBtn');
   const downloadAlert = document.getElementById('downloadAlert');
   const downloadAlertTitle = document.getElementById('downloadAlertTitle');
   const downloadAlertMessage = document.getElementById('downloadAlertMessage');
   const closeAlertBtn = document.getElementById('closeAlertBtn');
   const pendingResultAlert = document.getElementById('pendingResultAlert');
+
+  // Recreated Marksheet Elements
+  const studName = document.getElementById('studName');
+  const studRegnNo = document.getElementById('studRegnNo');
+  const studSeatNo = document.getElementById('studSeatNo');
+  const studClass = document.getElementById('studClass');
+  const studAcadYear = document.getElementById('studAcadYear');
+  const studPublishedOn = document.getElementById('studPublishedOn');
+  const studSession = document.getElementById('studSession');
+  const studAbcId = document.getElementById('studAbcId');
+  const studSemesters = document.getElementById('studSemesters');
+  const studStatus = document.getElementById('studStatus');
+  const studYgpa = document.getElementById('studYgpa');
+  const studCredits = document.getElementById('studCredits');
+  const studMarks = document.getElementById('studMarks');
+  const studCop = document.getElementById('studCop');
+  const semestersContainer = document.getElementById('semestersContainer');
+  const iframeContainer = document.getElementById('iframeContainer');
+  const portalViewFrame = document.getElementById('portalViewFrame');
 
   // ============================================================================
   // Input Validation & Helpers
@@ -147,10 +166,7 @@
 
         if (!res.ok) {
           consecutiveErrors++;
-          // Give serverless functions up to 5 consecutive attempts (~6 seconds) during cold starts/switches
-          if (consecutiveErrors <= 5) {
-            return;
-          }
+          if (consecutiveErrors <= 5) return;
           const errData = await res.json().catch(() => ({}));
           showWorkflowError(errData.error?.message || 'Unable to check automation status.');
           return;
@@ -169,7 +185,7 @@
 
         setProgressState(data.progressPercent, data.stageMessage, data.stage);
 
-        if (data.status === 'ready' || data.status === 'download_ready') {
+        if (data.status === 'ready' || data.status === 'download_ready' || data.resultData) {
           stopPolling();
           transitionToResultView(data);
         }
@@ -191,7 +207,7 @@
   }
 
   // ============================================================================
-  // Transition to Result Screen
+  // Transition to Result Screen & Marksheet Rendering
   // ============================================================================
 
   function transitionToResultView(sessionData) {
@@ -204,16 +220,9 @@
     headerActions.classList.remove('hidden');
 
     resultStudentId.textContent = currentSession.studentNumber;
-    resultSemesterTitle.textContent = sessionData.examSummary?.title || 'Annual Semester Examination Result';
+    resultSemesterTitle.textContent = sessionData.examSummary?.title || 'Annual Result';
 
-    // Check if the result is unpublished / pending
-    if (sessionData.examSummary?.isPending) {
-      pendingResultAlert.classList.remove('hidden');
-    } else {
-      pendingResultAlert.classList.add('hidden');
-    }
-
-    // Cache PDF base64 if provided directly in session payload
+    // Cache PDF base64 if provided
     if (sessionData.pdfBase64) {
       currentSession.pdfBase64 = sessionData.pdfBase64;
     }
@@ -221,173 +230,249 @@
       currentSession.downloadFileName = sessionData.downloadFileName;
     }
 
-    // Render portal view directly or load in iframe
-    if (sessionData.renderedHtml) {
+    const result = sessionData.resultData;
+
+    if (result && result.student) {
+      // 1. Populate Student Metadata
+      studName.textContent = result.student.name || result.student.fullName || '—';
+      studRegnNo.textContent = result.student.regnNo || '—';
+      studSeatNo.textContent = result.student.seatNo || '—';
+      studClass.textContent = result.student.className || '—';
+      studAcadYear.textContent = result.student.academicYear || '—';
+      studPublishedOn.textContent = result.student.publishedOn || '—';
+      studSession.textContent = result.student.session || '—';
+      studAbcId.textContent = result.student.abcId || '—';
+      studSemesters.textContent = result.student.semesters || '—';
+      studStatus.textContent = result.student.status || '—';
+      studYgpa.textContent = result.student.ygpa || '—';
+      studCredits.textContent = result.student.creditsEarned !== undefined ? result.student.creditsEarned : '—';
+      studMarks.textContent = result.student.marks || '—';
+      studCop.textContent = result.student.cop || '—';
+
+      // 2. Render Semesters (Semester I & Semester II)
+      renderSemesters(result.semesters || []);
+      iframeContainer.classList.add('hidden');
+
+      if (result.annualSummary?.status === 'PENDING' || result.student.status === 'PENDING') {
+        pendingResultAlert.classList.remove('hidden');
+      } else {
+        pendingResultAlert.classList.add('hidden');
+      }
+
+    } else if (sessionData.renderedHtml) {
+      // Fallback: If only raw HTML was captured
+      iframeContainer.classList.remove('hidden');
       portalViewFrame.srcdoc = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
           <base href="https://ai-edunova.abes.ac.in/">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link href="https://fonts.cdnfonts.com/css/lato" rel="stylesheet">
-          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/primeicons/7.0.0/primeicons.min.css">
           <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles-2NQPLNDH.css">
           <style>
-            /* Suppress top navigation, loaders, backdrops, and modal overlays */
-            top-navbar,
-            .top-navbar,
-            app-topbar,
-            .layout-topbar,
-            .layout-menu-button,
-            nav.p-breadcrumb,
-            .p-breadcrumb,
-            app-floating-configurator,
-            app-configurator,
-            app-sidebar,
-            .sidebar-base,
-            de-loader,
-            [class*="backdrop-blur"],
-            div[class*="maskbg"],
-            div[class*="animate-fadeIn"],
-            div.fixed.inset-0,
-            div.skiptranslate,
-            iframe[id*="container"],
-            .p-toast {
-              display: none !important;
-            }
-
-            /* Suppress the watermark logo and "ESTD. 2000" artifact that created the blank area */
-            img[alt*="Watermark"],
-            .watermark,
-            div:has(> img[alt*="Watermark"]),
-            div:has(> img[src*="ABES.png"]),
-            div:has(> img[src*="abes.png"]) {
-              display: none !important;
-            }
-            .hidden {
-              display: none !important;
-            }
-
-            /* Clean typography and start directly at result heading */
-            html, body {
-              font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              background: #ffffff !important;
-              color: #1e293b !important;
-              margin: 0 !important;
-              padding: 0.75rem 1.25rem !important;
-            }
-
-            .layout-main-container,
-            .layout-content-wrapper,
-            .layout-main {
-              padding-top: 0 !important;
-              margin: 0 auto !important;
-              width: 100% !important;
-              max-width: 100% !important;
-            }
-
-            .semester-result-print-section {
-              background: #ffffff !important;
-              padding-top: 0 !important;
-              margin-top: 0 !important;
-              min-height: auto !important;
-            }
-
-            .result-print-page-header {
-              margin-top: 0 !important;
-              padding-top: 0.25rem !important;
-              margin-bottom: 0.85rem !important;
-            }
-
-            .result-print-page-header h1 {
-              display: flex !important;
-              align-items: center !important;
-              flex-wrap: wrap !important;
-              gap: 0.35rem !important;
-            }
-
-            .result-print-page-header h1 span {
-              display: inline-block !important;
-            }
-
-            .result-print-page-header h1 span:nth-child(2) {
-              margin: 0 0.35rem !important;
-            }
-
-            .h-screen {
-              height: auto !important;
-              min-height: 100% !important;
-            }
-
-            .overflow-hidden {
-              overflow: visible !important;
-            }
+            top-navbar, .top-navbar, app-topbar, .layout-topbar, nav.p-breadcrumb, .p-breadcrumb,
+            app-floating-configurator, app-configurator, app-sidebar, de-loader, [class*="backdrop-blur"] { display: none !important; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; background: #fff !important; margin: 0; padding: 1rem !important; }
           </style>
         </head>
         <body>${sessionData.renderedHtml}</body>
         </html>
       `;
-
-      portalViewFrame.onload = () => {
-        try {
-          const doc = portalViewFrame.contentDocument || portalViewFrame.contentWindow.document;
-          if (!doc) return;
-
-          // Auto-resize iframe dynamically to eliminate internal scrollbars
-          const autoResize = () => {
-            const h = Math.max(
-              doc.body ? doc.body.scrollHeight : 0,
-              doc.documentElement ? doc.documentElement.scrollHeight : 0,
-              doc.body ? doc.body.offsetHeight : 0
-            );
-            if (h > 100) {
-              portalViewFrame.style.height = `${h + 30}px`;
-            }
-          };
-
-          autoResize();
-          setTimeout(autoResize, 200);
-          setTimeout(autoResize, 600);
-          setTimeout(autoResize, 1500);
-
-          if (window.ResizeObserver && doc.body) {
-            const ro = new ResizeObserver(() => autoResize());
-            ro.observe(doc.body);
-          }
-
-          // Wire up any PDF download buttons inside the marksheet
-          const iframePdfBtns = Array.from(doc.querySelectorAll('button')).filter(b => {
-            const txt = (b.innerText || '').toLowerCase();
-            const lbl = (b.getAttribute('label') || '').toLowerCase();
-            return txt.includes('pdf') || lbl.includes('pdf');
-          });
-          iframePdfBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleDownloadPdf();
-            });
-          });
-        } catch (e) {
-          console.warn('Iframe onload error:', e);
-        }
-      };
-    } else {
-      const viewUrl = `/api/automation/view/${currentSession.sessionId}?token=${encodeURIComponent(currentSession.sessionToken)}`;
-      portalViewFrame.src = viewUrl;
     }
+  }
+
+  function renderSemesters(semesters) {
+    semestersContainer.innerHTML = '';
+
+    if (!semesters || semesters.length === 0) {
+      semestersContainer.innerHTML = '<p class="form-hint" style="text-align:center; padding: 2rem;">No semester assessment records found.</p>';
+      return;
+    }
+
+    semesters.forEach(sem => {
+      const semSec = document.createElement('div');
+      semSec.className = 'semester-section';
+
+      // Build Summary Cards HTML
+      const summaryCardsHtml = `
+        <div class="sem-summary-cards">
+          <!-- SGPA Card -->
+          <div class="summary-metric-card">
+            <div class="metric-icon-circle blue-circle">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </div>
+            <div class="metric-body">
+              <div class="metric-val-row">
+                <span class="metric-large-val">${sem.sgpa || '—'}</span>
+                <span class="metric-unit">SGPA</span>
+              </div>
+              <div class="metric-progress-line blue-line"></div>
+            </div>
+          </div>
+
+          <!-- Total Marks Card -->
+          <div class="summary-metric-card">
+            <div class="metric-icon-circle orange-circle">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+            </div>
+            <div class="metric-body">
+              <div class="metric-val-row">
+                <span class="metric-large-val">${sem.obtainedMarks !== undefined ? sem.obtainedMarks : '—'}</span>
+                <span class="metric-sub-val">/ ${sem.totalMarks || '—'}</span>
+              </div>
+              <div class="metric-label">Total Marks</div>
+              <div class="metric-progress-line orange-line"></div>
+            </div>
+          </div>
+
+          <!-- Credits Earned Card -->
+          <div class="summary-metric-card">
+            <div class="metric-icon-circle green-circle">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <div class="metric-body">
+              <div class="metric-val-row">
+                <span class="metric-large-val">${sem.creditsEarned !== undefined ? sem.creditsEarned : '—'}</span>
+                <span class="metric-sub-val">/ ${sem.credits || '—'}</span>
+              </div>
+              <div class="metric-label">Credits Earned</div>
+              <div class="metric-progress-line green-line"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Build Table Rows
+      let rowsHtml = '';
+      (sem.subjects || []).forEach(sub => {
+        const isTheory = sub.type === 'THEORY';
+        const typeBadge = isTheory ? '<span class="badge-theory">THEORY</span>' : '<span class="badge-lab">LAB</span>';
+
+        const mt1Cell = isTheory && sub.midTerm1
+          ? `<div><div class="cell-obt">${sub.midTerm1.obt}</div><div class="cell-sub">/ ${sub.midTerm1.min} / ${sub.midTerm1.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        const mt2Cell = isTheory && sub.midTerm2
+          ? `<div><div class="cell-obt">${sub.midTerm2.obt}</div><div class="cell-sub">/ ${sub.midTerm2.min} / ${sub.midTerm2.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        const endTermCell = isTheory && sub.endTerm
+          ? `<div><div class="cell-obt">${sub.endTerm.obt}</div><div class="cell-sub">/ ${sub.endTerm.min} / ${sub.endTerm.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        const extCell = sub.external
+          ? `<div><div class="cell-obt">${sub.external.obt}</div><div class="cell-sub">/ ${sub.external.min} / ${sub.external.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        const intCell = sub.internal
+          ? `<div><div class="cell-obt">${sub.internal.obt}</div><div class="cell-sub">/ ${sub.internal.min} / ${sub.internal.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        const totalCell = sub.total
+          ? `<div><div class="cell-total-obt">${sub.total.obt}</div><div class="cell-sub">${sub.total.min} / ${sub.total.max}</div></div>`
+          : '<span class="cell-sub">—</span>';
+
+        // Grade Badge styling
+        let gradeClass = 'grade-green';
+        const g = (sub.grade || '').toUpperCase();
+        if (g.includes('A')) gradeClass = 'grade-purple';
+        else if (g.includes('B')) gradeClass = 'grade-amber';
+        else if (g.includes('C')) gradeClass = 'grade-orange';
+        else if (g.includes('F') || g.includes('E#')) gradeClass = 'grade-red';
+
+        const resultClass = sub.result === 'PASS' ? 'pill-pass' : (sub.result === 'PWG' ? 'pill-pwg' : 'pill-fail');
+
+        rowsHtml += `
+          <tr>
+            <td class="cell-subject">
+              <div class="subject-name">${escapeHtml(sub.name || sub.title)}</div>
+              <div class="subject-meta">
+                <span class="subject-code">${escapeHtml(sub.code)}</span>
+                ${typeBadge}
+              </div>
+            </td>
+            <td>${mt1Cell}</td>
+            <td>${mt2Cell}</td>
+            <td>${endTermCell}</td>
+            <td>${extCell}</td>
+            <td>${intCell}</td>
+            <td>${totalCell}</td>
+            <td><strong>${sub.creditsEarned !== undefined ? sub.creditsEarned : sub.credits}</strong></td>
+            <td><span class="cell-grade ${gradeClass}">${escapeHtml(sub.grade || '—')}</span></td>
+            <td><strong>${sub.gradePoints !== undefined ? sub.gradePoints : '—'}</strong></td>
+            <td><strong>${sub.creditGrade !== undefined ? sub.creditGrade : '—'}</strong></td>
+            <td><span class="${resultClass}">${escapeHtml(sub.result || 'PASS')}</span></td>
+          </tr>
+        `;
+      });
+
+      const tableHtml = `
+        <div class="marksheet-table-wrapper">
+          <table class="marksheet-table">
+            <thead>
+              <tr>
+                <th class="col-subject">SUBJECT</th>
+                <th class="col-asmt">MID TERM 1<span class="asmt-sub">OBT | MIN | MAX</span></th>
+                <th class="col-asmt">MID TERM 2<span class="asmt-sub">OBT | MIN | MAX</span></th>
+                <th class="col-asmt">END TERM<span class="asmt-sub">OBT | MIN | MAX</span></th>
+                <th class="col-asmt">EXTERNAL<span class="asmt-sub">OBT | MIN | MAX</span></th>
+                <th class="col-asmt">INTERNAL<span class="asmt-sub">OBT | MIN | MAX</span></th>
+                <th class="col-asmt col-total">SUBJECT TOTAL<span class="asmt-sub">OBT / MIN / MAX</span></th>
+                <th class="col-stat">CREDITS EARNED</th>
+                <th class="col-stat">GRADE</th>
+                <th class="col-stat">GP</th>
+                <th class="col-stat">CG</th>
+                <th class="col-stat">RESULT</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="table-summary-bar">
+            <span class="sem-summary-tag">SUMMARY ${(sem.title || '').toUpperCase()}</span>
+            <div class="sem-summary-items">
+              <span><strong>SGPA:</strong> ${sem.sgpa || '—'}</span>
+              <span><strong>CREDITS:</strong> ${sem.creditsEarned !== undefined ? sem.creditsEarned : '—'} / ${sem.credits || '—'}</span>
+              <span><strong>TOTAL MARKS:</strong> ${sem.obtainedMarks !== undefined ? sem.obtainedMarks : '—'} / ${sem.totalMarks || '—'}</span>
+              <span class="${sem.status === 'PASS' ? 'pill-pass' : 'pill-pwg'}">${sem.status || 'PASS'}</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      semSec.innerHTML = `
+        <h2 class="semester-title">${escapeHtml(sem.title)}</h2>
+        ${summaryCardsHtml}
+        ${tableHtml}
+      `;
+
+      semestersContainer.appendChild(semSec);
+    });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   function returnToDashboard() {
     stopPolling();
     document.querySelector('.app-main')?.classList.remove('results-mode');
     if (currentSession) {
-      // Call close endpoint in background
       fetch(`/api/automation/${currentSession.sessionId}/close`, {
         method: 'POST',
         headers: { 'x-session-token': currentSession.sessionToken }
@@ -402,14 +487,13 @@
     errorCard.classList.add('hidden');
     dashboardSection.classList.remove('hidden');
 
-    portalViewFrame.src = 'about:blank';
     resetFetchButton();
     isSubmitting = false;
     studentNumberInput.focus();
   }
 
   // ============================================================================
-  // PDF Download Handling
+  // Official Annual PDF Download Handling
   // ============================================================================
 
   async function handleDownloadPdf() {
@@ -423,15 +507,15 @@
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = fileName || `Annual-Examination-Result-${currentSession.studentNumber}.pdf`;
+      link.download = fileName || `${currentSession.studentName || 'Annual-Result'}-${currentSession.studentNumber}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 
       const fileSizeKb = blob.size ? ` (${Math.round(blob.size / 1024)} KB)` : '';
-      downloadAlertTitle.textContent = 'Official PDF Download Verified & Complete';
-      downloadAlertMessage.textContent = `Downloaded "${link.download}"${fileSizeKb} successfully.`;
+      downloadAlertTitle.textContent = 'Official Annual PDF Download Complete';
+      downloadAlertMessage.textContent = `Downloaded "${link.download}"${fileSizeKb} successfully from official portal.`;
       downloadAlert.classList.remove('alert-warning', 'hidden');
       downloadAlert.classList.add('alert-success');
     };
@@ -505,13 +589,13 @@
   }
 
   function setDownloadButtonsLoading(loading) {
-    const btns = [actionDownloadBtn, headerDownloadBtn];
+    const btns = [actionDownloadBtn, headerDownloadBtn, marksheetAnnualPdfBtn];
     btns.forEach(btn => {
       if (!btn) return;
       btn.disabled = loading;
-      const text = btn.querySelector('.btn-text');
+      const text = btn.querySelector('.btn-text, span');
       const spinner = btn.querySelector('.btn-spinner');
-      if (text) text.textContent = loading ? 'Downloading...' : 'Download PDF';
+      if (text) text.textContent = loading ? 'Downloading...' : 'Annual PDF';
       if (spinner) {
         if (loading) spinner.classList.remove('hidden');
         else spinner.classList.add('hidden');
@@ -523,7 +607,6 @@
   // Event Listeners
   // ============================================================================
 
-  // Input events
   studentNumberInput.addEventListener('input', () => {
     clearInputError();
     updateClearButton();
@@ -536,7 +619,6 @@
     studentNumberInput.focus();
   });
 
-  // Form submission
   fetchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -552,7 +634,6 @@
     clearInputError();
     errorCard.classList.add('hidden');
 
-    // Show initial progress state
     setProgressState(10, 'Initializing workflow...', 1);
 
     try {
@@ -580,10 +661,10 @@
       currentSession = {
         sessionId: json.sessionId,
         sessionToken: json.sessionToken,
-        studentNumber: validation.value
+        studentNumber: validation.value,
+        studentName: json.data?.resultData?.student?.name || null
       };
 
-      // If backend finished the workflow synchronously, transition immediately
       if ((json.status === 'ready' || json.status === 'download_ready') && json.data) {
         setProgressState(100, 'Examination result loaded successfully.', 7);
         transitionToResultView(json.data);
@@ -598,9 +679,11 @@
     }
   });
 
-  // Action buttons
   actionDownloadBtn.addEventListener('click', handleDownloadPdf);
   headerDownloadBtn.addEventListener('click', handleDownloadPdf);
+  if (marksheetAnnualPdfBtn) {
+    marksheetAnnualPdfBtn.addEventListener('click', handleDownloadPdf);
+  }
 
   closeSessionBtn.addEventListener('click', returnToDashboard);
   headerNewSearchBtn.addEventListener('click', returnToDashboard);
@@ -614,6 +697,5 @@
     downloadAlert.classList.add('hidden');
   });
 
-  // Initial setup
   updateClearButton();
 })();

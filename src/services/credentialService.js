@@ -143,7 +143,7 @@ class CredentialService {
         this.apiUrl,
         headers,
         { studentNumber: validNumber },
-        15000
+        25000
       );
     } catch (err) {
       if (err.name === 'TimeoutError') {
