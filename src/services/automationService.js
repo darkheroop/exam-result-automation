@@ -395,6 +395,11 @@ class AutomationService {
         'Credential Lookup',
         'TIMEOUT_CREDENTIALS'
       );
+      if (credentials.studentNumber && credentials.studentNumber !== validNumber) {
+        const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${credentials.studentNumber}, expected ${validNumber}`);
+        mismatchErr.code = 'CREDENTIAL_STUDENT_MISMATCH';
+        throw mismatchErr;
+      }
       const username = credentials.username;
       const password = credentials.password;
       session.username = username;
@@ -516,13 +521,33 @@ class AutomationService {
       let semesterwiseCardDetailsJson = null;
       let assessmentDataJson = null;
       let authErrorMessage = null;
+      let authenticatedUserData = null;
+      let authenticatedStudentMobile = null;
+      let authenticatedStudentName = null;
 
       page.on('response', async (res) => {
         const url = res.url();
         const status = res.status();
 
-        if (url.includes('GetUserAuthenticatedData') && status >= 400) {
-          authErrorMessage = 'Portal authentication rejected credentials.';
+        if (url.includes('GetUserAuthenticatedData')) {
+          if (status >= 400) {
+            authErrorMessage = 'Portal authentication rejected credentials.';
+          } else if (status === 200) {
+            try {
+              const authJson = await res.json();
+              const uData = authJson?.collection?.response?.userData || authJson?.userData || authJson?.data;
+              if (uData) {
+                authenticatedUserData = uData;
+                if (uData.mobile) {
+                  authenticatedStudentMobile = String(uData.mobile).trim();
+                }
+                if (uData.firstName) {
+                  authenticatedStudentName = `${uData.firstName} ${uData.lastName || ''}`.trim();
+                }
+                log(`Intercepted GetUserAuthenticatedData: mobile=${authenticatedStudentMobile}, name=${authenticatedStudentName}`);
+              }
+            } catch (e) {}
+          }
         }
 
         if (status === 200) {
@@ -585,61 +610,68 @@ class AutomationService {
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
-      const isAlreadyDashboard = await page.evaluate(() => window.location.hash.includes('dashboard')).catch(() => false);
-      if (isAlreadyDashboard) {
-        log('Session is already authenticated at dashboard.');
-      } else {
-        log('Waiting for login form inputs to mount...');
-        await page.waitForFunction(() => {
-          return document.querySelectorAll('input').length > 0 || window.location.hash.includes('dashboard');
-        }, null, { timeout: config.authCompletionTimeoutMs }).catch(() => {});
+      log('Waiting for login form inputs to mount...');
+      await page.waitForFunction(() => {
+        return document.querySelectorAll('input').length > 0;
+      }, null, { timeout: config.authCompletionTimeoutMs }).catch(() => {});
 
-        const atDashboardNow = await page.evaluate(() => window.location.hash.includes('dashboard')).catch(() => false);
-        if (!atDashboardNow) {
-          const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
-          const passInput = page.locator('input[type="password"]').first();
-          const loginButton = page.locator('button:has-text("Login")').first();
+      const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
+      const passInput = page.locator('input[type="password"]').first();
+      const loginButton = page.locator('button:has-text("Login")').first();
 
-          await userInput.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
-          await userInput.fill(username);
-          await passInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-          await passInput.fill(password);
+      await userInput.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+      await userInput.fill(username);
+      await passInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+      await passInput.fill(password);
 
-          // Submit login credentials
-          log('Submitting login credentials...');
-          await loginButton.click().catch(() => {});
-          await passInput.press('Enter').catch(() => {});
+      // Submit login credentials
+      log('Submitting login credentials...');
+      await loginButton.click().catch(() => {});
+      await passInput.press('Enter').catch(() => {});
 
-          // Fast event-driven wait for authentication redirect away from login page
-          const authenticated = await page.waitForFunction(() => {
-            const h = window.location.hash || '';
-            return h.includes('dashboard') || (!h.includes('/auth/login') && h.length > 2);
-          }, null, { timeout: config.authCompletionTimeoutMs }).then(() => true).catch(() => false);
+      // Fast event-driven wait for authentication redirect away from login page
+      const authenticated = await page.waitForFunction(() => {
+        const h = window.location.hash || '';
+        return h.includes('dashboard') || (!h.includes('/auth/login') && h.length > 2);
+      }, null, { timeout: config.authCompletionTimeoutMs }).then(() => true).catch(() => false);
 
-          if (!authenticated) {
-            const errorText = await page.evaluate(() => {
-              const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
-              return toast ? toast.innerText.trim() : null;
-            }).catch(() => null);
+      if (!authenticated) {
+        const errorText = await page.evaluate(() => {
+          const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
+          return toast ? toast.innerText.trim() : null;
+        }).catch(() => null);
 
-            if (errorText) {
-              const authErr = new Error(`Authentication failed: ${errorText}`);
-              authErr.code = 'AUTH_REJECTED';
-              throw authErr;
-            }
-            if (authErrorMessage) {
-              const authErr = new Error(`Authentication failed: ${authErrorMessage}`);
-              authErr.code = 'AUTH_REJECTED';
-              throw authErr;
-            }
-            const authErr = new Error('Authentication timed out. Portal did not confirm authenticated session.');
-            authErr.code = 'AUTH_TIMEOUT';
-            throw authErr;
-          }
+        if (errorText) {
+          const authErr = new Error(`Authentication failed: ${errorText}`);
+          authErr.code = 'AUTH_REJECTED';
+          throw authErr;
+        }
+        if (authErrorMessage) {
+          const authErr = new Error(`Authentication failed: ${authErrorMessage}`);
+          authErr.code = 'AUTH_REJECTED';
+          throw authErr;
+        }
+        const authErr = new Error('Authentication timed out. Portal did not confirm authenticated session.');
+        authErr.code = 'AUTH_TIMEOUT';
+        throw authErr;
+      }
+
+      // Allow brief moment for GetUserAuthenticatedData response to be received
+      if (!authenticatedUserData) {
+        for (let i = 0; i < 20; i++) {
+          if (authenticatedUserData) break;
+          await new Promise(r => setTimeout(r, 100));
         }
       }
 
-      log('Portal authentication confirmed!');
+      // Authoritative identity check: verified student mobile from portal auth payload
+      if (authenticatedStudentMobile && authenticatedStudentMobile !== validNumber) {
+        const identityErr = new Error(`Student identity mismatch: authenticated account (${authenticatedStudentMobile}) does not match requested student (${validNumber}).`);
+        identityErr.code = 'STUDENT_IDENTITY_MISMATCH';
+        throw identityErr;
+      }
+
+      log(`Portal authentication confirmed for student: ${authenticatedStudentName || username} (${authenticatedStudentMobile || validNumber})`);
 
       // Stage 5: Navigate to results page via official exam dashboard
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
@@ -791,15 +823,26 @@ class AutomationService {
           const normalized = normalizeResultData({
             annualwiseCardDetails: annualwiseCardDetailsJson,
             manageExamInfoDetails: assessmentDataJson,
-            semesterwiseCardDetails: semesterwiseCardDetailsJson
+            semesterwiseCardDetails: semesterwiseCardDetailsJson,
+            expectedStudentNumber: validNumber,
+            authenticatedUserData: authenticatedUserData
           });
 
           if (normalized) {
+            // Strict identity verification on normalized student object
+            if (normalized.student.studentNumber && normalized.student.studentNumber !== validNumber) {
+              const mismatchErr = new Error(`Identity mismatch in normalized result: ${normalized.student.studentNumber} !== ${validNumber}`);
+              mismatchErr.code = 'STUDENT_IDENTITY_MISMATCH';
+              throw mismatchErr;
+            }
             session.resultData = normalized;
             log(`Successfully normalized genuine result data for ${normalized.student.name} (Year: ${normalized.student.academicYear}, YGPA: ${normalized.student.ygpa})`);
           }
         } catch (normErr) {
           log(`Normalization warning: ${normErr.message}`);
+          if (normErr.code === 'STUDENT_IDENTITY_MISMATCH') {
+            throw normErr;
+          }
         }
       }
 
@@ -897,6 +940,13 @@ class AutomationService {
         message: err.message || 'An unexpected error occurred during portal automation.',
         code: err.code || 'AUTOMATION_FAILED'
       };
+      // Explicitly wipe all partial/stale result data to prevent any data leakage
+      session.resultData = null;
+      session.renderedHtml = null;
+      session.downloadedFile = null;
+      session.pdfBase64 = null;
+      session.pdfBuffer = null;
+      session.examSummary = null;
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
       throw err;
     } finally {

@@ -249,6 +249,16 @@ class CredentialService {
       );
     }
 
+    // Verify that returned student number (if present in API response) matches the requested student
+    const returnedStudentNumber = body.studentNumber || body.studentIdentifier || body.number;
+    if (returnedStudentNumber && String(returnedStudentNumber).trim() !== validNumber) {
+      throw new CredentialError(
+        `Security Alert: Student Lookup API returned credentials for student ${returnedStudentNumber}, but request was for ${validNumber}.`,
+        403,
+        'CREDENTIAL_STUDENT_MISMATCH'
+      );
+    }
+
     // Extract and validate credentials
     const username = typeof body.username === 'string' ? body.username.trim() : '';
     const password = typeof body.password === 'string' ? body.password.trim() : '';

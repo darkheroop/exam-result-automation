@@ -4,9 +4,20 @@
  * Normalizes genuine portal API responses into a clean, consistent data structure for the frontend marksheet.
  * Preserves exact numerical values, grades, and metadata without fabricating or rounding values.
  */
-function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, semesterwiseCardDetails }) {
+function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, semesterwiseCardDetails, expectedStudentNumber = null, authenticatedUserData = null }) {
   if (!annualwiseCardDetails && !manageExamInfoDetails) {
     return null;
+  }
+
+  // Identity Verification: If authenticated user data is available, verify it belongs to expected student
+  if (expectedStudentNumber && authenticatedUserData && authenticatedUserData.mobile) {
+    const authMobile = String(authenticatedUserData.mobile).trim();
+    const expected = String(expectedStudentNumber).trim();
+    if (authMobile !== expected) {
+      const err = new Error(`Student identity mismatch: authenticated account (${authMobile}) does not match requested student (${expected}).`);
+      err.code = 'STUDENT_IDENTITY_MISMATCH';
+      throw err;
+    }
   }
 
   // Extract annual cards
@@ -41,6 +52,7 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
   const student = {
     name: rawStudent.fullName || 'STUDENT',
     fullName: rawStudent.fullName || 'STUDENT',
+    studentNumber: expectedStudentNumber || (authenticatedUserData ? authenticatedUserData.mobile : '') || '',
     regnNo: rawStudent.seatNo || rawStudent.rollNo || publishedCard.seatNo || '',
     seatNo: rawStudent.seatNo || publishedCard.seatNo || '',
     rollNo: rawStudent.rollNo || '',

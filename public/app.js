@@ -10,6 +10,8 @@
   let statusPollTimer = null;
   let isSubmitting = false;
   let isDownloading = false;
+  let activeRequestId = 0;
+  let activeFetchController = null;
 
   // DOM Elements - Search & Form
   const fetchForm = document.getElementById('fetchForm');
@@ -102,6 +104,30 @@
     }
   }
 
+  function clearResultView() {
+    resultStudentId.textContent = '—';
+    resultSemesterTitle.textContent = 'Annual Result';
+    studName.textContent = '—';
+    studRegnNo.textContent = '—';
+    studSeatNo.textContent = '—';
+    studClass.textContent = '—';
+    studAcadYear.textContent = '—';
+    studPublishedOn.textContent = '—';
+    studSession.textContent = '—';
+    studAbcId.textContent = '—';
+    studSemesters.textContent = '—';
+    studStatus.textContent = '—';
+    studYgpa.textContent = '—';
+    studCredits.textContent = '—';
+    studMarks.textContent = '—';
+    studCop.textContent = '—';
+    semestersContainer.innerHTML = '';
+    portalViewFrame.srcdoc = '';
+    iframeContainer.classList.add('hidden');
+    pendingResultAlert.classList.add('hidden');
+    downloadAlert.classList.add('hidden');
+  }
+
   // ============================================================================
   // View & Progress Controllers
   // ============================================================================
@@ -153,11 +179,17 @@
   // Polling Status
   // ============================================================================
 
-  function startPolling(sessionId, sessionToken) {
+  function startPolling(sessionId, sessionToken, targetStudentNumber, reqId) {
     stopPolling();
     let consecutiveErrors = 0;
 
     statusPollTimer = setInterval(async () => {
+      // Abort if request has been superseded
+      if (reqId !== activeRequestId) {
+        stopPolling();
+        return;
+      }
+
       try {
         const res = await fetch(`/api/automation/status/${sessionId}`, {
           headers: {
@@ -165,6 +197,9 @@
             'Accept': 'application/json'
           }
         });
+
+        // Abort if request was superseded while fetch was in flight
+        if (reqId !== activeRequestId) return;
 
         if (!res.ok) {
           consecutiveErrors++;
@@ -178,7 +213,13 @@
         const json = await res.json();
         const data = json.data;
 
-        if (!data) return;
+        if (!data || reqId !== activeRequestId) return;
+
+        // Security check: verify status payload belongs to target student
+        if (data.studentIdentifier && targetStudentNumber && data.studentIdentifier !== targetStudentNumber) {
+          console.warn(`[Client] Ignoring stale poll response for student ${data.studentIdentifier}, expected ${targetStudentNumber}`);
+          return;
+        }
 
         if (data.status === 'error') {
           showWorkflowError(data.error?.message || 'Automation workflow failed.');
@@ -196,9 +237,10 @@
 
         if (data.status === 'ready' || data.status === 'download_ready' || data.resultData) {
           stopPolling();
-          transitionToResultView(data);
+          transitionToResultView(data, targetStudentNumber, reqId);
         }
       } catch (err) {
+        if (reqId !== activeRequestId) return;
         consecutiveErrors++;
         console.warn('Transient polling error:', err.message);
         if (consecutiveErrors > 6) {
@@ -219,7 +261,22 @@
   // Transition to Result Screen & Marksheet Rendering
   // ============================================================================
 
-  function transitionToResultView(sessionData) {
+  function transitionToResultView(sessionData, targetStudentNumber = null, reqId = null) {
+    if (reqId && reqId !== activeRequestId) return;
+
+    // Strict identity match guard
+    const expectedStudent = targetStudentNumber || currentSession?.studentNumber;
+    if (expectedStudent) {
+      if (sessionData.studentIdentifier && sessionData.studentIdentifier !== expectedStudent) {
+        console.error(`[Client] Identity mismatch in transitionToResultView: got ${sessionData.studentIdentifier}, expected ${expectedStudent}`);
+        return;
+      }
+      if (sessionData.resultData?.student?.studentNumber && sessionData.resultData.student.studentNumber !== expectedStudent) {
+        console.error(`[Client] Identity mismatch in resultData.student: got ${sessionData.resultData.student.studentNumber}, expected ${expectedStudent}`);
+        return;
+      }
+    }
+
     isSubmitting = false;
     resetFetchButton();
 
@@ -228,15 +285,17 @@
     resultSection.classList.remove('hidden');
     headerActions.classList.remove('hidden');
 
-    resultStudentId.textContent = currentSession.studentNumber;
+    resultStudentId.textContent = expectedStudent || '—';
     resultSemesterTitle.textContent = sessionData.examSummary?.title || 'Annual Result';
 
-    // Cache PDF base64 if provided
-    if (sessionData.pdfBase64) {
-      currentSession.pdfBase64 = sessionData.pdfBase64;
-    }
-    if (sessionData.downloadFileName) {
-      currentSession.downloadFileName = sessionData.downloadFileName;
+    if (currentSession) {
+      // Cache PDF base64 if provided
+      if (sessionData.pdfBase64) {
+        currentSession.pdfBase64 = sessionData.pdfBase64;
+      }
+      if (sessionData.downloadFileName) {
+        currentSession.downloadFileName = sessionData.downloadFileName;
+      }
     }
 
     const result = sessionData.resultData;
@@ -479,7 +538,14 @@
   }
 
   function returnToDashboard() {
+    ++activeRequestId;
+    if (activeFetchController) {
+      try { activeFetchController.abort(); } catch (_) {}
+      activeFetchController = null;
+    }
     stopPolling();
+    clearResultView();
+
     document.querySelector('.app-main')?.classList.remove('results-mode');
     if (currentSession) {
       fetch(`/api/automation/${currentSession.sessionId}/close`, {
@@ -638,6 +704,19 @@
       return;
     }
 
+    // Monotonically increase request ID to invalidate any prior in-flight requests or polls
+    const currentRequestId = ++activeRequestId;
+
+    // Abort previous in-flight HTTP request if any
+    if (activeFetchController) {
+      try { activeFetchController.abort(); } catch (_) {}
+    }
+    activeFetchController = new AbortController();
+
+    // Stop previous polling and wipe result DOM immediately
+    stopPolling();
+    clearResultView();
+
     isSubmitting = true;
     setFetchButtonLoading();
     clearInputError();
@@ -652,10 +731,15 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ studentNumber: validation.value })
+        body: JSON.stringify({ studentNumber: validation.value }),
+        signal: activeFetchController.signal
       });
 
+      // If a newer submission occurred while this request was in flight, ignore response
+      if (currentRequestId !== activeRequestId) return;
+
       const json = await res.json();
+      if (currentRequestId !== activeRequestId) return;
 
       if (!res.ok || !json.success) {
         showWorkflowError(json.error?.message || 'Failed to start examination retrieval workflow.');
@@ -664,6 +748,12 @@
 
       if (json.status === 'error' && json.error) {
         showWorkflowError(json.error.message);
+        return;
+      }
+
+      // Security check: verify returned student matches
+      if (json.data?.studentIdentifier && json.data.studentIdentifier !== validation.value) {
+        showWorkflowError(`Security Alert: Received data for student ${json.data.studentIdentifier} when requesting ${validation.value}.`);
         return;
       }
 
@@ -676,14 +766,16 @@
 
       if ((json.status === 'ready' || json.status === 'download_ready') && json.data) {
         setProgressState(100, 'Examination result loaded successfully.', 7);
-        transitionToResultView(json.data);
+        transitionToResultView(json.data, validation.value, currentRequestId);
         return;
       }
 
-      // Begin polling status
-      startPolling(json.sessionId, json.sessionToken);
+      // Begin polling status with requestId and target student
+      startPolling(json.sessionId, json.sessionToken, validation.value, currentRequestId);
 
     } catch (err) {
+      if (currentRequestId !== activeRequestId) return;
+      if (err.name === 'AbortError') return;
       showWorkflowError(`Network connection error: ${err.message}`);
     }
   });
