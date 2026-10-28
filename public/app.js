@@ -198,6 +198,7 @@
     isSubmitting = false;
     resetFetchButton();
 
+    document.querySelector('.app-main')?.classList.add('results-mode');
     dashboardSection.classList.add('hidden');
     resultSection.classList.remove('hidden');
     headerActions.classList.remove('hidden');
@@ -212,6 +213,14 @@
       pendingResultAlert.classList.add('hidden');
     }
 
+    // Cache PDF base64 if provided directly in session payload
+    if (sessionData.pdfBase64) {
+      currentSession.pdfBase64 = sessionData.pdfBase64;
+    }
+    if (sessionData.downloadFileName) {
+      currentSession.downloadFileName = sessionData.downloadFileName;
+    }
+
     // Render portal view directly or load in iframe
     if (sessionData.renderedHtml) {
       portalViewFrame.srcdoc = `
@@ -222,10 +231,54 @@
           <base href="https://ai-edunova.abes.ac.in/">
           <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles.css">
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 1.5rem; background: #fff; }
-            top-navbar, .top-navbar, app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator { display: none !important; }
-            .layout-main-container, .layout-content-wrapper, .layout-main { padding-top: 0 !important; margin-top: 0 !important; }
-            .result-print-page-header button { display: none !important; }
+            top-navbar,
+            .top-navbar,
+            app-topbar,
+            .layout-topbar,
+            .layout-menu-button,
+            nav.p-breadcrumb,
+            .p-breadcrumb,
+            app-floating-configurator,
+            app-configurator,
+            app-sidebar,
+            .sidebar-base,
+            de-loader,
+            [class*="backdrop-blur"],
+            div[class*="maskbg"],
+            div[class*="animate-fadeIn"],
+            div.fixed.inset-0,
+            div.skiptranslate,
+            iframe[id*="container"],
+            .p-toast {
+              display: none !important;
+            }
+            .h-screen {
+              height: auto !important;
+              min-height: 100% !important;
+            }
+            .overflow-hidden {
+              overflow: visible !important;
+            }
+            html, body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              overflow: auto !important;
+              height: auto !important;
+              min-height: 100% !important;
+              background: #ffffff !important;
+              margin: 0 !important;
+              padding: 1.5rem !important;
+            }
+            .layout-main-container,
+            .layout-content-wrapper,
+            .layout-main {
+              padding-top: 0.5rem !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 100% !important;
+            }
+            .result-print-page-header button {
+              display: none !important;
+            }
           </style>
         </head>
         <body>${sessionData.renderedHtml}</body>
@@ -239,6 +292,7 @@
 
   function returnToDashboard() {
     stopPolling();
+    document.querySelector('.app-main')?.classList.remove('results-mode');
     if (currentSession) {
       // Call close endpoint in background
       fetch(`/api/automation/${currentSession.sessionId}/close`, {
@@ -272,7 +326,38 @@
     setDownloadButtonsLoading(true);
     downloadAlert.classList.add('hidden');
 
+    const downloadBlob = (blob, fileName) => {
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName || `Annual-Examination-Result-${currentSession.studentNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+      const fileSizeKb = blob.size ? ` (${Math.round(blob.size / 1024)} KB)` : '';
+      downloadAlertTitle.textContent = 'Official PDF Download Verified & Complete';
+      downloadAlertMessage.textContent = `Downloaded "${link.download}"${fileSizeKb} successfully.`;
+      downloadAlert.classList.remove('alert-warning', 'hidden');
+      downloadAlert.classList.add('alert-success');
+    };
+
     try {
+      // 1. Fast-path: If PDF base64 is already cached in currentSession, download immediately
+      if (currentSession.pdfBase64) {
+        const byteCharacters = atob(currentSession.pdfBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        downloadBlob(blob, currentSession.downloadFileName);
+        return;
+      }
+
+      // 2. Request backend download endpoint
       const res = await fetch(`/api/automation/${currentSession.sessionId}/download`, {
         method: 'POST',
         headers: {
@@ -292,23 +377,34 @@
         return;
       }
 
-      // Trigger actual browser file download
-      const downloadLink = document.createElement('a');
-      downloadLink.href = json.downloadUrl;
-      downloadLink.download = json.fileName || 'Examination_Result.pdf';
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+      // If backend returned base64 in response:
+      if (json.base64) {
+        currentSession.pdfBase64 = json.base64;
+        currentSession.downloadFileName = json.fileName;
+        const byteCharacters = atob(json.base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        downloadBlob(blob, json.fileName);
+        return;
+      }
 
-      // Display verified success notification
-      const fileSizeKb = json.size ? ` (${Math.round(json.size / 1024)} KB)` : '';
-      downloadAlertTitle.textContent = 'Official PDF Download Verified & Complete';
-      downloadAlertMessage.textContent = `Retrieved "${json.fileName}"${fileSizeKb} directly from the educational portal.`;
-      downloadAlert.classList.remove('alert-warning', 'hidden');
-      downloadAlert.classList.add('alert-success');
+      // 3. Download via binary stream fetch
+      const fileRes = await fetch(json.downloadUrl);
+      if (!fileRes.ok) {
+        throw new Error('Failed to retrieve PDF document from server.');
+      }
+      const blob = await fileRes.blob();
+      downloadBlob(blob, json.fileName);
 
     } catch (err) {
-      alert(`Network error while downloading PDF: ${err.message}`);
+      downloadAlertTitle.textContent = 'PDF Download Notice';
+      downloadAlertMessage.textContent = `Unable to complete PDF download: ${err.message}`;
+      downloadAlert.classList.remove('alert-success', 'hidden');
+      downloadAlert.classList.add('alert-warning');
     } finally {
       isDownloading = false;
       setDownloadButtonsLoading(false);

@@ -118,19 +118,49 @@ router.get('/view/:sessionId', (req, res, next) => {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles-2NQPLNDH.css">
   <style>
+    top-navbar,
+    .top-navbar,
+    app-topbar,
+    .layout-topbar,
+    .layout-menu-button,
+    nav.p-breadcrumb,
+    .p-breadcrumb,
+    app-floating-configurator,
+    app-configurator,
+    app-sidebar,
+    .sidebar-base,
+    de-loader,
+    [class*="backdrop-blur"],
+    div[class*="maskbg"],
+    div[class*="animate-fadeIn"],
+    div.fixed.inset-0,
+    div.skiptranslate,
+    iframe[id*="container"],
+    .p-toast {
+      display: none !important;
+    }
+    .h-screen {
+      height: auto !important;
+      min-height: 100% !important;
+    }
+    .overflow-hidden {
+      overflow: visible !important;
+    }
     body {
-      font-family: Lato, sans-serif;
-      background-color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
       color: #1e293b;
       margin: 0;
       padding: 1.5rem;
-    }
-    top-navbar, .top-navbar, app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator {
-      display: none !important;
+      overflow: auto !important;
+      height: auto !important;
+      min-height: 100% !important;
     }
     .layout-main-container, .layout-content-wrapper, .layout-main {
       padding-top: 0 !important;
-      margin-top: 0 !important;
+      margin: 0 auto !important;
+      width: 100% !important;
+      max-width: 100% !important;
     }
     .result-print-page-header button {
       display: none !important;
@@ -168,7 +198,8 @@ router.post('/:sessionId/download', async (req, res, next) => {
       message: 'Examination result PDF downloaded and verified successfully.',
       fileName: result.fileName,
       size: result.size,
-      downloadUrl: result.downloadUrl
+      downloadUrl: result.downloadUrl,
+      base64: result.base64 || null
     });
   } catch (err) {
     next(err);
@@ -199,21 +230,30 @@ router.get('/:sessionId/file', (req, res, next) => {
       });
     }
 
+    const fileName = session.downloadedFile.fileName || 'Examination_Result.pdf';
     const filePath = session.downloadedFile.filePath;
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Downloaded file is no longer available.', code: 'FILE_EXPIRED' }
-      });
-    }
-
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${session.downloadedFile.fileName}"`);
-    res.setHeader('Content-Length', session.downloadedFile.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
 
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
+    // Deliver from disk if file is available
+    if (filePath && fs.existsSync(filePath)) {
+      res.setHeader('Content-Length', session.downloadedFile.size);
+      const fileStream = fs.createReadStream(filePath);
+      return fileStream.pipe(res);
+    }
+
+    // Fall back to in-memory base64 buffer for serverless multi-container resilience
+    if (session.downloadedFile.base64) {
+      const buf = Buffer.from(session.downloadedFile.base64, 'base64');
+      res.setHeader('Content-Length', buf.length);
+      return res.end(buf);
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: { message: 'Downloaded file is no longer available.', code: 'FILE_EXPIRED' }
+    });
   } catch (err) {
     next(err);
   }

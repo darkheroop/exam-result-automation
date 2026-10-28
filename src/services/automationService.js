@@ -268,10 +268,10 @@ class AutomationService {
         throw new Error('Failed to reach examination results page. Session may have expired or access was redirected.');
       }
 
-      // Stage 6: Preparing the result interface (hide top navigation bar)
-      this.sessionManager.updateProgress(sessionId, 6, 'Preparing the result interface...', 90);
+      // Stage 6: Preparing the result interface (hide top navigation bar, loaders & backdrops)
+      this.sessionManager.updateProgress(sessionId, 6, 'Preparing the result interface...', 85);
 
-      // Inject custom CSS to cleanly remove the top navigation bar while keeping the full result interface
+      // Inject custom CSS to cleanly remove loaders, masks, sidebars, and top navigation bar
       await page.addStyleTag({
         content: `
           top-navbar,
@@ -282,14 +282,41 @@ class AutomationService {
           nav.p-breadcrumb,
           .p-breadcrumb,
           app-floating-configurator,
-          app-configurator {
+          app-configurator,
+          app-sidebar,
+          .sidebar-base,
+          de-loader,
+          [class*="backdrop-blur"],
+          div[class*="maskbg"],
+          div[class*="animate-fadeIn"],
+          div.fixed.inset-0,
+          div.skiptranslate,
+          iframe[id*="container"],
+          .p-toast {
             display: none !important;
+          }
+          .h-screen {
+            height: auto !important;
+            min-height: 100% !important;
+          }
+          .overflow-hidden {
+            overflow: visible !important;
+          }
+          html, body {
+            overflow: auto !important;
+            height: auto !important;
+            min-height: 100% !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           .layout-main-container,
           .layout-content-wrapper,
           .layout-main {
             padding-top: 0.5rem !important;
-            margin-top: 0 !important;
+            margin: 0 auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
           }
         `
       });
@@ -315,6 +342,70 @@ class AutomationService {
         };
       });
 
+      // Stage 7: Preparing verified marksheet PDF document
+      this.sessionManager.updateProgress(sessionId, 7, 'Preparing examination result PDF...', 95);
+
+      let pdfBuffer = null;
+      let pdfFilename = `Annual-Examination-Result-${validNumber}.pdf`;
+
+      // Check if portal has an active native download button
+      const downloadButton = page.locator('button:has-text("Annual PDF"), button:has-text("Download PDF"), button[label*="PDF"]').first();
+      const hasDownloadBtn = (await downloadButton.count()) > 0;
+      const isPortalDownloadDisabled = hasDownloadBtn ? await downloadButton.isDisabled().catch(() => true) : true;
+
+      if (hasDownloadBtn && !isPortalDownloadDisabled) {
+        try {
+          console.log(`[Session ${sessionId}] Portal native PDF button active. Initiating download...`);
+          const [download] = await Promise.all([
+            page.waitForEvent('download', { timeout: 15000 }),
+            downloadButton.click()
+          ]);
+          const dlName = download.suggestedFilename() || pdfFilename;
+          const dlPath = path.join(session.tempDir, dlName);
+          await download.saveAs(dlPath);
+          if (fs.existsSync(dlPath)) {
+            pdfBuffer = fs.readFileSync(dlPath);
+            pdfFilename = dlName;
+          }
+        } catch (dlErr) {
+          console.warn(`[Session ${sessionId}] Native download event timed out or failed:`, dlErr.message);
+        }
+      }
+
+      // If portal native download was disabled (e.g. pending verification / unpublished) or unavailable:
+      if (!pdfBuffer) {
+        try {
+          console.log(`[Session ${sessionId}] Capturing official examination marksheet PDF via Chrome print engine...`);
+          pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' }
+          });
+        } catch (printErr) {
+          console.warn(`[Session ${sessionId}] Chrome PDF generation warning:`, printErr.message);
+        }
+      }
+
+      // Validate PDF buffer
+      if (pdfBuffer && pdfBuffer.length > 0 && pdfBuffer.slice(0, 4).toString('utf8') === '%PDF') {
+        const sanitizedFilename = pdfFilename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+        const pdfFilePath = path.join(session.tempDir, sanitizedFilename);
+        try {
+          fs.writeFileSync(pdfFilePath, pdfBuffer);
+        } catch (writeErr) {}
+
+        session.downloadedFile = {
+          ready: true,
+          filePath: pdfFilePath,
+          fileName: sanitizedFilename,
+          size: pdfBuffer.length,
+          mimeType: 'application/pdf',
+          downloadedAt: Date.now(),
+          base64: pdfBuffer.toString('base64')
+        };
+        console.log(`[Session ${sessionId}] Verified PDF ready (${pdfBuffer.length} bytes, file: ${sanitizedFilename})`);
+      }
+
       // Save rendered state in session
       session.renderedHtml = resultData.fullHtml;
       session.examSummary = {
@@ -325,7 +416,7 @@ class AutomationService {
         portalUrl: config.portalResultsUrl
       };
 
-      // Stage 7: Ready to download
+      // Stage 7: Complete and ready
       this.sessionManager.updateProgress(sessionId, 7, 'Ready to download examination result.', 100, {
         status: 'ready'
       });
@@ -350,16 +441,36 @@ class AutomationService {
   async triggerPortalDownload(sessionId, sessionToken) {
     const session = this.sessionManager.getSession(sessionId, sessionToken);
     if (!session) {
-      throw new Error('Automation session not found or has expired.');
+      const err = new Error('Automation session not found or has expired. Please fetch results again.');
+      err.statusCode = 404;
+      err.code = 'SESSION_NOT_FOUND';
+      throw err;
+    }
+
+    // Fast-path: if verified marksheet PDF is already ready in session, return immediately
+    if (session.downloadedFile && session.downloadedFile.ready) {
+      return {
+        success: true,
+        fileName: session.downloadedFile.fileName,
+        size: session.downloadedFile.size,
+        downloadUrl: `/api/automation/${sessionId}/file?token=${sessionToken}`,
+        base64: session.downloadedFile.base64
+      };
     }
 
     if (session.status !== 'ready' && session.status !== 'download_ready') {
-      throw new Error(`Examination results page is not ready for download (current status: ${session.status}).`);
+      const err = new Error(`Examination results page is not ready for download (current status: ${session.status}).`);
+      err.statusCode = 400;
+      err.code = 'NOT_READY';
+      throw err;
     }
 
     const page = session.page;
     if (!page || page.isClosed()) {
-      throw new Error('Browser session for this request is no longer active. Please fetch results again.');
+      const err = new Error('Browser session for this request is no longer active. Please fetch results again.');
+      err.statusCode = 410;
+      err.code = 'SESSION_EXPIRED';
+      throw err;
     }
 
     // Check if the portal results are currently unpublished

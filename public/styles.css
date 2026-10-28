@@ -139,6 +139,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.app-main.results-mode {
+  max-width: 100% !important;
+  margin: 0.5rem auto 1rem auto !important;
+  padding: 0 1rem !important;
+  gap: 0.75rem !important;
+}
+
+#resultSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 /* Card Component */
@@ -601,15 +616,20 @@ body {
   overflow: hidden;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 220px);
 }
 
 .viewport-header {
   background-color: var(--bg-subtle);
   border-bottom: 1px solid var(--border);
-  padding: 0.75rem 1.25rem;
+  padding: 0.65rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .viewport-title-group {
@@ -630,17 +650,21 @@ body {
 }
 
 .viewport-frame-container {
-  height: 780px;
+  flex: 1;
+  min-height: calc(100vh - 270px);
   width: 100%;
   background-color: #ffffff;
   position: relative;
+  display: flex;
 }
 
 .portal-iframe {
   width: 100%;
   height: 100%;
+  min-height: calc(100vh - 270px);
   border: none;
   display: block;
+  flex: 1;
 }
 
 /* Badges */

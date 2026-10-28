@@ -231,6 +231,8 @@ class SessionManager {
       renderedHtml: session.renderedHtml || null,
       hasDownloadableFile: Boolean(session.downloadedFile?.ready),
       downloadFileName: session.downloadedFile?.fileName || null,
+      downloadUrl: session.downloadedFile?.ready ? `/api/automation/${session.sessionId}/file?token=${session.sessionToken}` : null,
+      pdfBase64: session.downloadedFile?.base64 || null,
       examSummary: session.examSummary || null,
       error: session.error ? {
         message: session.error.message,
