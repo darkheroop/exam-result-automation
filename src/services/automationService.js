@@ -697,29 +697,42 @@ class AutomationService {
         log('Switching to Annual dashboard tab...');
         const annualToggle = page.locator('p-togglebutton').filter({ hasText: 'Annual' }).first();
         await annualToggle.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-        if (await annualToggle.isVisible().catch(() => false)) {
-          await annualToggle.click({ force: true });
-        } else {
-          await page.evaluate(() => {
-            const el = Array.from(document.querySelectorAll('p-togglebutton, button, span')).find(e => (e.innerText || '').trim() === 'Annual');
-            if (el) el.click();
-          }).catch(() => {});
+
+        // Ensure initial loader is gone and click Annual toggle, retrying if card API not triggered
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (annualwiseCardDetailsJson) break;
+          if (await annualToggle.isVisible().catch(() => false)) {
+            await annualToggle.click({ force: true }).catch(() => {});
+          } else {
+            await page.evaluate(() => {
+              const el = Array.from(document.querySelectorAll('p-togglebutton, button, span')).find(e => (e.innerText || '').trim() === 'Annual');
+              if (el) el.click();
+            }).catch(() => {});
+          }
+
+          // Wait up to 2s for Annual cards API or card to render
+          const cardOrApi = await Promise.race([
+            page.waitForResponse(r => r.url().includes('ManageStudentExamAnnualwiseDashboardCardDetails'), { timeout: 2000 }).then(() => true).catch(() => false),
+            page.locator('section, article, div.rounded-xl, div.border').filter({ hasText: /Year\s*1/i }).first().waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)
+          ]);
+          if (cardOrApi || annualwiseCardDetailsJson) break;
+          await page.waitForTimeout(300);
         }
 
         // Wait for loader to disappear if triggered by tab switch or card population
-        await page.waitForSelector('de-loader', { state: 'detached', timeout: 10000 }).catch(() => {});
+        await page.waitForSelector('de-loader', { state: 'detached', timeout: 6000 }).catch(() => {});
 
         // Strictly target Year 1 / Published Annual examination card (avoiding ongoing unpublished Year 2)
         const year1Card = page.locator('section, article, div.rounded-xl, div.border').filter({
           hasText: /Year\s*1/i
         }).first();
 
-        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false);
+        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
         const actionBtn = isYear1Visible
           ? year1Card.locator('button[aria-label*="card actions" i], button[aria-label="Annual card actions"]').first()
           : page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
 
-        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
+        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
         if (!isActionVisible) {
           throw new Error('Annual card action button not visible on dashboard');
         }
@@ -926,6 +939,13 @@ class AutomationService {
         hasTable: Boolean(session.resultData?.semesters?.length),
         portalUrl: config.portalResultsUrl
       };
+
+      // Ensure that we actually retrieved valid examination data before declaring readiness
+      if (!session.resultData && !session.renderedHtml) {
+        const fetchErr = new Error('Examination result could not be retrieved from the portal.');
+        fetchErr.code = 'RESULT_EXTRACTION_FAILED';
+        throw fetchErr;
+      }
 
       // Stage 7: Complete and ready
       this.sessionManager.updateProgress(sessionId, 7, 'Ready to download examination result.', 100, {
