@@ -79,7 +79,8 @@ class AutomationService {
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
               '--disable-gpu',
-              '--single-process'
+              '--single-process',
+              '--disable-blink-features=AutomationControlled'
             ],
             executablePath: execPath,
             headless: true
@@ -144,6 +145,11 @@ class AutomationService {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
       });
 
+      // Avoid headless detection flags
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      });
+
       session.browserContext = context;
       const page = await context.newPage();
       session.page = page;
@@ -164,18 +170,38 @@ class AutomationService {
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
+      // Wait for login UI elements (inputs or tabs) to render
+      await page.waitForFunction(() => {
+        const text = document.body ? document.body.innerText : '';
+        const hasInputs = document.querySelectorAll('input').length > 0;
+        const hasTabs = text.includes('With Password') || text.includes('Login');
+        return hasInputs || hasTabs;
+      }, { timeout: 15000 }).catch(() => {});
+
       // Switch to "With Password" tab if present
       const withPasswordTab = page.locator('text="With Password"').first();
-      if (await withPasswordTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await withPasswordTab.isVisible({ timeout: 5000 }).catch(() => false)) {
         await withPasswordTab.click();
+        await page.waitForTimeout(500);
       }
 
       // Fill username & password
-      const userInput = page.locator('input[placeholder*="username" i]').first();
+      const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
       const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
-      await userInput.waitFor({ state: 'visible', timeout: 15000 });
+      try {
+        await userInput.waitFor({ state: 'visible', timeout: 15000 });
+      } catch (waitErr) {
+        const diag = await page.evaluate(() => ({
+          title: document.title,
+          url: window.location.href,
+          text: document.body?.innerText?.slice(0, 300)
+        })).catch(() => null);
+        console.error(`[Session ${sessionId}] Input not visible. Diag:`, diag);
+        throw new Error(`Portal login input not found. (Page: "${diag?.title || ''}", Snippet: "${diag?.text?.replace(/\s+/g, ' ').trim() || ''}")`);
+      }
+
       await userInput.fill(username);
       await passInput.waitFor({ state: 'visible', timeout: 10000 });
       await passInput.fill(password);
