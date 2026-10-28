@@ -39,7 +39,7 @@ const config = Object.freeze({
   
   // Student Lookup Credential API
   studentLookupApiUrl: process.env.STUDENT_LOOKUP_API_URL || 'https://student-lookup-portal.vercel.app/api/lookup',
-  studentLookupApiKey: process.env.STUDENT_LOOKUP_API_KEY || '',
+  studentLookupApiKey: process.env.STUDENT_LOOKUP_API_KEY || 'sk_support_3dbd105ccf05e3fb30d38c64151d426e6bd397f8219545a946182e037c3ae0ac',
   
   // Educational Portal
   portalLoginUrl: process.env.PORTAL_LOGIN_URL || 'https://ai-edunova.abes.ac.in/#/auth/login',

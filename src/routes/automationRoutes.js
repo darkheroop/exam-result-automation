@@ -27,7 +27,7 @@ function getSessionToken(req) {
  */
 router.post('/start', async (req, res, next) => {
   try {
-    const rawNumber = req.body?.studentNumber || req.body?.number;
+    const rawNumber = req.body?.studentNumber || req.body?.number || req.body?.studentIdentifier;
     const validatedNumber = validateStudentNumber(rawNumber);
 
     // Create a new session
