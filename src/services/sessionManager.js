@@ -1,0 +1,184 @@
+'use strict';
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const config = require('../config');
+
+class SessionManager {
+  constructor(options = {}) {
+    this.ttlMs = options.ttlMs || config.sessionTtlMs;
+    this.maxSessions = options.maxSessions || config.maxConcurrentSessions;
+    this.tempDir = options.tempDir || config.tempStorageDir;
+    this.sessions = new Map();
+
+    // Ensure temporary downloads directory exists
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
+    }
+
+    // Periodic sweep for expired sessions
+    this.cleanupTimer = setInterval(() => this.cleanupExpired(), 30000);
+    if (this.cleanupTimer.unref) {
+      this.cleanupTimer.unref();
+    }
+  }
+
+  /**
+   * Creates a new isolated automation session
+   */
+  createSession(studentIdentifier) {
+    if (this.sessions.size >= this.maxSessions) {
+      this.cleanupExpired();
+      if (this.sessions.size >= this.maxSessions) {
+        throw new Error('System is currently at maximum capacity. Please try again shortly.');
+      }
+    }
+
+    const sessionId = uuidv4();
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const now = Date.now();
+
+    const sessionTempDir = path.join(this.tempDir, sessionId);
+    if (!fs.existsSync(sessionTempDir)) {
+      fs.mkdirSync(sessionTempDir, { recursive: true });
+    }
+
+    const session = {
+      sessionId,
+      sessionToken,
+      studentIdentifier,
+      status: 'initializing',
+      stage: 1,
+      stageMessage: 'Validating student identifier...',
+      progressPercent: 10,
+      browserContext: null,
+      page: null,
+      renderedHtml: null,
+      examSummary: null,
+      downloadedFile: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: now + this.ttlMs,
+      tempDir: sessionTempDir
+    };
+
+    this.sessions.set(sessionId, session);
+    return session;
+  }
+
+  /**
+   * Retrieves a session by ID and verifies the session token
+   */
+  getSession(sessionId, sessionToken) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    if (sessionToken && session.sessionToken !== sessionToken) {
+      const err = new Error('Unauthorized session access.');
+      err.statusCode = 403;
+      err.code = 'SESSION_TOKEN_MISMATCH';
+      throw err;
+    }
+
+    if (Date.now() > session.expiresAt) {
+      this.closeSession(sessionId);
+      return null;
+    }
+
+    // Touch session on activity
+    session.updatedAt = Date.now();
+    return session;
+  }
+
+  /**
+   * Updates session progress
+   */
+  updateProgress(sessionId, stage, stageMessage, progressPercent, extra = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    session.stage = stage;
+    session.stageMessage = stageMessage;
+    session.progressPercent = progressPercent;
+    session.updatedAt = Date.now();
+
+    Object.assign(session, extra);
+  }
+
+  /**
+   * Closes a session and cleans up resources
+   */
+  async closeSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    session.status = 'closed';
+
+    // Close Playwright browser context
+    if (session.browserContext) {
+      try {
+        await session.browserContext.close();
+      } catch (err) {
+        // Safe suppression of close errors
+      }
+      session.browserContext = null;
+      session.page = null;
+    }
+
+    // Clean up temporary files
+    if (session.tempDir && fs.existsSync(session.tempDir)) {
+      try {
+        fs.rmSync(session.tempDir, { recursive: true, force: true });
+      } catch (err) {
+        // Operational log
+      }
+    }
+
+    this.sessions.delete(sessionId);
+  }
+
+  /**
+   * Periodic cleanup of stale sessions
+   */
+  async cleanupExpired() {
+    const now = Date.now();
+    for (const [id, session] of this.sessions.entries()) {
+      if (now > session.expiresAt || session.status === 'closed') {
+        await this.closeSession(id);
+      }
+    }
+  }
+
+  /**
+   * Safe public representation of a session (no secrets, no internal browser handles)
+   */
+  toPublicState(session) {
+    if (!session) return null;
+
+    return {
+      sessionId: session.sessionId,
+      status: session.status,
+      stage: session.stage,
+      stageMessage: session.stageMessage,
+      progressPercent: session.progressPercent,
+      hasRenderedView: Boolean(session.renderedHtml),
+      hasDownloadableFile: Boolean(session.downloadedFile?.ready),
+      downloadFileName: session.downloadedFile?.fileName || null,
+      examSummary: session.examSummary || null,
+      error: session.error ? {
+        message: session.error.message,
+        code: session.error.code || 'AUTOMATION_ERROR'
+      } : null
+    };
+  }
+}
+
+module.exports = {
+  SessionManager,
+  defaultSessionManager: new SessionManager(),
+};

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automated Examination Result Retrieval & PDF Download</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+            <path d="M6 6h10"></path>
+            <path d="M6 10h10"></path>
+            <path d="M6 14h6"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">EduResult Automator</span>
+          <span class="brand-badge">Official Portal Relay</span>
+        </div>
+      </div>
+
+      <!-- Action buttons in header (view mode) -->
+      <div id="headerActions" class="header-actions hidden">
+        <button id="headerNewSearchBtn" class="btn btn-secondary btn-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          New Search
+        </button>
+
+        <button id="headerDownloadBtn" class="btn btn-primary btn-sm">
+          <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span class="btn-text">Download PDF</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Wrapper -->
+  <main class="app-main">
+    
+    <!-- SECTION 1: SEARCH / DASHBOARD VIEW -->
+    <section id="dashboardSection" class="section-view active">
+      <div class="card intro-card">
+        <div class="intro-header">
+          <h1 class="main-title">Automated Examination Result Retrieval</h1>
+          <p class="main-description">
+            Streamline educational administrative workflows by eliminating manual repetitive portal logins.
+            Enter an authorized student identifier to securely resolve credentials, authenticate with the educational portal,
+            and view the authentic examination marksheet ready for official PDF download.
+          </p>
+        </div>
+
+        <form id="fetchForm" class="fetch-form" novalidate>
+          <div class="form-group">
+            <label for="studentNumberInput" class="form-label">
+              Student Identifier / Mobile Number
+              <span class="required-indicator">*</span>
+            </label>
+            <div class="input-wrapper">
+              <input
+                type="text"
+                id="studentNumberInput"
+                class="form-input"
+                placeholder="Enter 10-digit number (e.g. 9599099932)"
+                maxlength="10"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <span id="inputClearBtn" class="input-clear hidden" title="Clear">×</span>
+            </div>
+            <div id="inputValidationError" class="input-error-msg hidden">
+              Please enter a valid 10-digit number.
+            </div>
+            <p class="form-hint">
+              10-digit student mobile or registration number. Leading zeros will be strictly preserved.
+            </p>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="fetchResultBtn" class="btn btn-primary btn-lg">
+              <span class="btn-text">Fetch Result</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Privacy & Security Notice -->
+        <div class="privacy-notice">
+          <div class="notice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <div class="notice-text">
+            <strong>Security & Privacy Architecture:</strong> Credentials and authentication tokens are processed
+            strictly in ephemeral, isolated server-side browser contexts. Secrets are never exposed to browser storage
+            or client scripts and are permanently purged upon session termination.
+          </div>
+        </div>
+      </div>
+
+      <!-- PROGRESS TRACKER (Shows while workflow executes) -->
+      <div id="progressCard" class="card progress-card hidden">
+        <div class="progress-header">
+          <div class="progress-title-wrap">
+            <h2 class="progress-title">Automation In Progress</h2>
+            <span id="progressPercentBadge" class="badge badge-info">15%</span>
+          </div>
+          <p id="progressMessage" class="progress-message">Validating student identifier...</p>
+        </div>
+
+        <div class="progress-bar-container">
+          <div id="progressBar" class="progress-bar" style="width: 15%;"></div>
+        </div>
+
+        <!-- Real Workflow Stages -->
+        <div class="workflow-steps">
+          <div class="step-item" data-step="1">
+            <div class="step-circle">1</div>
+            <div class="step-label">Validating input</div>
+          </div>
+          <div class="step-item" data-step="2">
+            <div class="step-circle">2</div>
+            <div class="step-label">Retrieving credentials</div>
+          </div>
+          <div class="step-item" data-step="3">
+            <div class="step-circle">3</div>
+            <div class="step-label">Connecting to portal</div>
+          </div>
+          <div class="step-item" data-step="4">
+            <div class="step-circle">4</div>
+            <div class="step-label">Authenticating</div>
+          </div>
+          <div class="step-item" data-step="5">
+            <div class="step-circle">5</div>
+            <div class="step-label">Opening results</div>
+          </div>
+          <div class="step-item" data-step="6">
+            <div class="step-circle">6</div>
+            <div class="step-label">Preparing interface</div>
+          </div>
+          <div class="step-item" data-step="7">
+            <div class="step-circle">7</div>
+            <div class="step-label">Ready to download</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ERROR STATE CARD -->
+      <div id="errorCard" class="card error-card hidden">
+        <div class="error-header">
+          <div class="error-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="error-title">Automation Failure</h3>
+            <p id="errorMessage" class="error-description">An error occurred.</p>
+          </div>
+        </div>
+        <div class="error-actions">
+          <button id="errorRetryBtn" class="btn btn-secondary btn-sm">Try Again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: RESULTS VIEWING SCREEN -->
+    <section id="resultSection" class="section-view hidden">
+      <!-- Result Control Bar -->
+      <div class="result-toolbar card">
+        <div class="toolbar-info">
+          <div class="student-meta">
+            <span class="meta-label">RECORD:</span>
+            <span id="resultStudentId" class="meta-value">9599099932</span>
+            <span class="meta-separator">•</span>
+            <span id="resultSemesterTitle" class="meta-title">Semester Examination Result</span>
+          </div>
+          <div class="session-status">
+            <span class="status-dot"></span>
+            <span class="status-text">Authenticated Portal Session Active</span>
+          </div>
+        </div>
+
+        <div class="toolbar-actions">
+          <button id="actionDownloadBtn" class="btn btn-primary">
+            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span class="btn-text">Download PDF</span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+          
+          <button id="closeSessionBtn" class="btn btn-secondary" title="End Session">
+            Finish & Close
+          </button>
+        </div>
+      </div>
+
+      <!-- Download Success / Notice Alert -->
+      <div id="downloadAlert" class="alert alert-success hidden">
+        <div class="alert-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <div class="alert-content">
+          <strong id="downloadAlertTitle">Official PDF Download Complete</strong>
+          <p id="downloadAlertMessage">Your verified marksheet PDF was retrieved directly from the portal and downloaded.</p>
+        </div>
+        <button id="closeAlertBtn" class="alert-close">×</button>
+      </div>
+
+      <!-- Information Alert for Pending/Unpublished Results -->
+      <div id="pendingResultAlert" class="alert alert-warning hidden">
+        <div class="alert-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <div class="alert-content">
+          <strong>Result Currently Under Verification</strong>
+          <p>
+            The educational portal reports that this semester examination result is still under process or pending approval.
+            The marksheet table is shown below, but the portal's PDF download control is temporarily disabled until marks are finalized.
+          </p>
+        </div>
+      </div>
+
+      <!-- Main Portal Viewing Container (Top navigation hidden) -->
+      <div class="portal-viewport-card card">
+        <div class="viewport-header">
+          <div class="viewport-title-group">
+            <span class="badge badge-success">Portal Authenticated</span>
+            <span class="viewport-title">Annual Examination Results View</span>
+          </div>
+          <span class="viewport-hint">Official layout preserved • Top navigation bar hidden</span>
+        </div>
+
+        <div class="viewport-frame-container">
+          <iframe
+            id="portalViewFrame"
+            class="portal-iframe"
+            title="Educational Portal Examination Results"
+            sandbox="allow-same-origin allow-scripts"
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <p>© 2026 Educational Automation System • Secure Portal Relay Integration</p>
+      <p class="footer-subtext">Direct portal automation via Playwright • Zero client-side credential storage</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
