@@ -20,6 +20,12 @@ class AutomationService {
    * Initializes the Chromium browser instance if not already running
    */
   async getBrowser() {
+    const isServerless = Boolean(
+      process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_VERSION ||
+      process.env.LAMBDA_TASK_ROOT
+    );
+
     if (this.browser && this.browser.isConnected()) {
       return this.browser;
     }
@@ -149,22 +155,43 @@ class AutomationService {
       // Stage 3: Connect to the educational portal
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
       log('Stage 3: Launching browser...');
-      const browser = await this.getBrowser();
-      log('Browser ready, creating context...');
 
-      context = await browser.newContext({
-        acceptDownloads: true,
-        viewport: { width: 1366, height: 900 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-      });
+      const createContextAndPage = async (b) => {
+        const ctx = await b.newContext({
+          acceptDownloads: true,
+          viewport: { width: 1366, height: 900 },
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+        });
+        await ctx.addInitScript(() => {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        });
+        const p = await ctx.newPage();
+        return { ctx, p };
+      };
 
-      // Avoid headless detection flags
-      await context.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      });
+      let browser;
+      try {
+        browser = await this.getBrowser();
+        const created = await createContextAndPage(browser);
+        context = created.ctx;
+        page = created.p;
+      } catch (browserErr) {
+        log(`Initial browser connection failed (${browserErr.message}). Re-initializing fresh browser instance...`);
+        try {
+          if (this.browser) {
+            await this.browser.close().catch(() => {});
+          }
+        } catch (_) {}
+        this.browser = null;
+        this.browserInitPromise = null;
+
+        browser = await this.getBrowser();
+        const created = await createContextAndPage(browser);
+        context = created.ctx;
+        page = created.p;
+      }
 
       session.browserContext = context;
-      page = await context.newPage();
       session.page = page;
 
       // Track responses to capture genuine API payloads
@@ -474,13 +501,25 @@ class AutomationService {
       };
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
     } finally {
-      // Keep page alive if user might download, or close if error
-      if (session.status === 'error' && context) {
+      if (context) {
         try {
-          await context.close();
+          await context.close().catch(() => {});
         } catch (e) {}
         session.browserContext = null;
         session.page = null;
+      }
+
+      const isServerless = Boolean(
+        process.env.VERCEL ||
+        process.env.AWS_LAMBDA_FUNCTION_VERSION ||
+        process.env.LAMBDA_TASK_ROOT
+      );
+      if (isServerless && this.browser) {
+        try {
+          await this.browser.close().catch(() => {});
+        } catch (e) {}
+        this.browser = null;
+        this.browserInitPromise = null;
       }
     }
   }
