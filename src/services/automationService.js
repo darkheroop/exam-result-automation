@@ -31,6 +31,62 @@ async function withTimeout(promise, timeoutMs, opName, opCode = 'TIMEOUT') {
   }
 }
 
+// Global extraction lock for serverless environments to prevent concurrent extraction collisions (ETXTBSY)
+let serverlessChromiumExtractionPromise = null;
+
+async function extractChromiumSafely(sparticuzChromium) {
+  if (serverlessChromiumExtractionPromise) {
+    return serverlessChromiumExtractionPromise;
+  }
+
+  serverlessChromiumExtractionPromise = (async () => {
+    const finalBinary = path.join(os.tmpdir(), 'chromium');
+
+    // If the binary already exists and is completely inflated (>180MB), reuse it directly
+    if (fs.existsSync(finalBinary)) {
+      try {
+        const stat = fs.statSync(finalBinary);
+        if (stat.size > 180 * 1024 * 1024) {
+          return finalBinary;
+        }
+        // Incomplete / corrupt file from previous aborted write: clean up
+        console.warn(`Found incomplete /tmp/chromium (${stat.size} bytes). Cleaning up...`);
+        fs.unlinkSync(finalBinary);
+      } catch (_) {}
+    }
+
+    const candidateBinPaths = [
+      path.resolve(process.cwd(), 'node_modules/@sparticuz/chromium/bin'),
+      path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
+      path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
+      '/var/task/node_modules/@sparticuz/chromium/bin',
+      '/var/task/bin',
+    ];
+    const binPath = candidateBinPaths.find(p => fs.existsSync(p));
+
+    const execPath = binPath
+      ? await sparticuzChromium.executablePath(binPath)
+      : await sparticuzChromium.executablePath();
+
+    if (execPath && fs.existsSync(execPath)) {
+      try {
+        fs.chmodSync(execPath, 0o755);
+      } catch (_) {}
+    }
+
+    // Brief stabilization pause to ensure OS finishes flushing write handles
+    await new Promise(r => setTimeout(r, 200));
+    return execPath;
+  })();
+
+  try {
+    return await serverlessChromiumExtractionPromise;
+  } catch (err) {
+    serverlessChromiumExtractionPromise = null;
+    throw err;
+  }
+}
+
 class AutomationService {
   constructor(options = {}) {
     this.sessionManager = options.sessionManager || defaultSessionManager;
@@ -105,18 +161,7 @@ class AutomationService {
             sparticuzChromium.setGraphicsMode = false;
           }
 
-          const candidateBinPaths = [
-            path.resolve(process.cwd(), 'node_modules/@sparticuz/chromium/bin'),
-            path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
-            path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
-            '/var/task/node_modules/@sparticuz/chromium/bin',
-            '/var/task/bin',
-          ];
-          const binPath = candidateBinPaths.find(p => fs.existsSync(p));
-
-          const execPath = binPath
-            ? await sparticuzChromium.executablePath(binPath)
-            : await sparticuzChromium.executablePath();
+          const execPath = await extractChromiumSafely(sparticuzChromium);
 
           if (execPath) {
             const execDir = path.dirname(execPath);
@@ -159,7 +204,24 @@ class AutomationService {
       }
 
       try {
-        const browser = await chromium.launch(launchOptions);
+        let browser;
+        const maxLaunchAttempts = 5;
+        for (let attempt = 1; attempt <= maxLaunchAttempts; attempt++) {
+          try {
+            browser = await chromium.launch(launchOptions);
+            break;
+          } catch (launchErr) {
+            const isBusy = (launchErr.message && launchErr.message.includes('ETXTBSY')) || launchErr.code === 'ETXTBSY';
+            if (isBusy && attempt < maxLaunchAttempts) {
+              const backoffMs = 500 * Math.pow(2, attempt - 1);
+              console.warn(`Chromium binary busy (ETXTBSY on launch attempt ${attempt}/${maxLaunchAttempts}). Retrying in ${backoffMs}ms...`);
+              await new Promise(r => setTimeout(r, backoffMs));
+              continue;
+            }
+            throw launchErr;
+          }
+        }
+
         browser.on('disconnected', () => {
           console.warn('Browser process disconnected. Resetting browser instance handle.');
           this.browser = null;
