@@ -65,13 +65,13 @@ const config = Object.freeze({
 
   // Granular Operation-Specific Timeouts
   credentialLookupTimeoutMs: parseInt(process.env.TIMEOUT_CREDENTIAL_LOOKUP_MS, 10) || 15000,
-  browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 20000,
-  loginNavigationTimeoutMs: parseInt(process.env.TIMEOUT_LOGIN_NAV_MS, 10) || 15000,
-  authCompletionTimeoutMs: parseInt(process.env.TIMEOUT_AUTH_COMPLETION_MS, 10) || 15000,
-  dashboardNavTimeoutMs: parseInt(process.env.TIMEOUT_DASHBOARD_NAV_MS, 10) || 18000,
-  resultLoadingTimeoutMs: parseInt(process.env.TIMEOUT_RESULT_LOADING_MS, 10) || 15000,
-  pdfGenerationTimeoutMs: parseInt(process.env.TIMEOUT_PDF_GEN_MS, 10) || 20000,
-  overallRequestTimeoutMs: parseInt(process.env.TIMEOUT_OVERALL_REQUEST_MS, 10) || 45000,
+  browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 25000,
+  loginNavigationTimeoutMs: parseInt(process.env.TIMEOUT_LOGIN_NAV_MS, 10) || 30000,
+  authCompletionTimeoutMs: parseInt(process.env.TIMEOUT_AUTH_COMPLETION_MS, 10) || 20000,
+  dashboardNavTimeoutMs: parseInt(process.env.TIMEOUT_DASHBOARD_NAV_MS, 10) || 25000,
+  resultLoadingTimeoutMs: parseInt(process.env.TIMEOUT_RESULT_LOADING_MS, 10) || 20000,
+  pdfGenerationTimeoutMs: parseInt(process.env.TIMEOUT_PDF_GEN_MS, 10) || 25000,
+  overallRequestTimeoutMs: parseInt(process.env.TIMEOUT_OVERALL_REQUEST_MS, 10) || 55000,
   
   // Rate Limiting
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,

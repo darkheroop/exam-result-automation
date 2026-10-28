@@ -492,8 +492,23 @@ class AutomationService {
 
       log(`Navigating to portal login: ${portalLoginUrl}`);
       await withTimeout(
-        page.goto(portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.loginNavigationTimeoutMs }),
-        config.loginNavigationTimeoutMs + 3000,
+        (async () => {
+          try {
+            await page.goto(portalLoginUrl, {
+              waitUntil: 'commit',
+              timeout: config.loginNavigationTimeoutMs
+            });
+          } catch (commitErr) {
+            log(`Notice on commit navigation: ${commitErr.message}. Attempting domcontentloaded...`);
+            await page.goto(portalLoginUrl, {
+              waitUntil: 'domcontentloaded',
+              timeout: config.loginNavigationTimeoutMs
+            }).catch((domErr) => {
+              log(`Notice on domcontentloaded: ${domErr.message}. Proceeding to element check.`);
+            });
+          }
+        })(),
+        config.loginNavigationTimeoutMs + 5000,
         'Portal Login Navigation',
         'TIMEOUT_LOGIN_NAV'
       );
@@ -568,7 +583,7 @@ class AutomationService {
       const openAnnualResultViaDashboard = async () => {
         log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
         await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-          waitUntil: 'networkidle',
+          waitUntil: 'commit',
           timeout: config.dashboardNavTimeoutMs
         }).catch(async () => {
           await page.waitForTimeout(1000);
@@ -659,7 +674,7 @@ class AutomationService {
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
         log(`Navigating directly to portalResultsUrl: ${portalResultsUrl}`);
-        await page.goto(portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        await page.goto(portalResultsUrl, { waitUntil: 'commit', timeout: 15000 }).catch(() => {});
       }
 
       // Stage 6: Retrieve and prepare genuine result data
