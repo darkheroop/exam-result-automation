@@ -620,6 +620,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 220px);
+  background-color: #ffffff;
 }
 
 .viewport-header {
@@ -650,21 +651,18 @@ body {
 }
 
 .viewport-frame-container {
-  flex: 1;
-  min-height: calc(100vh - 270px);
   width: 100%;
   background-color: #ffffff;
   position: relative;
-  display: flex;
+  display: block;
+  overflow: visible;
 }
 
 .portal-iframe {
   width: 100%;
-  height: 100%;
   min-height: calc(100vh - 270px);
   border: none;
   display: block;
-  flex: 1;
 }
 
 /* Badges */
@@ -735,6 +733,7 @@ body {
     justify-content: flex-end;
   }
   .viewport-frame-container {
-    height: 550px;
+    height: auto;
+    min-height: 550px;
   }
 }

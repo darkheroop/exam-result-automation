@@ -113,9 +113,11 @@ router.get('/view/:sessionId', (req, res, next) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Examination Result - Insync</title>
+  <base href="https://ai-edunova.abes.ac.in/">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.cdnfonts.com/css/lato" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/primeicons/7.0.0/primeicons.min.css">
   <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles-2NQPLNDH.css">
   <style>
     top-navbar,
@@ -139,6 +141,16 @@ router.get('/view/:sessionId', (req, res, next) => {
     .p-toast {
       display: none !important;
     }
+    img[alt*="Watermark"],
+    .watermark,
+    div:has(> img[alt*="Watermark"]),
+    div:has(> img[src*="ABES.png"]),
+    div:has(> img[src*="abes.png"]) {
+      display: none !important;
+    }
+    .hidden {
+      display: none !important;
+    }
     .h-screen {
       height: auto !important;
       min-height: 100% !important;
@@ -146,12 +158,12 @@ router.get('/view/:sessionId', (req, res, next) => {
     .overflow-hidden {
       overflow: visible !important;
     }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #ffffff;
-      color: #1e293b;
-      margin: 0;
-      padding: 1.5rem;
+    html, body {
+      font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+      background-color: #ffffff !important;
+      color: #1e293b !important;
+      margin: 0 !important;
+      padding: 0.75rem 1.25rem !important;
       overflow: auto !important;
       height: auto !important;
       min-height: 100% !important;
@@ -161,6 +173,29 @@ router.get('/view/:sessionId', (req, res, next) => {
       margin: 0 auto !important;
       width: 100% !important;
       max-width: 100% !important;
+    }
+    .semester-result-print-section {
+      background: #ffffff !important;
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+      min-height: auto !important;
+    }
+    .result-print-page-header {
+      margin-top: 0 !important;
+      padding-top: 0.25rem !important;
+      margin-bottom: 0.85rem !important;
+    }
+    .result-print-page-header h1 {
+      display: flex !important;
+      align-items: center !important;
+      flex-wrap: wrap !important;
+      gap: 0.35rem !important;
+    }
+    .result-print-page-header h1 span {
+      display: inline-block !important;
+    }
+    .result-print-page-header h1 span:nth-child(2) {
+      margin: 0 0.35rem !important;
     }
     .result-print-page-header button {
       display: none !important;

@@ -229,8 +229,13 @@
         <head>
           <meta charset="utf-8">
           <base href="https://ai-edunova.abes.ac.in/">
-          <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles.css">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.cdnfonts.com/css/lato" rel="stylesheet">
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/primeicons/7.0.0/primeicons.min.css">
+          <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles-2NQPLNDH.css">
           <style>
+            /* Suppress top navigation, loaders, backdrops, and modal overlays */
             top-navbar,
             .top-navbar,
             app-topbar,
@@ -252,29 +257,75 @@
             .p-toast {
               display: none !important;
             }
+
+            /* Suppress the watermark logo and "ESTD. 2000" artifact that created the blank area */
+            img[alt*="Watermark"],
+            .watermark,
+            div:has(> img[alt*="Watermark"]),
+            div:has(> img[src*="ABES.png"]),
+            div:has(> img[src*="abes.png"]) {
+              display: none !important;
+            }
+            .hidden {
+              display: none !important;
+            }
+
+            /* Clean typography and start directly at result heading */
+            html, body {
+              font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              background: #ffffff !important;
+              color: #1e293b !important;
+              margin: 0 !important;
+              padding: 0.75rem 1.25rem !important;
+            }
+
+            .layout-main-container,
+            .layout-content-wrapper,
+            .layout-main {
+              padding-top: 0 !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 100% !important;
+            }
+
+            .semester-result-print-section {
+              background: #ffffff !important;
+              padding-top: 0 !important;
+              margin-top: 0 !important;
+              min-height: auto !important;
+            }
+
+            .result-print-page-header {
+              margin-top: 0 !important;
+              padding-top: 0.25rem !important;
+              margin-bottom: 0.85rem !important;
+            }
+
+            .result-print-page-header h1 {
+              display: flex !important;
+              align-items: center !important;
+              flex-wrap: wrap !important;
+              gap: 0.35rem !important;
+            }
+
+            .result-print-page-header h1 span {
+              display: inline-block !important;
+            }
+
+            .result-print-page-header h1 span:nth-child(2) {
+              margin: 0 0.35rem !important;
+            }
+
             .h-screen {
               height: auto !important;
               min-height: 100% !important;
             }
+
             .overflow-hidden {
               overflow: visible !important;
-            }
-            html, body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              overflow: auto !important;
-              height: auto !important;
-              min-height: 100% !important;
-              background: #ffffff !important;
-              margin: 0 !important;
-              padding: 1.5rem !important;
-            }
-            .layout-main-container,
-            .layout-content-wrapper,
-            .layout-main {
-              padding-top: 0.5rem !important;
-              margin: 0 auto !important;
-              width: 100% !important;
-              max-width: 100% !important;
             }
           </style>
         </head>
@@ -285,6 +336,31 @@
       portalViewFrame.onload = () => {
         try {
           const doc = portalViewFrame.contentDocument || portalViewFrame.contentWindow.document;
+          if (!doc) return;
+
+          // Auto-resize iframe dynamically to eliminate internal scrollbars
+          const autoResize = () => {
+            const h = Math.max(
+              doc.body ? doc.body.scrollHeight : 0,
+              doc.documentElement ? doc.documentElement.scrollHeight : 0,
+              doc.body ? doc.body.offsetHeight : 0
+            );
+            if (h > 100) {
+              portalViewFrame.style.height = `${h + 30}px`;
+            }
+          };
+
+          autoResize();
+          setTimeout(autoResize, 200);
+          setTimeout(autoResize, 600);
+          setTimeout(autoResize, 1500);
+
+          if (window.ResizeObserver && doc.body) {
+            const ro = new ResizeObserver(() => autoResize());
+            ro.observe(doc.body);
+          }
+
+          // Wire up any PDF download buttons inside the marksheet
           const iframePdfBtns = Array.from(doc.querySelectorAll('button')).filter(b => {
             const txt = (b.innerText || '').toLowerCase();
             const lbl = (b.getAttribute('label') || '').toLowerCase();
@@ -294,10 +370,12 @@
             btn.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              triggerPdfDownload();
+              handleDownloadPdf();
             });
           });
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Iframe onload error:', e);
+        }
       };
     } else {
       const viewUrl = `/api/automation/view/${currentSession.sessionId}?token=${encodeURIComponent(currentSession.sessionToken)}`;
