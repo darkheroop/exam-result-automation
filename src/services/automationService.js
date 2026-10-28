@@ -299,10 +299,10 @@ class AutomationService {
       log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
 
       await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-        waitUntil: 'networkidle',
-        timeout: 20000
+        waitUntil: 'domcontentloaded',
+        timeout: 12000
       }).catch(async () => {
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(1000);
       });
 
       // Suppress any lingering loader masks or backdrops on dashboard
@@ -317,7 +317,7 @@ class AutomationService {
         await page.waitForFunction(() => {
           const els = Array.from(document.querySelectorAll('button, span, div, p-togglebutton'));
           return els.some(el => (el.innerText || '').trim() === 'Annual');
-        }, { timeout: 10000 }).catch(() => {});
+        }, { timeout: 6000 }).catch(() => {});
 
         const clicked = await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
@@ -332,25 +332,25 @@ class AutomationService {
 
         if (!clicked) {
           const annualToggle = page.locator('p-togglebutton:has-text("Annual"), button:has-text("Annual"), span:has-text("Annual")').first();
-          await annualToggle.click({ timeout: 5000 }).catch(() => {});
+          await annualToggle.click({ timeout: 4000 }).catch(() => {});
         }
         log('Clicked Annual dashboard toggle.');
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(800);
 
         // Wait for annual card action button to appear
         log('Waiting for annual card action button...');
         const actionBtn = page.locator('button[aria-label="Annual card actions"]').first();
-        await actionBtn.waitFor({ state: 'visible', timeout: 8000 });
+        await actionBtn.waitFor({ state: 'visible', timeout: 5000 });
         log('Annual card action button visible. Clicking...');
         await actionBtn.click();
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(600);
 
         const viewResultItem = page.locator('text="View Exam Result"').first();
-        await viewResultItem.waitFor({ state: 'visible', timeout: 6000 });
+        await viewResultItem.waitFor({ state: 'visible', timeout: 4000 });
         log('Clicking View Exam Result...');
         await viewResultItem.click();
 
-        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 10000 });
+        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 6000 });
         log('Navigated to Annual Result page via official workflow!');
         navigatedViaCard = true;
       } catch (cardNavErr) {
@@ -359,23 +359,23 @@ class AutomationService {
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
         log(`Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
-        await page.goto(config.portalResultsUrl, { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {});
+        await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {});
       }
 
       // Stage 6: Retrieve and prepare genuine result data
       this.sessionManager.updateProgress(sessionId, 6, 'Retrieving genuine examination marksheet...', 85);
 
       // Wait for assessment data response or rendered tables
-      const waitForAssessment = async (timeoutMs = 15000) => {
+      const waitForAssessment = async (timeoutMs = 6000) => {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
           if (assessmentDataJson) return true;
-          await page.waitForTimeout(300);
+          await page.waitForTimeout(200);
         }
         return Boolean(assessmentDataJson);
       };
 
-      await waitForAssessment(15000);
+      await waitForAssessment(6000);
 
       // Also wait for DOM marksheet elements to render
       await page.waitForFunction(() => {
@@ -386,7 +386,7 @@ class AutomationService {
         return (hasTable && hasStudentInfo && isNotLoading) ||
           text.includes('Result is Not Published Yet') ||
           text.includes('PENDING VERIFICATION');
-      }, { timeout: 12000 }).catch(() => {});
+      }, { timeout: 6000 }).catch(() => {});
 
       // Extract high-fidelity rendered HTML from the portal
       const renderedHtml = await page.evaluate(() => {
@@ -422,13 +422,13 @@ class AutomationService {
       let pdfBuffer = null;
       let pdfFilename = `${session.resultData?.student?.name || 'Annual-Examination-Result'}-${validNumber}.pdf`;
 
-      // Wait up to 10s for the portal's native Annual PDF button to become enabled
+      // Wait up to 6s for the portal's native Annual PDF button to become enabled
       await page.waitForFunction(() => {
         const btn = Array.from(document.querySelectorAll('button')).find(b =>
           (b.innerText || '').includes('Annual PDF') || (b.getAttribute('label') || '').includes('Annual PDF')
         );
         return btn && !btn.disabled && !btn.hasAttribute('disabled');
-      }, { timeout: 10000 }).catch(() => {});
+      }, { timeout: 6000 }).catch(() => {});
 
       const downloadButton = page.locator('button:has-text("Annual PDF"), button[label*="Annual PDF"], button:has-text("Download PDF")').first();
       const hasDownloadBtn = (await downloadButton.count()) > 0;
@@ -438,7 +438,7 @@ class AutomationService {
         try {
           log('Portal native Annual PDF button active. Initiating official client-side PDF generation...');
           const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 25000 }),
+            page.waitForEvent('download', { timeout: 12000 }),
             downloadButton.click()
           ]);
 
