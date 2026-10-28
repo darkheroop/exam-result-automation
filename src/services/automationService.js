@@ -51,7 +51,7 @@ class AutomationService {
 
       if (isServerless) {
         try {
-          const sparticuzPkg = require('@sparticuz/chromium');
+          const sparticuzPkg = await import('@sparticuz/chromium');
           const sparticuzChromium = sparticuzPkg.default || sparticuzPkg;
 
           const candidateBinPaths = [
