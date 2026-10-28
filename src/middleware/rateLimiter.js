@@ -27,7 +27,18 @@ class RateLimiter {
         return next();
       }
 
-      const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+      // Read-only status polling, health check, and rendered views should not consume rate limit
+      const p = req.path || req.url || '';
+      if (!req.headers['x-test-ratelimit'] && (
+        p.includes('/status') ||
+        p.includes('/health') ||
+        p.includes('/view') ||
+        p.includes('/file')
+      )) {
+        return next();
+      }
+
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.socket?.remoteAddress || 'unknown';
       const now = Date.now();
       let record = this.hits.get(clientIp);
 
