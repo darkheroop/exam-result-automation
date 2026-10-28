@@ -276,14 +276,29 @@
               width: 100% !important;
               max-width: 100% !important;
             }
-            .result-print-page-header button {
-              display: none !important;
-            }
           </style>
         </head>
         <body>${sessionData.renderedHtml}</body>
         </html>
       `;
+
+      portalViewFrame.onload = () => {
+        try {
+          const doc = portalViewFrame.contentDocument || portalViewFrame.contentWindow.document;
+          const iframePdfBtns = Array.from(doc.querySelectorAll('button')).filter(b => {
+            const txt = (b.innerText || '').toLowerCase();
+            const lbl = (b.getAttribute('label') || '').toLowerCase();
+            return txt.includes('pdf') || lbl.includes('pdf');
+          });
+          iframePdfBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              triggerPdfDownload();
+            });
+          });
+        } catch (e) {}
+      };
     } else {
       const viewUrl = `/api/automation/view/${currentSession.sessionId}?token=${encodeURIComponent(currentSession.sessionToken)}`;
       portalViewFrame.src = viewUrl;

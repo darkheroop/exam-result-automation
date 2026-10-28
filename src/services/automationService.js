@@ -231,23 +231,71 @@ class AutomationService {
         throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
       }
 
-      // Stage 5: Navigate to results page
+      // Stage 5: Navigate to results page via official exam dashboard
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
-      console.log(`[Session ${sessionId}] Navigating to results page: ${config.portalResultsUrl}`);
+      console.log(`[Session ${sessionId}] Navigating to dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard`);
 
-      await page.goto(config.portalResultsUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
+      let reachedAnnualResults = false;
+      try {
+        await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
+          waitUntil: 'networkidle',
+          timeout: 25000
+        });
+
+        // Suppress any lingering loader masks or backdrops on dashboard
+        await page.evaluate(() => {
+          const loaders = document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0');
+          loaders.forEach(el => el.remove());
+        }).catch(() => {});
+
+        // Switch to "Annual" dashboard view
+        await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
+            return (el.innerText || '').trim() === 'Annual';
+          });
+          if (buttons.length > 0) buttons[0].click();
+        }).catch(() => {});
+
+        await page.waitForTimeout(1500);
+
+        // Find the completed / published annual card actions button (3-dots)
+        const completedCard = page.locator('section.annual-year-card:has-text("PASS"), section.annual-year-card:has-text("YGPA"), section.annual-year-card').first();
+        const actionBtn = completedCard.locator('button[aria-label="Annual card actions"]').first();
+
+        if (await actionBtn.isVisible({ timeout: 6000 }).catch(() => false)) {
+          await actionBtn.click();
+          await page.waitForTimeout(800);
+
+          const viewResultItem = page.locator('text="View Exam Result"').first();
+          if (await viewResultItem.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await viewResultItem.click();
+
+            // Wait for navigation to semester-examination-result
+            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 15000 });
+            reachedAnnualResults = true;
+          }
+        }
+      } catch (dashNavErr) {
+        console.warn(`[Session ${sessionId}] Dashboard navigation encounter: ${dashNavErr.message}. Falling back to direct URL.`);
+      }
+
+      // If dashboard navigation didn't reach results, fallback to direct navigation
+      if (!reachedAnnualResults && !page.url().includes('semester-examination-result')) {
+        console.log(`[Session ${sessionId}] Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
+        await page.goto(config.portalResultsUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
+      }
 
       // Fast reactive wait for destination results page content
       await page.waitForFunction(() => {
         const text = document.body.innerText || '';
         return (
-          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')) ||
+          Boolean(document.querySelector('app-semester-examination-result, .annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')) ||
           text.includes('Result is Not Published Yet') ||
           text.includes('Annual Result') ||
           text.includes('Examination Result') ||
           window.location.hash.includes('semester-examination-result')
         );
-      }, { timeout: 15000 }).catch(async () => {});
+      }, { timeout: 20000 }).catch(async () => {});
 
       // Verify destination results page loaded
       const pageVerification = await page.evaluate(() => {
@@ -255,7 +303,7 @@ class AutomationService {
         const hash = window.location.hash;
         const isExamUrl = hash.includes('semester-examination-result') || href.includes('semester-examination-result');
         const hasResultContent = Boolean(
-          document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')
+          document.querySelector('app-semester-examination-result, .annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')
         );
         const bodyText = document.body.innerText || '';
         const isUnpublished = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION') || bodyText.includes('Annual Result');
@@ -321,24 +369,38 @@ class AutomationService {
         `
       });
 
+      // Wait for Angular to complete annual result data fetch and render the full marksheet
+      await page.waitForFunction(() => {
+        const text = document.body.innerText || '';
+        const hasTable = Boolean(document.querySelector('.annual-sem-table, table, .annual-sem-summary-card'));
+        const hasStudentInfo = Boolean(document.querySelector('.student-result-info-card, [class*="student-info"]'));
+        const isNotLoading = !document.querySelector('de-loader');
+        return (hasTable && hasStudentInfo && isNotLoading) ||
+          text.includes('Result is Not Published Yet') ||
+          text.includes('PENDING VERIFICATION');
+      }, { timeout: 25000 }).catch(() => {});
+
       // Extract high-fidelity rendered HTML and metadata for the viewing container
       const resultData = await page.evaluate(() => {
-        const layoutEl = document.querySelector('app-layout') || document.querySelector('app-root') || document.body;
-        const printHeader = document.querySelector('.result-print-page-header');
+        const examEl = document.querySelector('app-semester-examination-result');
+        const layoutEl = examEl || document.querySelector('app-layout') || document.querySelector('app-root') || document.body;
+        const titleEl = document.querySelector('.result-print-page-header, h1');
+        const titleText = (titleEl ? titleEl.innerText : '').trim();
+        const headerTitle = titleText.length > 2 ? titleText.split('\n')[0] : 'ABES Engineering College : Annual Result';
         const bodyText = document.body.innerText || '';
         const isPending = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION');
         
         // Find existing download button state using native DOM APIs
-        const pdfButton = document.querySelector('button[label*="PDF"]') ||
-          Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('PDF') || (b.innerText || '').includes('Download'));
+        const pdfButton = document.querySelector('button[label*="Annual PDF"], button[label*="PDF"], button[icon*="pdf"]') ||
+          Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Annual PDF') || (b.innerText || '').includes('PDF') || (b.innerText || '').includes('Download'));
         const isPdfButtonDisabled = pdfButton ? (pdfButton.disabled || pdfButton.hasAttribute('disabled')) : false;
 
         return {
-          headerTitle: printHeader ? printHeader.innerText.split('\n')[0] : 'Semester Examination Result',
+          headerTitle,
           isPending,
           isPdfButtonDisabled,
-          hasTable: Boolean(document.querySelector('.annual-sem-table, table')),
-          fullHtml: layoutEl.innerHTML
+          hasTable: Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section')),
+          fullHtml: examEl ? examEl.outerHTML : layoutEl.innerHTML
         };
       });
 
@@ -348,16 +410,24 @@ class AutomationService {
       let pdfBuffer = null;
       let pdfFilename = `Annual-Examination-Result-${validNumber}.pdf`;
 
+      // Wait up to 15s for the portal's native Annual PDF button to become enabled if it's currently fetching data
+      await page.waitForFunction(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(b =>
+          (b.innerText || '').includes('Annual PDF') || (b.getAttribute('label') || '').includes('Annual PDF')
+        );
+        return btn && !btn.disabled && !btn.hasAttribute('disabled');
+      }, { timeout: 15000 }).catch(() => {});
+
       // Check if portal has an active native download button
-      const downloadButton = page.locator('button:has-text("Annual PDF"), button:has-text("Download PDF"), button[label*="PDF"]').first();
+      const downloadButton = page.locator('button:has-text("Annual PDF"), button[label*="Annual PDF"], button:has-text("Download PDF"), button[label*="PDF"]').first();
       const hasDownloadBtn = (await downloadButton.count()) > 0;
       const isPortalDownloadDisabled = hasDownloadBtn ? await downloadButton.isDisabled().catch(() => true) : true;
 
       if (hasDownloadBtn && !isPortalDownloadDisabled) {
         try {
-          console.log(`[Session ${sessionId}] Portal native PDF button active. Initiating download...`);
+          console.log(`[Session ${sessionId}] Portal native Annual PDF button active. Initiating download...`);
           const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 15000 }),
+            page.waitForEvent('download', { timeout: 25000 }),
             downloadButton.click()
           ]);
           const dlName = download.suggestedFilename() || pdfFilename;
@@ -366,6 +436,7 @@ class AutomationService {
           if (fs.existsSync(dlPath)) {
             pdfBuffer = fs.readFileSync(dlPath);
             pdfFilename = dlName;
+            console.log(`[Session ${sessionId}] Captured genuine native portal PDF: ${dlName} (${pdfBuffer.length} bytes)`);
           }
         } catch (dlErr) {
           console.warn(`[Session ${sessionId}] Native download event timed out or failed:`, dlErr.message);
@@ -388,7 +459,7 @@ class AutomationService {
 
       // Validate PDF buffer
       if (pdfBuffer && pdfBuffer.length > 0 && pdfBuffer.slice(0, 4).toString('utf8') === '%PDF') {
-        const sanitizedFilename = pdfFilename.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+        const sanitizedFilename = pdfFilename.replace(/[^a-zA-Z0-9_\-\. ]/g, '_');
         const pdfFilePath = path.join(session.tempDir, sanitizedFilename);
         try {
           fs.writeFileSync(pdfFilePath, pdfBuffer);

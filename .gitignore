@@ -3,4 +3,5 @@ node_modules/
 temp_downloads/
 *.log
 *.png
+scratch/
 .DS_Store
