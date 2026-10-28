@@ -212,9 +212,29 @@
       pendingResultAlert.classList.add('hidden');
     }
 
-    // Load rendered portal view in iframe with session token
-    const viewUrl = `/api/automation/view/${currentSession.sessionId}?token=${encodeURIComponent(currentSession.sessionToken)}`;
-    portalViewFrame.src = viewUrl;
+    // Render portal view directly or load in iframe
+    if (sessionData.renderedHtml) {
+      portalViewFrame.srcdoc = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <base href="https://ai-edunova.abes.ac.in/">
+          <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles.css">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 1.5rem; background: #fff; }
+            app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator { display: none !important; }
+            .layout-main-container, .layout-content-wrapper, .layout-main { padding-top: 0 !important; margin-top: 0 !important; }
+            .result-print-page-header button { display: none !important; }
+          </style>
+        </head>
+        <body>${sessionData.renderedHtml}</body>
+        </html>
+      `;
+    } else {
+      const viewUrl = `/api/automation/view/${currentSession.sessionId}?token=${encodeURIComponent(currentSession.sessionToken)}`;
+      portalViewFrame.src = viewUrl;
+    }
   }
 
   function returnToDashboard() {

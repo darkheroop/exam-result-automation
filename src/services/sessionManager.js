@@ -228,6 +228,7 @@ class SessionManager {
       stageMessage: session.stageMessage,
       progressPercent: session.progressPercent,
       hasRenderedView: Boolean(session.renderedHtml),
+      renderedHtml: session.renderedHtml || null,
       hasDownloadableFile: Boolean(session.downloadedFile?.ready),
       downloadFileName: session.downloadedFile?.fileName || null,
       examSummary: session.examSummary || null,
