@@ -65,7 +65,7 @@ const config = Object.freeze({
 
   // Granular Operation-Specific Timeouts
   credentialLookupTimeoutMs: parseInt(process.env.TIMEOUT_CREDENTIAL_LOOKUP_MS, 10) || 15000,
-  browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 25000,
+  browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 35000,
   loginNavigationTimeoutMs: parseInt(process.env.TIMEOUT_LOGIN_NAV_MS, 10) || 30000,
   authCompletionTimeoutMs: parseInt(process.env.TIMEOUT_AUTH_COMPLETION_MS, 10) || 20000,
   dashboardNavTimeoutMs: parseInt(process.env.TIMEOUT_DASHBOARD_NAV_MS, 10) || 25000,

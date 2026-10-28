@@ -106,9 +106,9 @@ class AutomationService {
           }
 
           const candidateBinPaths = [
-            path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
-            path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
             path.resolve(process.cwd(), 'node_modules/@sparticuz/chromium/bin'),
+            path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
+            path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
             '/var/task/node_modules/@sparticuz/chromium/bin',
             '/var/task/bin',
           ];
@@ -118,15 +118,27 @@ class AutomationService {
             ? await sparticuzChromium.executablePath(binPath)
             : await sparticuzChromium.executablePath();
 
-          launchOptions = {
-            args: [
-              ...(sparticuzChromium.args || []),
+          if (execPath) {
+            const execDir = path.dirname(execPath);
+            const al2023Lib = path.join(execDir, 'al2023', 'lib');
+            process.env.LD_LIBRARY_PATH = `${execDir}:${al2023Lib}:${process.env.LD_LIBRARY_PATH || ''}`;
+          }
+
+          // Clean up Sparticuz args: remove broken --headless='shell' with single quotes
+          const rawArgs = sparticuzChromium.args || [];
+          const cleanArgs = rawArgs
+            .filter(arg => !arg.startsWith('--headless'))
+            .concat([
               '--no-sandbox',
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
               '--disable-gpu',
               '--disable-blink-features=AutomationControlled'
-            ],
+            ]);
+          const uniqueArgs = Array.from(new Set(cleanArgs));
+
+          launchOptions = {
+            args: uniqueArgs,
             executablePath: execPath,
             headless: true
           };
@@ -146,16 +158,22 @@ class AutomationService {
         }
       }
 
-      const browser = await chromium.launch(launchOptions);
-      browser.on('disconnected', () => {
-        console.warn('Browser process disconnected. Resetting browser instance handle.');
-        this.browser = null;
-        this.browserInitPromise = null;
-      });
+      try {
+        const browser = await chromium.launch(launchOptions);
+        browser.on('disconnected', () => {
+          console.warn('Browser process disconnected. Resetting browser instance handle.');
+          this.browser = null;
+          this.browserInitPromise = null;
+        });
 
-      this.browser = browser;
-      this.browserInitPromise = null;
-      return this.browser;
+        this.browser = browser;
+        return this.browser;
+      } catch (launchErr) {
+        this.browser = null;
+        throw launchErr;
+      } finally {
+        this.browserInitPromise = null;
+      }
     })();
 
     return this.browserInitPromise;
@@ -165,12 +183,12 @@ class AutomationService {
    * Safely closes the browser instance (for shutdown or testing)
    */
   async closeBrowser() {
+    this.browserInitPromise = null;
     if (this.browser) {
       try {
         await this.browser.close().catch(() => {});
       } catch (_) {}
       this.browser = null;
-      this.browserInitPromise = null;
     }
   }
 
