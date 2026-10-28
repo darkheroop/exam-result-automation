@@ -237,7 +237,7 @@ class AutomationService {
       await page.waitForFunction(() => {
         const text = document.body.innerText || '';
         return (
-          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"], button:has-text("Annual PDF")')) ||
+          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')) ||
           text.includes('Result is Not Published Yet') ||
           text.includes('Annual Result') ||
           text.includes('Examination Result') ||
@@ -253,7 +253,7 @@ class AutomationService {
         const hash = window.location.hash;
         const isExamUrl = hash.includes('semester-examination-result') || href.includes('semester-examination-result');
         const hasResultContent = Boolean(
-          document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"], button:has-text("Annual PDF")')
+          document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"]')
         );
         const bodyText = document.body.innerText || '';
         const isUnpublished = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION') || bodyText.includes('Annual Result');
@@ -297,8 +297,9 @@ class AutomationService {
         const bodyText = document.body.innerText || '';
         const isPending = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION');
         
-        // Find existing download button state
-        const pdfButton = document.querySelector('button[label*="PDF"], button:has-text("PDF"), button:has-text("Download"), button:has-text("Annual PDF")');
+        // Find existing download button state using native DOM APIs
+        const pdfButton = document.querySelector('button[label*="PDF"]') ||
+          Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('PDF') || (b.innerText || '').includes('Download'));
         const isPdfButtonDisabled = pdfButton ? (pdfButton.disabled || pdfButton.hasAttribute('disabled')) : false;
 
         return {
