@@ -164,6 +164,7 @@ class CredentialService {
     let response;
     let lastError = null;
     const maxAttempts = 2;
+    const perAttemptTimeout = Math.min(this.timeoutMs, 8000);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -171,19 +172,27 @@ class CredentialService {
           this.apiUrl,
           headers,
           { studentNumber: validNumber },
-          this.timeoutMs
+          perAttemptTimeout
         );
         lastError = null;
 
-        // If upstream error 500+, retry once with backoff and jitter
-        if (response.status >= 500 && attempt < maxAttempts) {
-          const jitter = Math.floor(Math.random() * 200);
-          await new Promise(r => setTimeout(r, 400 * attempt + jitter));
-          continue;
+        // If upstream error 500+, retry once or use fallback
+        if (response.status >= 500) {
+          if (fallbackCredentialsCache.has(validNumber)) {
+            return fallbackCredentialsCache.get(validNumber);
+          }
+          if (attempt < maxAttempts) {
+            const jitter = Math.floor(Math.random() * 200);
+            await new Promise(r => setTimeout(r, 400 * attempt + jitter));
+            continue;
+          }
         }
         break;
       } catch (err) {
         lastError = err;
+        if (fallbackCredentialsCache.has(validNumber)) {
+          return fallbackCredentialsCache.get(validNumber);
+        }
         if (attempt < maxAttempts) {
           const jitter = Math.floor(Math.random() * 200);
           await new Promise(r => setTimeout(r, 400 * attempt + jitter));

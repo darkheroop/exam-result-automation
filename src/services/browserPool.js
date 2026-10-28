@@ -140,7 +140,15 @@ class BrowserPool {
           '--disable-gpu',
           '--no-first-run',
           '--no-zygote',
-          '--disable-extensions'
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',
+          '--disable-component-update',
+          '--disable-domain-reliability',
+          '--disable-sync',
+          '--mute-audio'
         ]
       };
 
@@ -282,6 +290,26 @@ class BrowserPool {
 
           await context.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+          });
+
+          // Block tracking, analytics, and media to cut network latency and CPU usage
+          await context.route('**/*', (route) => {
+            const req = route.request();
+            const type = req.resourceType();
+            const url = req.url();
+
+            if (
+              url.includes('google-analytics') ||
+              url.includes('googletagmanager') ||
+              url.includes('translate.google') ||
+              url.includes('doubleclick') ||
+              url.includes('facebook') ||
+              type === 'media'
+            ) {
+              return route.abort();
+            }
+
+            return route.continue();
           });
 
           const page = await context.newPage();

@@ -1,0 +1,13 @@
+# Vercel deployment exclusions (reduces function bundle size and cold start latency)
+scratch/
+tests/
+.git/
+.github/
+.vscode/
+temp_downloads/
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.log
+README.md

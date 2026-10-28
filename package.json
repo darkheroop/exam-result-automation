@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "worker": "node worker.js",
     "test": "node --test tests/**/*.test.js"
   },
   "dependencies": {
@@ -14,7 +15,6 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "playwright-core": "^1.50.1",
-    "uuid": "^11.1.0",
-    "zod": "^3.24.2"
+    "uuid": "^11.1.0"
   }
 }

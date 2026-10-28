@@ -610,16 +610,11 @@ class AutomationService {
           await loginButton.click().catch(() => {});
           await passInput.press('Enter').catch(() => {});
 
-          // Wait for authentication response or redirect away from login page
-          let authenticated = false;
-          for (let i = 0; i < 20; i++) {
-            await page.waitForTimeout(500);
-            const currentHash = await page.evaluate(() => window.location.hash).catch(() => '');
-            if (currentHash.includes('dashboard') || (!currentHash.includes('/auth/login') && currentHash.length > 2)) {
-              authenticated = true;
-              break;
-            }
-          }
+          // Fast event-driven wait for authentication redirect away from login page
+          const authenticated = await page.waitForFunction(() => {
+            const h = window.location.hash || '';
+            return h.includes('dashboard') || (!h.includes('/auth/login') && h.length > 2);
+          }, null, { timeout: config.authCompletionTimeoutMs }).then(() => true).catch(() => false);
 
           if (!authenticated) {
             const errorText = await page.evaluate(() => {
@@ -664,13 +659,13 @@ class AutomationService {
         }).catch(() => {});
 
         // Wait for any initial loader overlay to clear
-        await page.waitForSelector('de-loader', { state: 'detached', timeout: 10000 }).catch(() => {});
-        await page.waitForTimeout(500);
+        await page.waitForSelector('de-loader', { state: 'detached', timeout: 8000 }).catch(() => {});
 
         // Switch to "Annual" dashboard view
         log('Switching to Annual dashboard tab...');
         const annualToggle = page.locator('p-togglebutton').filter({ hasText: 'Annual' }).first();
-        if (await annualToggle.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await annualToggle.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+        if (await annualToggle.isVisible().catch(() => false)) {
           await annualToggle.click({ force: true });
         } else {
           await page.evaluate(() => {
@@ -679,36 +674,26 @@ class AutomationService {
           }).catch(() => {});
         }
 
-        await page.waitForTimeout(600);
-
-        // Click Fetch button if present to populate annual cards
-        const fetchBtn = page.locator('button').filter({ hasText: 'Fetch' }).first();
-        if (await fetchBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await fetchBtn.click({ force: true }).catch(() => {});
-        }
-
-        // Wait for loader to disappear if triggered by tab switch or fetch
-        await page.waitForSelector('de-loader', { state: 'detached', timeout: 12000 }).catch(() => {});
-        await page.waitForTimeout(600);
+        // Wait for loader to disappear if triggered by tab switch or card population
+        await page.waitForSelector('de-loader', { state: 'detached', timeout: 10000 }).catch(() => {});
 
         // Strictly target Year 1 / Published Annual examination card (avoiding ongoing unpublished Year 2)
         const year1Card = page.locator('section, article, div.rounded-xl, div.border').filter({
           hasText: /Year\s*1/i
         }).first();
 
-        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
+        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false);
         const actionBtn = isYear1Visible
           ? year1Card.locator('button[aria-label*="card actions" i], button[aria-label="Annual card actions"]').first()
           : page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
 
-        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
+        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
         if (!isActionVisible) {
           throw new Error('Annual card action button not visible on dashboard');
         }
 
         log('Annual card action button visible. Clicking...');
         await actionBtn.click({ force: true });
-        await page.waitForTimeout(600);
 
         const viewResultItem = page.locator('.p-popover li, li').filter({ hasText: 'View Exam Result' }).first();
         const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
@@ -749,28 +734,29 @@ class AutomationService {
       // Stage 6: Retrieve and prepare genuine result data
       this.sessionManager.updateProgress(sessionId, 6, 'Retrieving genuine examination marksheet...', 85);
 
-      // Wait for assessment data response or rendered tables
+      // Helper to poll for assessment API payload
       const waitForAssessment = async (timeoutMs = 6000) => {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
           if (assessmentDataJson) return true;
-          await page.waitForTimeout(200);
+          await new Promise(r => setTimeout(r, 100));
         }
         return Boolean(assessmentDataJson);
       };
 
-      await waitForAssessment(6000);
-
-      // Also wait for DOM marksheet elements to render
-      await page.waitForFunction(() => {
-        const text = document.body.innerText || '';
-        const hasTable = Boolean(document.querySelector('.annual-sem-table, table, .annual-sem-summary-card, #annual-result-print-section'));
-        const hasStudentInfo = Boolean(document.querySelector('.student-result-info-card, [class*="student-info"]'));
-        const isNotLoading = !document.querySelector('de-loader');
-        return (hasTable && hasStudentInfo && isNotLoading) ||
-          text.includes('Result is Not Published Yet') ||
-          text.includes('PENDING VERIFICATION');
-      }, { timeout: config.resultLoadingTimeoutMs }).catch(() => {});
+      // Concurrently wait for assessment data payload or rendered marksheet DOM
+      await Promise.race([
+        waitForAssessment(6000),
+        page.waitForFunction(() => {
+          const text = document.body.innerText || '';
+          const hasTable = Boolean(document.querySelector('.annual-sem-table, table, .annual-sem-summary-card, #annual-result-print-section'));
+          const hasStudentInfo = Boolean(document.querySelector('.student-result-info-card, [class*="student-info"]'));
+          const isNotLoading = !document.querySelector('de-loader');
+          return (hasTable && hasStudentInfo && isNotLoading) ||
+            text.includes('Result is Not Published Yet') ||
+            text.includes('PENDING VERIFICATION');
+        }, { timeout: config.resultLoadingTimeoutMs }).catch(() => {})
+      ]);
 
       // Safe recovery: if the portal ever shows "Result is Not Published Yet", recover via dashboard Year 1 card
       const checkUnpublished = await page.evaluate(() => {
