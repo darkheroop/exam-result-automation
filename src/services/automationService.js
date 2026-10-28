@@ -332,21 +332,24 @@ class AutomationService {
             return (el.innerText || '').trim() === 'Annual';
           });
           if (buttons.length > 0) buttons[0].click();
+        }).catch(() => {});
 
+        await page.waitForTimeout(600);
+
+        // Click Fetch button if present to populate annual cards
+        await page.evaluate(() => {
           const fetchBtns = Array.from(document.querySelectorAll('button')).filter(b => (b.innerText || '').trim() === 'Fetch');
           if (fetchBtns.length > 0) fetchBtns[0].click();
         }).catch(() => {});
 
-        await page.waitForTimeout(1000);
-
         // Locate Annual card action button anywhere on dashboard
         const actionBtn = page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
 
-        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
+        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
         if (isActionVisible) {
           log('Annual card action button visible. Clicking...');
           await actionBtn.click({ force: true });
-          await page.waitForTimeout(600);
+          await page.waitForTimeout(500);
 
           const viewResultItem = page.locator('text="View Exam Result"').first();
           const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
