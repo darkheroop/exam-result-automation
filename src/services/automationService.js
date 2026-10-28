@@ -222,33 +222,47 @@ class AutomationService {
         throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
       }
 
+      // Small pause for Angular router and session hydration to settle
+      await page.waitForTimeout(1500);
+
       // Stage 5: Navigate to results page
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
-      await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+      console.log(`[Session ${sessionId}] Navigating to results page: ${config.portalResultsUrl}`);
+
+      // Use client-side location update for Angular SPA hash routing
+      await page.evaluate((url) => { window.location.href = url; }, config.portalResultsUrl);
+      await page.waitForTimeout(1200);
 
       // Fast reactive wait for destination results page content
       await page.waitForFunction(() => {
         const text = document.body.innerText || '';
         return (
-          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card')) ||
+          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"], button:has-text("Annual PDF")')) ||
           text.includes('Result is Not Published Yet') ||
           text.includes('Annual Result') ||
-          text.includes('Examination Result')
+          text.includes('Examination Result') ||
+          window.location.hash.includes('semester-examination-result')
         );
-      }, { timeout: 15000 }).catch(() => {});
+      }, { timeout: 12000 }).catch(async () => {
+        await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+      });
 
       // Verify destination results page loaded
       const pageVerification = await page.evaluate(() => {
-        const isExamUrl = window.location.hash.includes('semester-examination-result');
+        const href = window.location.href;
+        const hash = window.location.hash;
+        const isExamUrl = hash.includes('semester-examination-result') || href.includes('semester-examination-result');
         const hasResultContent = Boolean(
-          document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card')
+          document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card, button[label*="PDF"], button:has-text("Annual PDF")')
         );
         const bodyText = document.body.innerText || '';
-        const isUnpublished = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION');
-        return { isExamUrl, hasResultContent, isUnpublished };
+        const isUnpublished = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION') || bodyText.includes('Annual Result');
+        return { isExamUrl, hasResultContent, isUnpublished, href, hash };
       });
 
-      if (!pageVerification.isExamUrl) {
+      console.log(`[Session ${sessionId}] Page verification:`, pageVerification);
+
+      if (!pageVerification.isExamUrl && !pageVerification.hasResultContent && !pageVerification.isUnpublished) {
         throw new Error('Failed to reach examination results page. Session may have expired or access was redirected.');
       }
 
