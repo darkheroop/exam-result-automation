@@ -2,30 +2,70 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { chromium } = require('playwright-core');
 const config = require('../config');
 const { defaultCredentialService } = require('./credentialService');
 const { defaultSessionManager } = require('./sessionManager');
 const { normalizeResultData } = require('./resultNormalizer');
 
+/**
+ * Executes a promise with an operation-specific timeout and clean error code.
+ */
+async function withTimeout(promise, timeoutMs, opName, opCode = 'TIMEOUT') {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`Operation '${opName}' timed out after ${timeoutMs}ms.`);
+      err.name = 'TimeoutError';
+      err.code = opCode;
+      reject(err);
+    }, timeoutMs);
+    if (timer.unref) timer.unref();
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 class AutomationService {
   constructor(options = {}) {
     this.sessionManager = options.sessionManager || defaultSessionManager;
     this.credentialService = options.credentialService || defaultCredentialService;
+    this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 3;
+    this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
+    this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
+    this.jobTimeoutMs = options.jobTimeoutMs || config.jobTimeoutMs || 90000;
+    this.mockMode = options.mockMode !== undefined ? options.mockMode : (config.mockMode || false);
+    this.mockDelayMs = options.mockDelayMs || 25;
+
+    this.activeWorkers = 0;
+    this.jobQueue = [];
     this.browser = null;
     this.browserInitPromise = null;
+
+    // Metrics for diagnostics, load testing, and observability
+    this.metrics = {
+      submittedSearches: 0,
+      queuedSearches: 0,
+      activeSearches: 0,
+      completedSearches: 0,
+      failedSearches: 0,
+      timeouts: 0,
+      retries: 0,
+      peakConcurrentWorkers: 0,
+      totalExecutionDurationMs: 0
+    };
   }
 
   /**
-   * Initializes the Chromium browser instance if not already running
+   * Initializes or returns the shared Chromium browser instance.
+   * Reuses browser across jobs while keeping contexts strictly isolated.
    */
   async getBrowser() {
-    const isServerless = Boolean(
-      process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_VERSION ||
-      process.env.LAMBDA_TASK_ROOT
-    );
-
     if (this.browser && this.browser.isConnected()) {
       return this.browser;
     }
@@ -41,6 +81,7 @@ class AutomationService {
         process.env.LAMBDA_TASK_ROOT
       );
 
+      // Stable, multi-context flags without single-process mode
       let launchOptions = {
         headless: config.headless,
         args: [
@@ -51,7 +92,6 @@ class AutomationService {
           '--disable-gpu',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
           '--disable-extensions'
         ]
       };
@@ -106,11 +146,15 @@ class AutomationService {
         }
       }
 
-      this.browser = await chromium.launch(launchOptions);
-      this.browser.on('disconnected', () => {
+      const browser = await chromium.launch(launchOptions);
+      browser.on('disconnected', () => {
+        console.warn('Browser process disconnected. Resetting browser instance handle.');
         this.browser = null;
         this.browserInitPromise = null;
       });
+
+      this.browser = browser;
+      this.browserInitPromise = null;
       return this.browser;
     })();
 
@@ -118,12 +162,126 @@ class AutomationService {
   }
 
   /**
-   * Starts and executes the complete examination result retrieval workflow
+   * Safely closes the browser instance (for shutdown or testing)
+   */
+  async closeBrowser() {
+    if (this.browser) {
+      try {
+        await this.browser.close().catch(() => {});
+      } catch (_) {}
+      this.browser = null;
+      this.browserInitPromise = null;
+    }
+  }
+
+  /**
+   * Enqueues or starts the workflow within controlled worker limits.
+   * Prevents system overload when 50-100 students search simultaneously.
    * @param {string} sessionId
    * @param {string} sessionToken
    * @param {string} studentNumber
    */
   async runWorkflow(sessionId, sessionToken, studentNumber) {
+    this.metrics.submittedSearches++;
+    const session = this.sessionManager.getSession(sessionId, sessionToken);
+    if (!session) return;
+
+    // Check if worker capacity is reached
+    if (this.activeWorkers >= this.maxConcurrentWorkers) {
+      if (this.jobQueue.length >= this.maxQueueSize) {
+        this.metrics.failedSearches++;
+        const queueErr = new Error('System is currently experiencing high demand. Please try again shortly.');
+        queueErr.statusCode = 503;
+        queueErr.code = 'QUEUE_FULL';
+        session.status = 'error';
+        session.error = { message: queueErr.message, code: queueErr.code };
+        this.sessionManager.updateProgress(sessionId, 1, `Failed: ${queueErr.message}`, 10);
+        throw queueErr;
+      }
+
+      this.metrics.queuedSearches++;
+      session.status = 'queued';
+      this.sessionManager.updateProgress(sessionId, 1, 'Waiting in queue...', 10, { status: 'queued' });
+
+      return new Promise((resolve, reject) => {
+        let timeoutTimer = null;
+        if (this.queueTimeoutMs > 0) {
+          timeoutTimer = setTimeout(() => {
+            const idx = this.jobQueue.findIndex(j => j.sessionId === sessionId);
+            if (idx !== -1) {
+              this.jobQueue.splice(idx, 1);
+              this.metrics.timeouts++;
+              this.metrics.failedSearches++;
+              const timeoutErr = new Error('Request queue wait deadline exceeded. Please try again.');
+              timeoutErr.statusCode = 504;
+              timeoutErr.code = 'QUEUE_TIMEOUT';
+              session.status = 'error';
+              session.error = { message: timeoutErr.message, code: timeoutErr.code };
+              this.sessionManager.updateProgress(sessionId, 1, `Failed: ${timeoutErr.message}`, 10);
+              reject(timeoutErr);
+            }
+          }, this.queueTimeoutMs);
+          if (timeoutTimer.unref) timeoutTimer.unref();
+        }
+
+        this.jobQueue.push({
+          sessionId,
+          sessionToken,
+          studentNumber,
+          resolve,
+          reject,
+          timeoutTimer,
+          enqueuedAt: Date.now()
+        });
+      });
+    }
+
+    return this.executeJobWithWorker(sessionId, sessionToken, studentNumber);
+  }
+
+  /**
+   * Dispatches and tracks a job execution on an active worker slot.
+   */
+  async executeJobWithWorker(sessionId, sessionToken, studentNumber) {
+    this.activeWorkers++;
+    this.metrics.activeSearches++;
+    if (this.activeWorkers > this.metrics.peakConcurrentWorkers) {
+      this.metrics.peakConcurrentWorkers = this.activeWorkers;
+    }
+
+    const jobStart = Date.now();
+    try {
+      await this.executeWorkflow(sessionId, sessionToken, studentNumber);
+      this.metrics.completedSearches++;
+      this.metrics.totalExecutionDurationMs += (Date.now() - jobStart);
+    } catch (err) {
+      this.metrics.failedSearches++;
+      throw err;
+    } finally {
+      this.activeWorkers--;
+      this.metrics.activeSearches--;
+      this.processNextQueuedJob();
+    }
+  }
+
+  /**
+   * Pulls and dispatches the next job waiting in the queue.
+   */
+  processNextQueuedJob() {
+    if (this.activeWorkers < this.maxConcurrentWorkers && this.jobQueue.length > 0) {
+      const nextJob = this.jobQueue.shift();
+      if (nextJob.timeoutTimer) clearTimeout(nextJob.timeoutTimer);
+
+      this.executeJobWithWorker(nextJob.sessionId, nextJob.sessionToken, nextJob.studentNumber)
+        .then(nextJob.resolve)
+        .catch(nextJob.reject);
+    }
+  }
+
+  /**
+   * Internal core workflow execution with strict context isolation and operation timeouts.
+   */
+  async executeWorkflow(sessionId, sessionToken, studentNumber) {
     const session = this.sessionManager.getSession(sessionId, sessionToken);
     if (!session) return;
 
@@ -143,17 +301,103 @@ class AutomationService {
       const validNumber = studentNumber.trim();
       log(`Stage 1: Validated student number: ${validNumber}`);
 
-      // Stage 2: Retrieve authorized credentials from backend APIs
+      // Stage 2: Retrieve authorized credentials from backend APIs with timeout
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
-      const credentials = await this.credentialService.fetchCredentials(validNumber);
+      const credentials = await withTimeout(
+        this.credentialService.fetchCredentials(validNumber),
+        config.credentialLookupTimeoutMs,
+        'Credential Lookup',
+        'TIMEOUT_CREDENTIALS'
+      );
       const username = credentials.username;
       const password = credentials.password;
       session.username = username;
       log(`Stage 2: Retrieved credentials for user: ${username}`);
 
-      // Stage 3: Connect to the educational portal
+      // Fast mock mode branch for controlled high-concurrency / load testing
+      if (this.mockMode) {
+        log(`Executing in mock mode for load/capacity testing: student ${validNumber}`);
+        this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
+        await new Promise(r => setTimeout(r, this.mockDelayMs));
+
+        this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
+        await new Promise(r => setTimeout(r, this.mockDelayMs));
+
+        this.sessionManager.updateProgress(sessionId, 5, 'Navigating to Annual Examination results...', 75);
+        await new Promise(r => setTimeout(r, this.mockDelayMs));
+
+        this.sessionManager.updateProgress(sessionId, 6, 'Retrieving Year 1 examination marksheet...', 90);
+        await new Promise(r => setTimeout(r, this.mockDelayMs));
+
+        const mockResultData = {
+          student: {
+            name: `Test Student ${validNumber}`,
+            studentNumber: validNumber,
+            regnNo: validNumber,
+            seatNo: `SEAT_${validNumber}`,
+            className: 'B.Tech - Computer Science and Engineering',
+            academicYear: '2024-2025',
+            publishedOn: '15/07/2024',
+            session: '2024-25',
+            abcId: `ABC${validNumber}`,
+            semesters: 'Semester I, Semester II',
+            status: 'PASS',
+            ygpa: '8.50',
+            creditsEarned: 44,
+            marks: '850 / 1000',
+            cop: 'NIL'
+          },
+          annualSummary: { status: 'PASS', ygpa: '8.50', credits: 44 },
+          semesters: [
+            {
+              title: 'Semester I',
+              sgpa: '8.40',
+              creditsEarned: 22,
+              credits: 22,
+              obtainedMarks: 420,
+              totalMarks: 500,
+              status: 'PASS',
+              subjects: [
+                {
+                  code: 'BAS101',
+                  name: 'Engineering Physics',
+                  type: 'Theory',
+                  grade: 'A',
+                  credits: 4,
+                  creditsEarned: 4,
+                  gradePoints: 8,
+                  creditGrade: 32,
+                  result: 'PASS',
+                  midTerm1: { obt: 25, min: 12, max: 30 },
+                  midTerm2: { obt: 26, min: 12, max: 30 },
+                  endTerm: { obt: 40, min: 20, max: 50 },
+                  external: { obt: 65, min: 30, max: 70 },
+                  internal: { obt: 26, min: 12, max: 30 },
+                  total: { obt: 91, min: 40, max: 100 }
+                }
+              ]
+            }
+          ]
+        };
+
+        const mockPdfBuffer = Buffer.from('%PDF-1.4\n%Mock PDF for ' + validNumber + '\n%%EOF');
+        session.pdfBuffer = mockPdfBuffer;
+        session.pdfBase64 = mockPdfBuffer.toString('base64');
+        session.downloadFileName = `Annual-Result-${validNumber}.pdf`;
+        session.resultData = mockResultData;
+
+        this.sessionManager.updateProgress(sessionId, 7, 'Examination result loaded successfully.', 100, {
+          status: 'ready',
+          resultData: mockResultData,
+          downloadFileName: session.downloadFileName,
+          pdfBase64: session.pdfBase64
+        });
+        return;
+      }
+
+      // Stage 3: Connect to the educational portal and launch isolated browser context
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-      log('Stage 3: Launching browser...');
+      log('Stage 3: Launching isolated browser context...');
 
       const createContextAndPage = async (b) => {
         const ctx = await b.newContext({
@@ -170,21 +414,26 @@ class AutomationService {
 
       let browser;
       try {
-        browser = await this.getBrowser();
+        browser = await withTimeout(
+          this.getBrowser(),
+          config.browserLaunchTimeoutMs,
+          'Browser Launch',
+          'TIMEOUT_BROWSER_LAUNCH'
+        );
         const created = await createContextAndPage(browser);
         context = created.ctx;
         page = created.p;
       } catch (browserErr) {
         log(`Initial browser connection failed (${browserErr.message}). Re-initializing fresh browser instance...`);
-        try {
-          if (this.browser) {
-            await this.browser.close().catch(() => {});
-          }
-        } catch (_) {}
-        this.browser = null;
-        this.browserInitPromise = null;
+        this.metrics.retries++;
+        await this.closeBrowser();
 
-        browser = await this.getBrowser();
+        browser = await withTimeout(
+          this.getBrowser(),
+          config.browserLaunchTimeoutMs,
+          'Browser Re-launch',
+          'TIMEOUT_BROWSER_RELAUNCH'
+        );
         const created = await createContextAndPage(browser);
         context = created.ctx;
         page = created.p;
@@ -236,13 +485,18 @@ class AutomationService {
         capturedDownload = download;
       });
 
-      // Sanitize portal login URL to ensure valid hash route
+      // Sanitize portal login URL
       const portalLoginUrl = (config.portalLoginUrl && config.portalLoginUrl.includes('/auth/login'))
         ? config.portalLoginUrl
         : 'https://ai-edunova.abes.ac.in/#/auth/login';
 
       log(`Navigating to portal login: ${portalLoginUrl}`);
-      await page.goto(portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+      await withTimeout(
+        page.goto(portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.loginNavigationTimeoutMs }),
+        config.loginNavigationTimeoutMs + 3000,
+        'Portal Login Navigation',
+        'TIMEOUT_LOGIN_NAV'
+      );
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
@@ -254,7 +508,7 @@ class AutomationService {
         log('Waiting for login form inputs to mount...');
         await page.waitForFunction(() => {
           return document.querySelectorAll('input').length > 0 || window.location.hash.includes('dashboard');
-        }, null, { timeout: 15000 }).catch(() => {});
+        }, null, { timeout: config.authCompletionTimeoutMs }).catch(() => {});
 
         const atDashboardNow = await page.evaluate(() => window.location.hash.includes('dashboard')).catch(() => false);
         if (!atDashboardNow) {
@@ -267,7 +521,7 @@ class AutomationService {
           await passInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
           await passInput.fill(password);
 
-          // Submit login via both standard click and Enter key
+          // Submit login credentials
           log('Submitting login credentials...');
           await loginButton.click().catch(() => {});
           await passInput.press('Enter').catch(() => {});
@@ -290,88 +544,77 @@ class AutomationService {
             }).catch(() => null);
 
             if (errorText) {
-              throw new Error(`Authentication failed: ${errorText}`);
+              const authErr = new Error(`Authentication failed: ${errorText}`);
+              authErr.code = 'AUTH_REJECTED';
+              throw authErr;
             }
             if (authErrorMessage) {
-              throw new Error(`Authentication failed: ${authErrorMessage}`);
+              const authErr = new Error(`Authentication failed: ${authErrorMessage}`);
+              authErr.code = 'AUTH_REJECTED';
+              throw authErr;
             }
-            throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
+            const authErr = new Error('Authentication timed out. Portal did not confirm authenticated session.');
+            authErr.code = 'AUTH_TIMEOUT';
+            throw authErr;
           }
         }
       }
 
       log('Portal authentication confirmed!');
 
-      // Sanitize portal results URL
-      const portalResultsUrl = (config.portalResultsUrl && config.portalResultsUrl.includes('semester-examination-result'))
-        ? config.portalResultsUrl
-        : 'https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-examination-result?examMpId=2&resultView=annual';
-
       // Stage 5: Navigate to results page via official exam dashboard
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
-      log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
-
-      await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-        waitUntil: 'networkidle',
-        timeout: 20000
-      }).catch(async () => {
-        await page.waitForTimeout(1000);
-      });
-
-      // Suppress any lingering loader masks or backdrops on dashboard
-      await page.evaluate(() => {
-        document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
-      }).catch(() => {});
 
       const openAnnualResultViaDashboard = async () => {
         log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
         await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
           waitUntil: 'networkidle',
-          timeout: 20000
+          timeout: config.dashboardNavTimeoutMs
         }).catch(async () => {
           await page.waitForTimeout(1000);
         });
 
-        // Suppress any lingering loader masks or backdrops on dashboard
-        await page.evaluate(() => {
-          document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
+        // Make loaders non-blocking so backdrop pointer events cannot intercept automation clicks
+        await page.addStyleTag({
+          content: 'de-loader, [class*="backdrop-blur"], div.fixed.inset-0 { pointer-events: none !important; }'
         }).catch(() => {});
+
+        // Wait for any initial loader overlay to clear
+        await page.waitForSelector('de-loader', { state: 'detached', timeout: 10000 }).catch(() => {});
+        await page.waitForTimeout(500);
 
         // Switch to "Annual" dashboard view
         log('Switching to Annual dashboard tab...');
-        await page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
-            return (el.innerText || '').trim() === 'Annual';
-          });
-          if (buttons.length > 0) buttons[0].click();
-        }).catch(() => {});
+        const annualToggle = page.locator('p-togglebutton').filter({ hasText: 'Annual' }).first();
+        if (await annualToggle.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await annualToggle.click({ force: true });
+        } else {
+          await page.evaluate(() => {
+            const el = Array.from(document.querySelectorAll('p-togglebutton, button, span')).find(e => (e.innerText || '').trim() === 'Annual');
+            if (el) el.click();
+          }).catch(() => {});
+        }
 
         await page.waitForTimeout(600);
 
         // Click Fetch button if present to populate annual cards
-        await page.evaluate(() => {
-          const fetchBtns = Array.from(document.querySelectorAll('button')).filter(b => (b.innerText || '').trim() === 'Fetch');
-          if (fetchBtns.length > 0) fetchBtns[0].click();
-        }).catch(() => {});
+        const fetchBtn = page.locator('button').filter({ hasText: 'Fetch' }).first();
+        if (await fetchBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+          await fetchBtn.click({ force: true }).catch(() => {});
+        }
 
-        // Wait for loader to disappear and purge lingering backdrop masks
-        await page.waitForFunction(() => !document.querySelector('de-loader'), null, { timeout: 15000 }).catch(() => {});
-        await page.evaluate(() => {
-          document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
-        }).catch(() => {});
-
+        // Wait for loader to disappear if triggered by tab switch or fetch
+        await page.waitForSelector('de-loader', { state: 'detached', timeout: 12000 }).catch(() => {});
         await page.waitForTimeout(600);
 
         // Strictly target Year 1 / Published Annual examination card (avoiding ongoing unpublished Year 2)
         const year1Card = page.locator('section, article, div.rounded-xl, div.border').filter({
           hasText: /Year\s*1/i
-        }).filter({
-          has: page.locator('button[aria-label*="card actions" i]')
         }).first();
 
-        const isYear1Visible = await year1Card.isVisible().catch(() => false);
+        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
         const actionBtn = isYear1Visible
-          ? year1Card.locator('button[aria-label*="card actions" i]').first()
+          ? year1Card.locator('button[aria-label*="card actions" i], button[aria-label="Annual card actions"]').first()
           : page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
 
         const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
@@ -401,6 +644,7 @@ class AutomationService {
         navigatedViaCard = await openAnnualResultViaDashboard();
       } catch (cardNavErr) {
         log(`Card navigation notice: ${cardNavErr.message}. Retrying once...`);
+        this.metrics.retries++;
         try {
           await page.waitForTimeout(1000);
           navigatedViaCard = await openAnnualResultViaDashboard();
@@ -408,6 +652,10 @@ class AutomationService {
           log(`Retry card navigation failed: ${retryErr.message}. Falling back to direct URL.`);
         }
       }
+
+      const portalResultsUrl = (config.portalResultsUrl && config.portalResultsUrl.includes('semester-examination-result'))
+        ? config.portalResultsUrl
+        : 'https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-examination-result?examMpId=2&resultView=annual';
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
         log(`Navigating directly to portalResultsUrl: ${portalResultsUrl}`);
@@ -438,7 +686,7 @@ class AutomationService {
         return (hasTable && hasStudentInfo && isNotLoading) ||
           text.includes('Result is Not Published Yet') ||
           text.includes('PENDING VERIFICATION');
-      }, { timeout: 6000 }).catch(() => {});
+      }, { timeout: config.resultLoadingTimeoutMs }).catch(() => {});
 
       // Safe recovery: if the portal ever shows "Result is Not Published Yet", recover via dashboard Year 1 card
       const checkUnpublished = await page.evaluate(() => {
@@ -447,6 +695,7 @@ class AutomationService {
 
       if (checkUnpublished) {
         log('Detected "Result is Not Published Yet" state. Initiating automatic recovery via dashboard Year 1 card...');
+        this.metrics.retries++;
         try {
           await openAnnualResultViaDashboard();
           await waitForAssessment(6000);
@@ -498,7 +747,7 @@ class AutomationService {
         try {
           log('Portal native Annual PDF button active. Initiating official client-side PDF generation...');
           const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 3000 }),
+            page.waitForEvent('download', { timeout: 15000 }),
             downloadButton.click({ force: true })
           ]);
 
@@ -523,7 +772,7 @@ class AutomationService {
         }
       }
 
-      // Fast, high-fidelity fallback: generate marksheet PDF via Chrome print engine
+      // High-fidelity fallback: generate marksheet PDF via Chrome print engine
       if (!pdfBuffer) {
         try {
           log('Generating marksheet PDF via browser print engine...');
@@ -533,7 +782,7 @@ class AutomationService {
             margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
           });
         } catch (printErr) {
-          log(`Browser PDF generation fallback warning: ${printErr.message}`);
+          log(`Browser PDF generation fallback notice: ${printErr.message}`);
         }
       }
 
@@ -579,6 +828,7 @@ class AutomationService {
         code: err.code || 'AUTOMATION_FAILED'
       };
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
+      throw err;
     } finally {
       if (context) {
         try {
@@ -586,19 +836,6 @@ class AutomationService {
         } catch (e) {}
         session.browserContext = null;
         session.page = null;
-      }
-
-      const isServerless = Boolean(
-        process.env.VERCEL ||
-        process.env.AWS_LAMBDA_FUNCTION_VERSION ||
-        process.env.LAMBDA_TASK_ROOT
-      );
-      if (isServerless && this.browser) {
-        try {
-          await this.browser.close().catch(() => {});
-        } catch (e) {}
-        this.browser = null;
-        this.browserInitPromise = null;
       }
     }
   }
@@ -713,6 +950,34 @@ class AutomationService {
       session.status = 'ready';
       throw new Error(`Portal PDF download failed: ${err.message}`);
     }
+  }
+
+  /**
+   * Retrieves operational diagnostics, queue status, and health metrics
+   */
+  getMetrics() {
+    const mem = process.memoryUsage();
+    return {
+      submittedSearches: this.metrics.submittedSearches,
+      queuedSearches: this.jobQueue.length,
+      activeSearches: this.activeWorkers,
+      completedSearches: this.metrics.completedSearches,
+      failedSearches: this.metrics.failedSearches,
+      timeouts: this.metrics.timeouts,
+      retries: this.metrics.retries,
+      peakConcurrentWorkers: this.metrics.peakConcurrentWorkers,
+      maxConcurrentWorkers: this.maxConcurrentWorkers,
+      maxQueueSize: this.maxQueueSize,
+      averageDurationSec: this.metrics.completedSearches > 0
+        ? parseFloat((this.metrics.totalExecutionDurationMs / this.metrics.completedSearches / 1000).toFixed(1))
+        : 0,
+      memoryUsageMb: {
+        rss: parseFloat((mem.rss / 1024 / 1024).toFixed(1)),
+        heapUsed: parseFloat((mem.heapUsed / 1024 / 1024).toFixed(1)),
+        heapTotal: parseFloat((mem.heapTotal / 1024 / 1024).toFixed(1))
+      },
+      uptimeSec: Math.floor(process.uptime())
+    };
   }
 }
 

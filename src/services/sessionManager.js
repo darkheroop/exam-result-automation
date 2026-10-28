@@ -10,7 +10,7 @@ const config = require('../config');
 class SessionManager {
   constructor(options = {}) {
     this.ttlMs = options.ttlMs || config.sessionTtlMs;
-    this.maxSessions = options.maxSessions || config.maxConcurrentSessions;
+    this.maxSessions = options.maxSessions || config.maxConcurrentSessions || 300;
     this.tempDir = options.tempDir || config.tempStorageDir;
     this.sessions = new Map();
 
@@ -38,9 +38,47 @@ class SessionManager {
   }
 
   /**
+   * Finds an existing active or ready session for a student number
+   * to prevent duplicate concurrent workflows.
+   */
+  findActiveSessionByStudent(studentIdentifier) {
+    const now = Date.now();
+    for (const session of this.sessions.values()) {
+      if (session.studentIdentifier === studentIdentifier && now < session.expiresAt) {
+        if (
+          session.status === 'initializing' ||
+          session.status === 'queued' ||
+          session.status === 'processing' ||
+          session.status === 'downloading' ||
+          (session.status === 'ready' && now - session.updatedAt < 60000)
+        ) {
+          return session;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Calculates the queue position of a session if queued
+   */
+  getQueuePosition(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.status !== 'queued') return 0;
+
+    let position = 1;
+    for (const s of this.sessions.values()) {
+      if (s.status === 'queued' && s.createdAt < session.createdAt) {
+        position++;
+      }
+    }
+    return position;
+  }
+
+  /**
    * Creates a new isolated automation session
    */
-  createSession(studentIdentifier) {
+  createSession(studentIdentifier, initialExtra = {}) {
     if (this.sessions.size >= this.maxSessions) {
       this.cleanupExpired();
       if (this.sessions.size >= this.maxSessions) {
@@ -73,10 +111,10 @@ class SessionManager {
       sessionId,
       sessionToken,
       studentIdentifier,
-      status: 'initializing',
-      stage: 1,
-      stageMessage: 'Validating student identifier...',
-      progressPercent: 10,
+      status: initialExtra.status || 'initializing',
+      stage: initialExtra.stage || 1,
+      stageMessage: initialExtra.stageMessage || 'Validating student identifier...',
+      progressPercent: initialExtra.progressPercent || 10,
       browserContext: null,
       page: null,
       renderedHtml: null,
@@ -84,10 +122,12 @@ class SessionManager {
       resultData: null,
       downloadedFile: null,
       error: null,
+      workflowLogs: [],
       createdAt: now,
       updatedAt: now,
       expiresAt: now + this.ttlMs,
-      tempDir: sessionTempDir
+      tempDir: sessionTempDir,
+      ...initialExtra
     };
 
     this.sessions.set(sessionId, session);
@@ -224,12 +264,19 @@ class SessionManager {
   toPublicState(session) {
     if (!session) return null;
 
+    const queuePosition = session.status === 'queued' ? this.getQueuePosition(session.sessionId) : 0;
+
     return {
       sessionId: session.sessionId,
+      studentIdentifier: session.studentIdentifier,
+      studentNumber: session.studentIdentifier,
       status: session.status,
       stage: session.stage,
-      stageMessage: session.stageMessage,
+      stageMessage: session.status === 'queued'
+        ? `Waiting in queue (position ${queuePosition})...`
+        : session.stageMessage,
       progressPercent: session.progressPercent,
+      queuePosition: queuePosition > 0 ? queuePosition : undefined,
       hasRenderedView: Boolean(session.renderedHtml || session.resultData),
       renderedHtml: session.renderedHtml || null,
       resultData: session.resultData || null,

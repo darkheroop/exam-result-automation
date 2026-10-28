@@ -32,6 +32,7 @@ class RateLimiter {
       if (!req.headers['x-test-ratelimit'] && (
         p.includes('/status') ||
         p.includes('/health') ||
+        p.includes('/metrics') ||
         p.includes('/view') ||
         p.includes('/file')
       )) {

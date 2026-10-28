@@ -52,16 +52,30 @@ const config = Object.freeze({
   
   // Session & Storage
   sessionTtlMs: parseInt(process.env.SESSION_TTL_MS, 10) || 600000, // 10 minutes
-  maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS, 10) || 10,
+  maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS, 10) || 300,
+  maxConcurrentWorkers: parseInt(process.env.MAX_CONCURRENT_WORKERS, 10) || Math.min(Math.max(os.cpus()?.length || 2, 2), 4),
+  maxQueueSize: parseInt(process.env.MAX_QUEUE_SIZE, 10) || 200,
+  queueTimeoutMs: parseInt(process.env.QUEUE_TIMEOUT_MS, 10) || 120000,
+  jobTimeoutMs: parseInt(process.env.JOB_TIMEOUT_MS, 10) || 90000,
   tempStorageDir: process.env.TEMP_STORAGE_DIR || (
     (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.LAMBDA_TASK_ROOT)
       ? path.join(os.tmpdir(), 'exam_temp_downloads')
       : path.resolve(__dirname, '../temp_downloads')
   ),
+
+  // Granular Operation-Specific Timeouts
+  credentialLookupTimeoutMs: parseInt(process.env.TIMEOUT_CREDENTIAL_LOOKUP_MS, 10) || 15000,
+  browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 20000,
+  loginNavigationTimeoutMs: parseInt(process.env.TIMEOUT_LOGIN_NAV_MS, 10) || 15000,
+  authCompletionTimeoutMs: parseInt(process.env.TIMEOUT_AUTH_COMPLETION_MS, 10) || 15000,
+  dashboardNavTimeoutMs: parseInt(process.env.TIMEOUT_DASHBOARD_NAV_MS, 10) || 18000,
+  resultLoadingTimeoutMs: parseInt(process.env.TIMEOUT_RESULT_LOADING_MS, 10) || 15000,
+  pdfGenerationTimeoutMs: parseInt(process.env.TIMEOUT_PDF_GEN_MS, 10) || 20000,
+  overallRequestTimeoutMs: parseInt(process.env.TIMEOUT_OVERALL_REQUEST_MS, 10) || 45000,
   
   // Rate Limiting
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
-  rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 180,
+  rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 600,
 });
 
 module.exports = config;

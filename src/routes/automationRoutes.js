@@ -30,20 +30,54 @@ router.post('/start', async (req, res, next) => {
     const rawNumber = req.body?.studentNumber || req.body?.number || req.body?.studentIdentifier;
     const validatedNumber = validateStudentNumber(rawNumber);
 
+    // De-duplication: check if student has an existing active or recent session
+    const existingSession = defaultSessionManager.findActiveSessionByStudent(validatedNumber);
+    if (existingSession && !req.query?.force) {
+      return res.status(202).json({
+        success: true,
+        sessionId: existingSession.sessionId,
+        sessionToken: existingSession.sessionToken,
+        status: existingSession.status,
+        message: existingSession.status === 'ready'
+          ? 'Examination result retrieval completed successfully.'
+          : (existingSession.stageMessage || 'Examination result retrieval already in progress.'),
+        error: existingSession.error ? {
+          message: existingSession.error.message,
+          code: existingSession.error.code
+        } : null,
+        data: defaultSessionManager.toPublicState(existingSession)
+      });
+    }
+
     // Create a new session
     const session = defaultSessionManager.createSession(validatedNumber);
 
-    // Bound synchronous wait to 45 seconds to guarantee response before Vercel 60s edge gateway timeout
+    // Start workflow within worker pool
     const workflowPromise = defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber).catch((workflowErr) => {
       console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
     });
 
+    // If session was immediately queued due to capacity, return 202 immediately
+    if (session.status === 'queued') {
+      return res.status(202).json({
+        success: true,
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        status: session.status,
+        queuePosition: session.queuePosition || defaultSessionManager.getQueuePosition(session.sessionId),
+        message: `Request accepted and queued (position ${session.queuePosition || defaultSessionManager.getQueuePosition(session.sessionId)}).`,
+        error: null,
+        data: defaultSessionManager.toPublicState(session)
+      });
+    }
+
+    // Initial wait window (up to 3s) for quick feedback or immediate completion
     let timeoutId;
-    const timeoutPromise = new Promise((resolve) => {
-      timeoutId = setTimeout(resolve, 45000);
+    const initialWaitPromise = new Promise((resolve) => {
+      timeoutId = setTimeout(resolve, 3000);
     });
 
-    await Promise.race([workflowPromise, timeoutPromise]);
+    await Promise.race([workflowPromise, initialWaitPromise]);
     if (timeoutId) clearTimeout(timeoutId);
 
     res.status(202).json({
@@ -325,6 +359,17 @@ router.post('/:sessionId/close', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/**
+ * GET /api/automation/metrics
+ * Returns operational metrics, queue status, and resource usage
+ */
+router.get('/metrics', (req, res) => {
+  res.json({
+    success: true,
+    data: defaultAutomationService.getMetrics()
+  });
 });
 
 module.exports = router;

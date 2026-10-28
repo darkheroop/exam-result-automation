@@ -136,12 +136,14 @@
   }
 
   function resetFetchButton() {
+    studentNumberInput.disabled = false;
     fetchResultBtn.disabled = false;
     fetchResultBtn.querySelector('.btn-text').textContent = 'Fetch Result';
     fetchResultBtn.querySelector('.btn-spinner').classList.add('hidden');
   }
 
   function setFetchButtonLoading() {
+    studentNumberInput.disabled = true;
     fetchResultBtn.disabled = true;
     fetchResultBtn.querySelector('.btn-text').textContent = 'Processing...';
     fetchResultBtn.querySelector('.btn-spinner').classList.remove('hidden');
@@ -183,7 +185,14 @@
           return;
         }
 
-        setProgressState(data.progressPercent, data.stageMessage, data.stage);
+        let stageMsg = data.stageMessage;
+        if (data.status === 'queued') {
+          stageMsg = data.queuePosition
+            ? `In queue (position ${data.queuePosition}). Processing shortly...`
+            : (stageMsg || 'In queue. Processing shortly...');
+        }
+
+        setProgressState(data.progressPercent, stageMsg, data.stage);
 
         if (data.status === 'ready' || data.status === 'download_ready' || data.resultData) {
           stopPolling();
