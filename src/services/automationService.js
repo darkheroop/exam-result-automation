@@ -277,18 +277,14 @@ class AutomationService {
         }).catch(() => false);
         log(`Switched to Annual toggle result: ${switchedToAnnual}`);
 
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(2000);
 
         // Find the completed / published annual card actions button (3-dots)
         const actionBtn = page.locator('button[aria-label="Annual card actions"]').first();
+        const actionBtnCount = await actionBtn.count();
+        log(`Annual card action button count: ${actionBtnCount}`);
 
-        const isActionBtnVisible = await actionBtn.isVisible({ timeout: 5000 }).catch(e => {
-          log(`ActionBtn isVisible check note: ${e.message}`);
-          return false;
-        });
-        log(`Is annual card action button visible: ${isActionBtnVisible}`);
-
-        if (isActionBtnVisible) {
+        if (actionBtnCount > 0) {
           await actionBtn.click();
           log('Clicked actionBtn. Waiting for View Exam Result option...');
           await page.waitForTimeout(600);
@@ -307,97 +303,6 @@ class AutomationService {
       } catch (dashNavErr) {
         log(`Dashboard navigation encounter: ${dashNavErr.message}. Falling back to direct URL.`);
       }
-
-      // Ensure selectedAnnualExamResult context is hydrated before viewing results
-      await page.evaluate(() => {
-        try {
-          if (!localStorage.getItem('selectedAnnualExamResult')) {
-            const authUser = JSON.parse(localStorage.getItem('user_details') || localStorage.getItem('currentUser') || '{}');
-            const userId = authUser.usrId || authUser.id || '149';
-            const annualContext = {
-              acadSyear: "2025",
-              yearHeading: "Year 1 · 2025",
-              ygpa: "8.46",
-              yearlyRemark: "PASS",
-              actionData: [
-                {
-                  asmtGrpId: "3",
-                  examClassId: "3",
-                  examClassTitle: "FY-B.Tech CSE (13)",
-                  examClassLngNames: "FY-B.Tech CSE (13)",
-                  examClassGrpId: "",
-                  examClassMpCtgryAcademicYears: "2025",
-                  examClassMpCtgryId: "11",
-                  examClassMpCtgryTitle: "Semester II",
-                  examScheduledSchoolId: "1",
-                  examScheduledSchoolTitle: "ABES",
-                  examScheduledSyear: "2025",
-                  examScheduledMpId: "2",
-                  examScheduledMpTitle: "Even Sem (2,4,6,8)",
-                  examAttemptTypeId: "1",
-                  examAttemptTypeTitle: "Regular",
-                  isRegularExamConducted: "Y",
-                  examAsmtCtgryId: "11",
-                  examAsmtCtgryTitle: "Semester II",
-                  examAsmtTypeId: "1,2,3,4,5,6,7,8,9,990",
-                  examAsmtTypeTitle: [
-                    { asmtTypeId: 9, asmtTypeName: "CIA" },
-                    { asmtTypeId: 6, asmtTypeName: "End Term" },
-                    { asmtTypeId: 7, asmtTypeName: "Internal" },
-                    { asmtTypeId: 8, asmtTypeName: "External" },
-                    { asmtTypeId: 4, asmtTypeName: "Mid Term 1" },
-                    { asmtTypeId: 5, asmtTypeName: "Mid Term 2" }
-                  ],
-                  examCpMpId: "2",
-                  loggedInUsrId: String(userId),
-                  showResultOnMobile: "Y"
-                },
-                {
-                  asmtGrpId: "3",
-                  examClassId: "3",
-                  examClassTitle: "FY-B.Tech CSE (13)",
-                  examClassLngNames: "FY-B.Tech CSE (13)",
-                  examClassGrpId: "",
-                  examClassMpCtgryAcademicYears: "2025",
-                  examClassMpCtgryId: "1",
-                  examClassMpCtgryTitle: "Semester I",
-                  examScheduledSchoolId: "1",
-                  examScheduledSchoolTitle: "ABES",
-                  examScheduledSyear: "2025",
-                  examScheduledMpId: "1",
-                  examScheduledMpTitle: "Odd Sem (1,3,5,7)",
-                  examAttemptTypeId: "1",
-                  examAttemptTypeTitle: "Regular",
-                  isRegularExamConducted: "Y",
-                  examAsmtCtgryId: "1",
-                  examAsmtCtgryTitle: "Semester I",
-                  examAsmtTypeId: "1,2,3,4,5,6,7,8,9,990",
-                  examAsmtTypeTitle: [
-                    { asmtTypeId: 9, asmtTypeName: "CIA" },
-                    { asmtTypeId: 6, asmtTypeName: "End Term" },
-                    { asmtTypeId: 7, asmtTypeName: "Internal" },
-                    { asmtTypeId: 8, asmtTypeName: "External" },
-                    { asmtTypeId: 4, asmtTypeName: "Mid Term 1" },
-                    { asmtTypeId: 5, asmtTypeName: "Mid Term 2" }
-                  ],
-                  examCpMpId: "1",
-                  loggedInUsrId: String(userId),
-                  showResultOnMobile: "Y"
-                }
-              ],
-              selectedExamMpId: "2",
-              selectedExamSyear: "2025",
-              yearHeader: {
-                ygpa: "8.46",
-                yearlyRemark: "PASS",
-                acadSyear: "2025",
-                yearTitle: "Year 1"
-              }
-            };
-            localStorage.setItem('selectedAnnualExamResult', JSON.stringify(annualContext));
-          }
-        } catch (e) {}
-      }).catch(() => {});
 
       // If dashboard navigation didn't reach results, navigate to results URL
       if (!reachedAnnualResults || !page.url().includes('semester-examination-result')) {
