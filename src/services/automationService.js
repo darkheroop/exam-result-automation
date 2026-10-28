@@ -144,23 +144,6 @@ class AutomationService {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
       });
 
-      // Block unnecessary heavy external resources: Google Translate, fonts, analytics for maximum speed
-      await context.route('**/*', (route) => {
-        const url = route.request().url();
-        const type = route.request().resourceType();
-        if (
-          url.includes('translate.google') ||
-          url.includes('translate-pa.google') ||
-          url.includes('fonts.googleapis.com') ||
-          url.includes('fonts.gstatic.com') ||
-          url.includes('fonts.cdnfonts.com') ||
-          type === 'font'
-        ) {
-          return route.abort();
-        }
-        return route.continue();
-      });
-
       session.browserContext = context;
       const page = await context.newPage();
       session.page = page;
@@ -175,15 +158,15 @@ class AutomationService {
       });
 
       console.log(`[Session ${sessionId}] Navigating to portal login: ${config.portalLoginUrl}`);
-      await page.goto(config.portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
-      console.log(`[Session ${sessionId}] Login page loaded`);
+      await page.goto(config.portalLoginUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
+      console.log(`[Session ${sessionId}] Login response committed, waiting for login form...`);
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
       // Switch to "With Password" tab if present
       const withPasswordTab = page.locator('text="With Password"').first();
-      if (await withPasswordTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await withPasswordTab.isVisible({ timeout: 3000 }).catch(() => false)) {
         await withPasswordTab.click();
       }
 
@@ -192,7 +175,7 @@ class AutomationService {
       const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
-      await userInput.waitFor({ state: 'visible', timeout: 10000 });
+      await userInput.waitFor({ state: 'visible', timeout: 15000 });
       await userInput.fill(username);
       await passInput.waitFor({ state: 'visible', timeout: 10000 });
       await passInput.fill(password);
@@ -222,16 +205,11 @@ class AutomationService {
         throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
       }
 
-      // Small pause for Angular router and session hydration to settle
-      await page.waitForTimeout(1500);
-
       // Stage 5: Navigate to results page
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
       console.log(`[Session ${sessionId}] Navigating to results page: ${config.portalResultsUrl}`);
 
-      // Use client-side location update for Angular SPA hash routing
-      await page.evaluate((url) => { window.location.href = url; }, config.portalResultsUrl);
-      await page.waitForTimeout(1200);
+      await page.goto(config.portalResultsUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
 
       // Fast reactive wait for destination results page content
       await page.waitForFunction(() => {
@@ -243,9 +221,7 @@ class AutomationService {
           text.includes('Examination Result') ||
           window.location.hash.includes('semester-examination-result')
         );
-      }, { timeout: 12000 }).catch(async () => {
-        await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
-      });
+      }, { timeout: 15000 }).catch(async () => {});
 
       // Verify destination results page loaded
       const pageVerification = await page.evaluate(() => {

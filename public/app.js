@@ -265,7 +265,10 @@
 
       if (!res.ok || !json.success) {
         const errorMsg = json.error?.message || 'Could not download examination result PDF.';
-        alert(`Download Notice: ${errorMsg}`);
+        downloadAlertTitle.textContent = 'PDF Download Notice';
+        downloadAlertMessage.textContent = errorMsg;
+        downloadAlert.classList.remove('alert-success', 'hidden');
+        downloadAlert.classList.add('alert-warning');
         return;
       }
 
@@ -281,7 +284,8 @@
       const fileSizeKb = json.size ? ` (${Math.round(json.size / 1024)} KB)` : '';
       downloadAlertTitle.textContent = 'Official PDF Download Verified & Complete';
       downloadAlertMessage.textContent = `Retrieved "${json.fileName}"${fileSizeKb} directly from the educational portal.`;
-      downloadAlert.classList.remove('hidden');
+      downloadAlert.classList.remove('alert-warning', 'hidden');
+      downloadAlert.classList.add('alert-success');
 
     } catch (err) {
       alert(`Network error while downloading PDF: ${err.message}`);
