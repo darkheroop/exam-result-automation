@@ -223,7 +223,7 @@
           <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles.css">
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 1.5rem; background: #fff; }
-            app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator { display: none !important; }
+            top-navbar, .top-navbar, app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator { display: none !important; }
             .layout-main-container, .layout-content-wrapper, .layout-main { padding-top: 0 !important; margin-top: 0 !important; }
             .result-print-page-header button { display: none !important; }
           </style>

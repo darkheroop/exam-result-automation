@@ -274,6 +274,8 @@ class AutomationService {
       // Inject custom CSS to cleanly remove the top navigation bar while keeping the full result interface
       await page.addStyleTag({
         content: `
+          top-navbar,
+          .top-navbar,
           app-topbar,
           .layout-topbar,
           .layout-menu-button,

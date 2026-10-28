@@ -125,7 +125,7 @@ router.get('/view/:sessionId', (req, res, next) => {
       margin: 0;
       padding: 1.5rem;
     }
-    app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator {
+    top-navbar, .top-navbar, app-topbar, .layout-topbar, .layout-menu-button, nav.p-breadcrumb, .p-breadcrumb, app-floating-configurator, app-configurator {
       display: none !important;
     }
     .layout-main-container, .layout-content-wrapper, .layout-main {
