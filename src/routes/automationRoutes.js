@@ -33,12 +33,14 @@ router.post('/start', async (req, res, next) => {
     // Create a new session
     const session = defaultSessionManager.createSession(validatedNumber);
 
-    // Run the workflow directly while HTTP request is open to ensure continuous CPU allocation
-    try {
-      await defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber);
-    } catch (workflowErr) {
+    // Bound synchronous wait to 45 seconds to guarantee response before Vercel 60s edge gateway timeout
+    const workflowPromise = defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber).catch((workflowErr) => {
       console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
-    }
+    });
+
+    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 45000));
+
+    await Promise.race([workflowPromise, timeoutPromise]);
 
     res.status(202).json({
       success: true,
@@ -47,7 +49,7 @@ router.post('/start', async (req, res, next) => {
       status: session.status,
       message: session.status === 'ready'
         ? 'Examination result retrieval completed successfully.'
-        : (session.error ? session.error.message : 'Examination result retrieval initialized.'),
+        : (session.error ? session.error.message : (session.stageMessage || 'Examination result retrieval initialized.')),
       error: session.error ? {
         message: session.error.message,
         code: session.error.code
