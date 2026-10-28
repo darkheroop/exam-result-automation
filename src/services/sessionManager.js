@@ -234,6 +234,7 @@ class SessionManager {
       downloadUrl: session.downloadedFile?.ready ? `/api/automation/${session.sessionId}/file?token=${session.sessionToken}` : null,
       pdfBase64: session.downloadedFile?.base64 || null,
       examSummary: session.examSummary || null,
+      workflowLogs: session.workflowLogs || [],
       error: session.error ? {
         message: session.error.message,
         code: session.error.code || 'AUTOMATION_ERROR'

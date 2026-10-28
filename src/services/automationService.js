@@ -122,10 +122,18 @@ class AutomationService {
     const session = this.sessionManager.getSession(sessionId, sessionToken);
     if (!session) return;
 
+    session.workflowLogs = [];
+    const log = (msg) => {
+      const entry = `[${new Date().toISOString()}] ${msg}`;
+      console.log(`[Session ${sessionId}] ${msg}`);
+      session.workflowLogs.push(entry);
+    };
+
     try {
       // Stage 1: Validate input
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
       const validNumber = studentNumber.trim();
+      log(`Stage 1: Validated student number: ${validNumber}`);
 
       // Stage 2: Retrieve authorized credentials from backend APIs
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
@@ -133,12 +141,13 @@ class AutomationService {
       const username = credentials.username;
       const password = credentials.password;
       session.username = username;
+      log(`Stage 2: Retrieved credentials for user: ${username}`);
 
       // Stage 3: Connect to the educational portal
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-      console.log(`[Session ${sessionId}] Stage 3: Launching browser...`);
+      log('Stage 3: Launching browser...');
       const browser = await this.getBrowser();
-      console.log(`[Session ${sessionId}] Browser ready, creating context...`);
+      log('Browser ready, creating context...');
       const context = await browser.newContext({
         acceptDownloads: true,
         viewport: { width: 1280, height: 900 },
@@ -233,55 +242,76 @@ class AutomationService {
 
       // Stage 5: Navigate to results page via official exam dashboard
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
-      console.log(`[Session ${sessionId}] Navigating to dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard`);
+      log('Navigating to dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
 
       let reachedAnnualResults = false;
       try {
         await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-          waitUntil: 'networkidle',
-          timeout: 25000
+          waitUntil: 'commit',
+          timeout: 20000
         });
+        log('Dashboard navigation committed. Waiting for content...');
+
+        // Wait for dashboard content or buttons
+        await page.waitForFunction(() => {
+          const text = document.body ? document.body.innerText : '';
+          return text.includes('Annual') || text.includes('Semester Dashboard') || Boolean(document.querySelector('p-togglebutton, section.annual-year-card'));
+        }, { timeout: 15000 }).catch(e => log(`Wait for dashboard content warning: ${e.message}`));
 
         // Suppress any lingering loader masks or backdrops on dashboard
         await page.evaluate(() => {
-          const loaders = document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0');
-          loaders.forEach(el => el.remove());
+          document.querySelectorAll('de-loader, [class*="backdrop-blur"], div.fixed.inset-0').forEach(el => el.remove());
         }).catch(() => {});
 
         // Switch to "Annual" dashboard view
-        await page.evaluate(() => {
+        log('Selecting Annual toggle on dashboard...');
+        const switchedToAnnual = await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
             return (el.innerText || '').trim() === 'Annual';
           });
-          if (buttons.length > 0) buttons[0].click();
-        }).catch(() => {});
+          if (buttons.length > 0) {
+            buttons[0].click();
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+        log(`Switched to Annual toggle result: ${switchedToAnnual}`);
 
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(2000);
 
         // Find the completed / published annual card actions button (3-dots)
         const completedCard = page.locator('section.annual-year-card:has-text("PASS"), section.annual-year-card:has-text("YGPA"), section.annual-year-card').first();
         const actionBtn = completedCard.locator('button[aria-label="Annual card actions"]').first();
 
-        if (await actionBtn.isVisible({ timeout: 6000 }).catch(() => false)) {
-          await actionBtn.click();
+        const isActionBtnVisible = await actionBtn.isVisible({ timeout: 8000 }).catch(e => {
+          log(`ActionBtn isVisible check note: ${e.message}`);
+          return false;
+        });
+        log(`Is annual card action button visible: ${isActionBtnVisible}`);
+
+        if (isActionBtnVisible) {
+          await actionBtn.click({ force: true });
+          log('Clicked actionBtn. Waiting for View Exam Result option...');
           await page.waitForTimeout(800);
 
           const viewResultItem = page.locator('text="View Exam Result"').first();
           if (await viewResultItem.isVisible({ timeout: 5000 }).catch(() => false)) {
-            await viewResultItem.click();
+            await viewResultItem.click({ force: true });
+            log('Clicked View Exam Result. Waiting for navigation to semester-examination-result...');
 
             // Wait for navigation to semester-examination-result
             await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 15000 });
             reachedAnnualResults = true;
+            log('Successfully navigated to semester-examination-result via dashboard!');
           }
         }
       } catch (dashNavErr) {
-        console.warn(`[Session ${sessionId}] Dashboard navigation encounter: ${dashNavErr.message}. Falling back to direct URL.`);
+        log(`Dashboard navigation encounter: ${dashNavErr.message}. Falling back to direct URL.`);
       }
 
       // If dashboard navigation didn't reach results, fallback to direct navigation
       if (!reachedAnnualResults && !page.url().includes('semester-examination-result')) {
-        console.log(`[Session ${sessionId}] Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
+        log(`Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
         await page.goto(config.portalResultsUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
       }
 
