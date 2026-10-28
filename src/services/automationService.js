@@ -85,7 +85,6 @@ class AutomationService {
               '--disable-setuid-sandbox',
               '--disable-dev-shm-usage',
               '--disable-gpu',
-              '--single-process',
               '--disable-blink-features=AutomationControlled'
             ],
             executablePath: execPath,
@@ -248,24 +247,14 @@ class AutomationService {
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
+      log('Waiting for login form inputs to mount...');
+      await page.waitForFunction(() => document.querySelectorAll('input').length > 0, { timeout: 15000 });
+
       const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
       const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
-      // In AI Edunova login page, "With Password" is the default tab.
-      // Wait directly for the username field to be mounted and visible.
-      log('Waiting for username input field...');
-      const userFound = await userInput.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false);
-      if (!userFound) {
-        log('Username field not immediately visible, checking for "With Password" tab...');
-        const withPasswordTab = page.locator('text="With Password", [role="tab"]:has-text("Password"), button:has-text("Password")').first();
-        await withPasswordTab.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-        await withPasswordTab.click({ force: true }).catch(() => {});
-        await userInput.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-      }
-
       await userInput.fill(username);
-      await passInput.waitFor({ state: 'visible', timeout: 4000 });
       await passInput.fill(password);
 
       // Submit login via both standard click and Enter key
