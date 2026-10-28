@@ -237,3 +237,6 @@ Closes the browser context and purges all temporary files.
 3. **No Credential Logging**: Plaintext passwords and Bearer tokens are explicitly omitted from console output and log files.
 4. **Temporary Directory Sandboxing**: Each session writes temporary files into a dedicated isolated subdirectory that is purged upon session completion or TTL expiration.
 5. **PDF Magic Byte Validation**: Downloaded files are verified to ensure they begin with the `%PDF` file header before being served to users.
+
+<!-- Deployment trigger: restart build and redeploy -->
+
