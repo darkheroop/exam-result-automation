@@ -165,6 +165,7 @@ class SessionManager {
           expiresAt: session.expiresAt,
           renderedHtml: session.renderedHtml,
           resultData: session.resultData,
+          downloadedFile: session.downloadedFile,
           tempDir: session.tempDir
         }), 'utf8');
       }
