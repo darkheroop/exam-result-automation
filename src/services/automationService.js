@@ -238,37 +238,32 @@ class AutomationService {
       });
 
       log(`Navigating to portal login: ${config.portalLoginUrl}`);
-      await page.goto(config.portalLoginUrl, { waitUntil: 'commit', timeout: config.pageTimeoutMs });
+      await page.goto(config.portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
-      // Wait for login UI elements (inputs or tabs) to render
-      await page.waitForFunction(() => {
-        const text = document.body ? document.body.innerText : '';
-        const hasInputs = document.querySelectorAll('input').length > 0;
-        const hasTabs = text.includes('With Password') || text.includes('Login');
-        return hasInputs || hasTabs;
-      }, { timeout: 15000 }).catch(() => {});
-
-      // Switch to "With Password" tab if present
-      const withPasswordTab = page.locator('text="With Password"').first();
-      if (await withPasswordTab.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await withPasswordTab.click();
-        await page.waitForTimeout(500);
-      }
-
-      // Fill username & password
       const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
       const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
-      await userInput.waitFor({ state: 'visible', timeout: 15000 });
+      // Ensure "With Password" tab is active so username/password fields are visible
+      const isUserVisible = await userInput.isVisible().catch(() => false);
+      if (!isUserVisible) {
+        log('Waiting for "With Password" tab...');
+        const withPasswordTab = page.locator('text="With Password", [role="tab"]:has-text("Password"), button:has-text("Password")').first();
+        await withPasswordTab.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+        await withPasswordTab.click().catch(() => {});
+        await page.waitForTimeout(400);
+      }
+
+      await userInput.waitFor({ state: 'visible', timeout: 12000 });
       await userInput.fill(username);
-      await passInput.waitFor({ state: 'visible', timeout: 10000 });
+      await passInput.waitFor({ state: 'visible', timeout: 8000 });
       await passInput.fill(password);
 
       // Submit login
+      log('Submitting login credentials...');
       await loginButton.click();
 
       // Wait for authentication response or redirect away from login page
