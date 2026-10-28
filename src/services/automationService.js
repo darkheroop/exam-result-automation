@@ -267,17 +267,23 @@ class AutomationService {
       await passInput.waitFor({ state: 'visible', timeout: 5000 });
       await passInput.fill(password);
 
-      // Submit login
+      // Submit login via both standard click and Enter key
       log('Submitting login credentials...');
-      await loginButton.click({ force: true });
+      await loginButton.click().catch(() => {});
+      await passInput.press('Enter').catch(() => {});
 
       // Wait for authentication response or redirect away from login page
-      try {
-        await page.waitForFunction(
-          () => !window.location.hash.includes('/auth/login'),
-          { timeout: 10000 }
-        );
-      } catch (timeoutErr) {
+      let authenticated = false;
+      for (let i = 0; i < 15; i++) {
+        await page.waitForTimeout(1000);
+        const currentHash = await page.evaluate(() => window.location.hash).catch(() => '');
+        if (currentHash.includes('dashboard') || (!currentHash.includes('/auth/login') && currentHash.length > 2)) {
+          authenticated = true;
+          break;
+        }
+      }
+
+      if (!authenticated) {
         const errorText = await page.evaluate(() => {
           const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
           return toast ? toast.innerText.trim() : null;
