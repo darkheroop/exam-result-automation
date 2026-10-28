@@ -365,6 +365,26 @@
         studentNumber: validation.value
       };
 
+      // If backend finished the workflow synchronously, transition immediately
+      if (json.status === 'ready' || json.status === 'download_ready') {
+        try {
+          const statusRes = await fetch(`/api/automation/status/${json.sessionId}`, {
+            headers: {
+              'x-session-token': json.sessionToken,
+              'Accept': 'application/json'
+            }
+          });
+          const statusJson = await statusRes.json();
+          if (statusJson.data) {
+            setProgressState(100, 'Examination result loaded successfully.', 7);
+            transitionToResultView(statusJson.data);
+            return;
+          }
+        } catch (e) {
+          // Fall through to polling
+        }
+      }
+
       // Begin polling status
       startPolling(json.sessionId, json.sessionToken);
 

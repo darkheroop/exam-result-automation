@@ -33,20 +33,21 @@ router.post('/start', async (req, res, next) => {
     // Create a new session
     const session = defaultSessionManager.createSession(validatedNumber);
 
-    // Asynchronously trigger the automation workflow
-    setImmediate(() => {
-      defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber)
-        .catch(err => {
-          console.error(`[Session ${session.sessionId}] Workflow failure:`, err.message);
-        });
-    });
+    // Run the workflow directly while HTTP request is open to ensure continuous CPU allocation
+    try {
+      await defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber);
+    } catch (workflowErr) {
+      console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
+    }
 
     res.status(202).json({
       success: true,
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
-      status: 'started',
-      message: 'Examination result retrieval workflow initialized.'
+      status: session.status,
+      message: session.status === 'ready'
+        ? 'Examination result retrieval completed successfully.'
+        : 'Examination result retrieval initialized.'
     });
   } catch (err) {
     next(err);
