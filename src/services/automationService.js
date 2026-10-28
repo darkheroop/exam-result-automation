@@ -28,7 +28,13 @@ class AutomationService {
     }
 
     this.browserInitPromise = (async () => {
-      const launchOptions = {
+      const isServerless = Boolean(
+        process.env.VERCEL ||
+        process.env.AWS_LAMBDA_FUNCTION_VERSION ||
+        process.env.LAMBDA_TASK_ROOT
+      );
+
+      let launchOptions = {
         headless: config.headless,
         args: [
           '--no-sandbox',
@@ -43,10 +49,30 @@ class AutomationService {
         ]
       };
 
-      if (config.chromePath) {
-        launchOptions.executablePath = config.chromePath;
+      if (isServerless) {
+        try {
+          const sparticuzPkg = require('@sparticuz/chromium');
+          const sparticuzChromium = sparticuzPkg.default || sparticuzPkg;
+          const execPath = await sparticuzChromium.executablePath();
+          launchOptions = {
+            args: [...(sparticuzChromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            executablePath: execPath,
+            headless: true
+          };
+        } catch (serverlessErr) {
+          console.warn('Sparticuz Chromium init error, falling back to standard launch:', serverlessErr.message);
+          if (config.chromePath) {
+            launchOptions.executablePath = config.chromePath;
+          } else {
+            launchOptions.channel = 'chrome';
+          }
+        }
       } else {
-        launchOptions.channel = 'chrome';
+        if (config.chromePath) {
+          launchOptions.executablePath = config.chromePath;
+        } else {
+          launchOptions.channel = 'chrome';
+        }
       }
 
       this.browser = await chromium.launch(launchOptions);
