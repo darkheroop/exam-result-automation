@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 function findSystemBrowser() {
@@ -52,7 +53,11 @@ const config = Object.freeze({
   // Session & Storage
   sessionTtlMs: parseInt(process.env.SESSION_TTL_MS, 10) || 600000, // 10 minutes
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS, 10) || 10,
-  tempStorageDir: path.resolve(__dirname, '../temp_downloads'),
+  tempStorageDir: process.env.TEMP_STORAGE_DIR || (
+    (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.LAMBDA_TASK_ROOT)
+      ? path.join(os.tmpdir(), 'exam_temp_downloads')
+      : path.resolve(__dirname, '../temp_downloads')
+  ),
   
   // Rate Limiting
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,

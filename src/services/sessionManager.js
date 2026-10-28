@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
 
@@ -13,9 +14,20 @@ class SessionManager {
     this.tempDir = options.tempDir || config.tempStorageDir;
     this.sessions = new Map();
 
-    // Ensure temporary downloads directory exists
-    if (!fs.existsSync(this.tempDir)) {
-      fs.mkdirSync(this.tempDir, { recursive: true });
+    // Ensure temporary downloads directory exists safely without crashing on read-only file systems
+    try {
+      if (!fs.existsSync(this.tempDir)) {
+        fs.mkdirSync(this.tempDir, { recursive: true });
+      }
+    } catch (err) {
+      try {
+        this.tempDir = path.join(os.tmpdir(), 'exam_temp_downloads');
+        if (!fs.existsSync(this.tempDir)) {
+          fs.mkdirSync(this.tempDir, { recursive: true });
+        }
+      } catch (fallbackErr) {
+        // Safe suppression of startup error
+      }
     }
 
     // Periodic sweep for expired sessions
@@ -40,9 +52,21 @@ class SessionManager {
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const now = Date.now();
 
-    const sessionTempDir = path.join(this.tempDir, sessionId);
-    if (!fs.existsSync(sessionTempDir)) {
-      fs.mkdirSync(sessionTempDir, { recursive: true });
+    let sessionTempDir = path.join(this.tempDir, sessionId);
+    try {
+      if (!fs.existsSync(sessionTempDir)) {
+        fs.mkdirSync(sessionTempDir, { recursive: true });
+      }
+    } catch (err) {
+      this.tempDir = path.join(os.tmpdir(), 'exam_temp_downloads');
+      sessionTempDir = path.join(this.tempDir, sessionId);
+      try {
+        if (!fs.existsSync(sessionTempDir)) {
+          fs.mkdirSync(sessionTempDir, { recursive: true });
+        }
+      } catch (fallbackErr) {
+        // Safe suppression
+      }
     }
 
     const session = {

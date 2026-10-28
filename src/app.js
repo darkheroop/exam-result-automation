@@ -3,6 +3,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const config = require('./config');
 const { rateLimitMiddleware } = require('./middleware/rateLimiter');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -32,8 +33,8 @@ app.use(cors({
 // Body Parser
 app.use(express.json({ limit: '500kb' }));
 
-// Health Check
-app.get('/api/health', (req, res) => {
+// Health & Root API Check
+app.get(['/api', '/api/health'], (req, res) => {
   res.json({
     status: 'ok',
     service: 'exam-result-automation',
@@ -56,7 +57,11 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {
     return next();
   }
-  res.sendFile(path.resolve(__dirname, '../public/index.html'));
+  const indexPath = path.resolve(__dirname, '../public/index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.status(200).send('Educational Examination Result Retrieval Platform');
 });
 
 // Centralized Error Handler
