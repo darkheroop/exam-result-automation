@@ -237,8 +237,13 @@ class AutomationService {
         capturedDownload = download;
       });
 
-      log(`Navigating to portal login: ${config.portalLoginUrl}`);
-      await page.goto(config.portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
+      // Sanitize portal login URL to ensure valid hash route
+      const portalLoginUrl = (config.portalLoginUrl && config.portalLoginUrl.includes('/auth/login'))
+        ? config.portalLoginUrl
+        : 'https://ai-edunova.abes.ac.in/#/auth/login';
+
+      log(`Navigating to portal login: ${portalLoginUrl}`);
+      await page.goto(portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
@@ -252,25 +257,25 @@ class AutomationService {
       if (!isUserVisible) {
         log('Waiting for "With Password" tab...');
         const withPasswordTab = page.locator('text="With Password", [role="tab"]:has-text("Password"), button:has-text("Password")').first();
-        await withPasswordTab.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
-        await withPasswordTab.click().catch(() => {});
-        await page.waitForTimeout(400);
+        await withPasswordTab.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+        await withPasswordTab.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(300);
       }
 
-      await userInput.waitFor({ state: 'visible', timeout: 12000 });
+      await userInput.waitFor({ state: 'visible', timeout: 8000 });
       await userInput.fill(username);
-      await passInput.waitFor({ state: 'visible', timeout: 8000 });
+      await passInput.waitFor({ state: 'visible', timeout: 5000 });
       await passInput.fill(password);
 
       // Submit login
       log('Submitting login credentials...');
-      await loginButton.click();
+      await loginButton.click({ force: true });
 
       // Wait for authentication response or redirect away from login page
       try {
         await page.waitForFunction(
           () => !window.location.hash.includes('/auth/login'),
-          { timeout: 15000 }
+          { timeout: 10000 }
         );
       } catch (timeoutErr) {
         const errorText = await page.evaluate(() => {
@@ -289,13 +294,18 @@ class AutomationService {
 
       log('Portal authentication confirmed!');
 
+      // Sanitize portal results URL
+      const portalResultsUrl = (config.portalResultsUrl && config.portalResultsUrl.includes('semester-examination-result'))
+        ? config.portalResultsUrl
+        : 'https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-examination-result?examMpId=2&resultView=annual';
+
       // Stage 5: Navigate to results page via official exam dashboard
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
       log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
 
       await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
         waitUntil: 'domcontentloaded',
-        timeout: 12000
+        timeout: 10000
       }).catch(async () => {
         await page.waitForTimeout(1000);
       });
@@ -312,49 +322,42 @@ class AutomationService {
         await page.waitForFunction(() => {
           const els = Array.from(document.querySelectorAll('button, span, div, p-togglebutton'));
           return els.some(el => (el.innerText || '').trim() === 'Annual');
-        }, { timeout: 6000 }).catch(() => {});
+        }, { timeout: 5000 }).catch(() => {});
 
-        const clicked = await page.evaluate(() => {
+        await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, span, div, p-togglebutton')).filter(el => {
             return (el.innerText || '').trim() === 'Annual';
           });
-          if (buttons.length > 0) {
-            buttons[0].click();
-            return true;
-          }
-          return false;
-        }).catch(() => false);
+          if (buttons.length > 0) buttons[0].click();
+        }).catch(() => {});
 
-        if (!clicked) {
-          const annualToggle = page.locator('p-togglebutton:has-text("Annual"), button:has-text("Annual"), span:has-text("Annual")').first();
-          await annualToggle.click({ timeout: 4000 }).catch(() => {});
-        }
         log('Clicked Annual dashboard toggle.');
         await page.waitForTimeout(800);
 
-        // Wait for annual card action button to appear
+        // Wait for annual card action button
         log('Waiting for annual card action button...');
-        const actionBtn = page.locator('button[aria-label="Annual card actions"]').first();
-        await actionBtn.waitFor({ state: 'visible', timeout: 5000 });
-        log('Annual card action button visible. Clicking...');
-        await actionBtn.click();
-        await page.waitForTimeout(600);
+        const actionBtn = page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
+        if (await actionBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+          log('Annual card action button visible. Clicking...');
+          await actionBtn.click({ force: true });
+          await page.waitForTimeout(500);
 
-        const viewResultItem = page.locator('text="View Exam Result"').first();
-        await viewResultItem.waitFor({ state: 'visible', timeout: 4000 });
-        log('Clicking View Exam Result...');
-        await viewResultItem.click();
-
-        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 6000 });
-        log('Navigated to Annual Result page via official workflow!');
-        navigatedViaCard = true;
+          const viewResultItem = page.locator('text="View Exam Result"').first();
+          if (await viewResultItem.isVisible({ timeout: 4000 }).catch(() => false)) {
+            log('Clicking View Exam Result...');
+            await viewResultItem.click({ force: true });
+            await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), { timeout: 6000 });
+            log('Navigated to Annual Result page via official workflow!');
+            navigatedViaCard = true;
+          }
+        }
       } catch (cardNavErr) {
         log(`Card navigation notice: ${cardNavErr.message}. Falling back to direct URL.`);
       }
 
       if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
-        log(`Navigating directly to portalResultsUrl: ${config.portalResultsUrl}`);
-        await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {});
+        log(`Navigating directly to portalResultsUrl: ${portalResultsUrl}`);
+        await page.goto(portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
       }
 
       // Stage 6: Retrieve and prepare genuine result data
@@ -433,8 +436,8 @@ class AutomationService {
         try {
           log('Portal native Annual PDF button active. Initiating official client-side PDF generation...');
           const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 12000 }),
-            downloadButton.click()
+            page.waitForEvent('download', { timeout: 6000 }),
+            downloadButton.click({ force: true })
           ]);
 
           const dlName = download.suggestedFilename() || pdfFilename;
@@ -454,7 +457,7 @@ class AutomationService {
             }
           }
         } catch (dlErr) {
-          log(`Native download event timed out or failed: ${dlErr.message}`);
+          log(`Native download notice: ${dlErr.message}`);
         }
       }
 
