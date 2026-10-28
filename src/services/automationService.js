@@ -54,6 +54,11 @@ class AutomationService {
           const sparticuzPkg = await import('@sparticuz/chromium');
           const sparticuzChromium = sparticuzPkg.default || sparticuzPkg;
 
+          // Disable graphics mode to avoid unpacking swiftshader (~2-3s speedup)
+          if (sparticuzChromium.setGraphicsMode !== undefined) {
+            sparticuzChromium.setGraphicsMode = false;
+          }
+
           const candidateBinPaths = [
             path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
             path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
@@ -68,7 +73,14 @@ class AutomationService {
             : await sparticuzChromium.executablePath();
 
           launchOptions = {
-            args: [...(sparticuzChromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            args: [
+              ...(sparticuzChromium.args || []),
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--single-process'
+            ],
             executablePath: execPath,
             headless: true
           };
@@ -130,6 +142,23 @@ class AutomationService {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
       });
 
+      // Block unnecessary heavy external resources: Google Translate, fonts, analytics for maximum speed
+      await context.route('**/*', (route) => {
+        const url = route.request().url();
+        const type = route.request().resourceType();
+        if (
+          url.includes('translate.google') ||
+          url.includes('translate-pa.google') ||
+          url.includes('fonts.googleapis.com') ||
+          url.includes('fonts.gstatic.com') ||
+          url.includes('fonts.cdnfonts.com') ||
+          type === 'font'
+        ) {
+          return route.abort();
+        }
+        return route.continue();
+      });
+
       session.browserContext = context;
       const page = await context.newPage();
       session.page = page;
@@ -144,28 +173,25 @@ class AutomationService {
       });
 
       await page.goto(config.portalLoginUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
-      await page.waitForTimeout(1500);
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
       // Switch to "With Password" tab if present
       const withPasswordTab = page.locator('text="With Password"').first();
-      if (await withPasswordTab.count() > 0 && await withPasswordTab.isVisible()) {
+      if (await withPasswordTab.isVisible({ timeout: 2000 }).catch(() => false)) {
         await withPasswordTab.click();
-        await page.waitForTimeout(400);
       }
 
       // Fill username & password
-      const userInput = page.locator('input[placeholder="Enter your username"]').first();
-      const passInput = page.locator('input[placeholder="Enter your password"]').first();
+      const userInput = page.locator('input[placeholder*="username" i]').first();
+      const passInput = page.locator('input[type="password"]').first();
       const loginButton = page.locator('button:has-text("Login")').first();
 
       await userInput.waitFor({ state: 'visible', timeout: 10000 });
       await userInput.fill(username);
       await passInput.waitFor({ state: 'visible', timeout: 10000 });
       await passInput.fill(password);
-      await page.waitForTimeout(400);
 
       // Submit login
       await loginButton.click();
@@ -192,13 +218,20 @@ class AutomationService {
         throw new Error('Authentication timed out. Portal did not confirm authenticated session.');
       }
 
-      // Small settling delay for session hydration
-      await page.waitForTimeout(2000);
-
       // Stage 5: Navigate to results page
       this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
       await page.goto(config.portalResultsUrl, { waitUntil: 'domcontentloaded', timeout: config.pageTimeoutMs });
-      await page.waitForTimeout(3000);
+
+      // Fast reactive wait for destination results page content
+      await page.waitForFunction(() => {
+        const text = document.body.innerText || '';
+        return (
+          Boolean(document.querySelector('.annual-sem-table, table, .annual-result-print-section, .result-print-page-header, .student-result-info-card')) ||
+          text.includes('Result is Not Published Yet') ||
+          text.includes('Annual Result') ||
+          text.includes('Examination Result')
+        );
+      }, { timeout: 15000 }).catch(() => {});
 
       // Verify destination results page loaded
       const pageVerification = await page.evaluate(() => {
@@ -247,7 +280,7 @@ class AutomationService {
         const isPending = bodyText.includes('Result is Not Published Yet') || bodyText.includes('PENDING VERIFICATION');
         
         // Find existing download button state
-        const pdfButton = document.querySelector('button[label*="PDF"], button:has-text("PDF"), button:has-text("Download")');
+        const pdfButton = document.querySelector('button[label*="PDF"], button:has-text("PDF"), button:has-text("Download"), button:has-text("Annual PDF")');
         const isPdfButtonDisabled = pdfButton ? (pdfButton.disabled || pdfButton.hasAttribute('disabled')) : false;
 
         return {
@@ -273,6 +306,8 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, 7, 'Ready to download examination result.', 100, {
         status: 'ready'
       });
+
+
 
     } catch (err) {
       session.status = 'error';

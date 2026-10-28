@@ -97,7 +97,26 @@ class SessionManager {
    * Retrieves a session by ID and verifies the session token
    */
   getSession(sessionId, sessionToken) {
-    const session = this.sessions.get(sessionId);
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      // Attempt restoration from temp disk
+      try {
+        const sessionTempDir = path.join(this.tempDir, sessionId);
+        const stateFile = path.join(sessionTempDir, 'state.json');
+        if (fs.existsSync(stateFile)) {
+          const loaded = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+          session = {
+            ...loaded,
+            browserContext: null,
+            page: null
+          };
+          this.sessions.set(sessionId, session);
+        }
+      } catch (err) {
+        // Safe suppression
+      }
+    }
+
     if (!session) {
       return null;
     }
@@ -132,6 +151,24 @@ class SessionManager {
     session.updatedAt = Date.now();
 
     Object.assign(session, extra);
+
+    // Persist session state to disk for multi-container resilience
+    try {
+      if (session.tempDir) {
+        const stateFile = path.join(session.tempDir, 'state.json');
+        const publicState = this.toPublicState(session);
+        fs.writeFileSync(stateFile, JSON.stringify({
+          ...publicState,
+          sessionToken: session.sessionToken,
+          studentIdentifier: session.studentIdentifier,
+          expiresAt: session.expiresAt,
+          renderedHtml: session.renderedHtml,
+          tempDir: session.tempDir
+        }), 'utf8');
+      }
+    } catch (e) {
+      // Safe suppression
+    }
   }
 
   /**

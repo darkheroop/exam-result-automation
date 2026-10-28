@@ -134,6 +134,7 @@
 
   function startPolling(sessionId, sessionToken) {
     stopPolling();
+    let consecutiveErrors = 0;
 
     statusPollTimer = setInterval(async () => {
       try {
@@ -145,13 +146,21 @@
         });
 
         if (!res.ok) {
+          consecutiveErrors++;
+          // Give serverless functions up to 5 consecutive attempts (~6 seconds) during cold starts/switches
+          if (consecutiveErrors <= 5) {
+            return;
+          }
           const errData = await res.json().catch(() => ({}));
           showWorkflowError(errData.error?.message || 'Unable to check automation status.');
           return;
         }
 
+        consecutiveErrors = 0;
         const json = await res.json();
         const data = json.data;
+
+        if (!data) return;
 
         if (data.status === 'error') {
           showWorkflowError(data.error?.message || 'Automation workflow failed.');
@@ -165,7 +174,11 @@
           transitionToResultView(data);
         }
       } catch (err) {
-        console.error('Polling error:', err);
+        consecutiveErrors++;
+        console.warn('Transient polling error:', err.message);
+        if (consecutiveErrors > 6) {
+          showWorkflowError('Network connection lost while waiting for examination results.');
+        }
       }
     }, 1200);
   }
