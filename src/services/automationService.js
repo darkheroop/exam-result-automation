@@ -8,6 +8,7 @@ const config = require('../config');
 const { defaultCredentialService } = require('./credentialService');
 const { defaultSessionManager } = require('./sessionManager');
 const { normalizeResultData } = require('./resultNormalizer');
+const { defaultBrowserPool } = require('./browserPool');
 
 /**
  * Executes a promise with an operation-specific timeout and clean error code.
@@ -91,6 +92,7 @@ class AutomationService {
   constructor(options = {}) {
     this.sessionManager = options.sessionManager || defaultSessionManager;
     this.credentialService = options.credentialService || defaultCredentialService;
+    this.browserPool = options.browserPool || defaultBrowserPool;
     this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 3;
     this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
     this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
@@ -246,6 +248,9 @@ class AutomationService {
    */
   async closeBrowser() {
     this.browserInitPromise = null;
+    if (this.browserPool) {
+      await this.browserPool.closeAll().catch(() => {});
+    }
     if (this.browser) {
       try {
         await this.browser.close().catch(() => {});
@@ -374,6 +379,7 @@ class AutomationService {
 
     let page = null;
     let context = null;
+    let lease = null;
 
     try {
       // Stage 1: Validate input
@@ -475,48 +481,31 @@ class AutomationService {
         return;
       }
 
-      // Stage 3: Connect to the educational portal and launch isolated browser context
+      // Stage 3: Connect to the educational portal and lease isolated browser context from pool
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-      log('Stage 3: Launching isolated browser context...');
+      log('Stage 3: Leasing isolated browser context from pre-warmed pool...');
 
-      const createContextAndPage = async (b) => {
-        const ctx = await b.newContext({
-          acceptDownloads: true,
-          viewport: { width: 1366, height: 900 },
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-        });
-        await ctx.addInitScript(() => {
-          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        });
-        const p = await ctx.newPage();
-        return { ctx, p };
-      };
-
-      let browser;
+      // Lease isolated browser context from pool
       try {
-        browser = await withTimeout(
-          this.getBrowser(),
-          config.browserLaunchTimeoutMs,
-          'Browser Launch',
-          'TIMEOUT_BROWSER_LAUNCH'
+        lease = await withTimeout(
+          this.browserPool.acquireContext(config.browserLaunchTimeoutMs),
+          config.browserLaunchTimeoutMs + 5000,
+          'Browser Pool Context Lease',
+          'TIMEOUT_BROWSER_ACQUIRE'
         );
-        const created = await createContextAndPage(browser);
-        context = created.ctx;
-        page = created.p;
-      } catch (browserErr) {
-        log(`Initial browser connection failed (${browserErr.message}). Re-initializing fresh browser instance...`);
+        context = lease.context;
+        page = lease.page;
+      } catch (poolErr) {
+        log(`Initial pool lease delayed (${poolErr.message}). Retrying once...`);
         this.metrics.retries++;
-        await this.closeBrowser();
-
-        browser = await withTimeout(
-          this.getBrowser(),
-          config.browserLaunchTimeoutMs,
-          'Browser Re-launch',
-          'TIMEOUT_BROWSER_RELAUNCH'
+        lease = await withTimeout(
+          this.browserPool.acquireContext(config.browserLaunchTimeoutMs),
+          config.browserLaunchTimeoutMs + 5000,
+          'Browser Pool Context Lease Retry',
+          'TIMEOUT_BROWSER_ACQUIRE_RETRY'
         );
-        const created = await createContextAndPage(browser);
-        context = created.ctx;
-        page = created.p;
+        context = lease.context;
+        page = lease.page;
       }
 
       session.browserContext = context;
@@ -925,13 +914,17 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
       throw err;
     } finally {
-      if (context) {
+      if (lease) {
+        await lease.release().catch(err => {
+          console.warn(`[Session ${sessionId}] Error releasing browser lease:`, err.message);
+        });
+      } else if (context) {
         try {
           await context.close().catch(() => {});
-        } catch (e) {}
-        session.browserContext = null;
-        session.page = null;
+        } catch (_) {}
       }
+      session.browserContext = null;
+      session.page = null;
     }
   }
 
@@ -1071,6 +1064,7 @@ class AutomationService {
         heapUsed: parseFloat((mem.heapUsed / 1024 / 1024).toFixed(1)),
         heapTotal: parseFloat((mem.heapTotal / 1024 / 1024).toFixed(1))
       },
+      browserPool: this.browserPool ? this.browserPool.getStats() : null,
       uptimeSec: Math.floor(process.uptime())
     };
   }

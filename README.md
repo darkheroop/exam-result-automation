@@ -238,5 +238,21 @@ Closes the browser context and purges all temporary files.
 4. **Temporary Directory Sandboxing**: Each session writes temporary files into a dedicated isolated subdirectory that is purged upon session completion or TTL expiration.
 5. **PDF Magic Byte Validation**: Downloaded files are verified to ensure they begin with the `%PDF` file header before being served to users.
 
-<!-- Deployment trigger: restart build and redeploy -->
+---
+
+## 10. High-Concurrency Architecture & Browser Pool (50–100 Concurrent Users)
+
+To reliably support 50–100 simultaneous student submissions and eliminate Vercel serverless launch failures, the platform implements a dual-tier architecture:
+
+### 1. Pre-Warmed Managed Browser Pool (`src/services/browserPool.js`)
+- **Multi-Context Reuse**: Instead of spawning a heavy, separate Chromium process for every incoming request (which exhausts RAM and causes `spawn ETXTBSY` / `Operation timed out`), the service maintains a pool of 1–2 long-lived Chromium instances.
+- **Ephemeral Context Isolation**: Each student request leases an isolated `browser.newContext()` and `context.newPage()`. Storage, session tokens, cookies, and cache are completely separated between users. Upon completion, the context is closed while the parent Chromium process stays alive.
+- **ETXTBSY & Extraction Protection**: A module-level extraction lock ensures that `/tmp/chromium` is inflated once, checked for full expansion (>180MB), given executable permissions (`0o755`), and backed by an exponential retry backoff if the OS write handle is momentarily busy.
+- **Serverless Execution Window**: On serverless platforms (Vercel / AWS Lambda), the initial request connection is held open for up to 45 seconds (within Vercel's 60s limit). This prevents the serverless container from freezing CPU mid-automation and returns the finalized marksheet and PDF base64 directly in the initial HTTP response.
+
+### 2. Deployment Modes
+* **Alternative Approach (Optimized In-Process Serverless)**: Default zero-cost configuration on Vercel. Chromium runs in-process with bounded context concurrency and pre-warmed pooling.
+* **Option A (Persistent Worker Service Delegation)**: Set `WORKER_SERVICE_URL` (and optional `WORKER_API_KEY`) in Vercel environment variables. The Vercel function acts as an ultra-fast proxy (via keep-alive HTTP agents) delegating headless browser execution to a dedicated persistent worker host (e.g. Render, Railway, EC2, VPS), completely bypassing serverless limits.
+
+<!-- Deployment trigger: pre-warmed browser pool and worker proxy architecture -->
 

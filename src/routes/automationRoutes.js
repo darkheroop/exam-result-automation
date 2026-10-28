@@ -3,11 +3,63 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const config = require('../config');
 const { validateStudentNumber } = require('../services/credentialService');
 const { defaultSessionManager } = require('../services/sessionManager');
 const { defaultAutomationService } = require('../services/automationService');
+const { defaultBrowserPool } = require('../services/browserPool');
 
 const router = express.Router();
+
+// Keep-alive agent for proxying to persistent worker
+const proxyHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const proxyHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+
+function forwardRequest(urlStr, method, headers = {}, body = null) {
+  return new Promise((resolve, reject) => {
+    try {
+      const u = new URL(urlStr);
+      const isHttps = u.protocol === 'https:';
+      const transport = isHttps ? https : http;
+      const agent = isHttps ? proxyHttpsAgent : proxyHttpAgent;
+      const payload = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : null;
+
+      const req = transport.request(u, {
+        method,
+        agent,
+        headers: {
+          'Accept': 'application/json',
+          ...(payload ? {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          } : {}),
+          ...headers
+        }
+      }, (res) => {
+        let raw = '';
+        res.on('data', chunk => raw += chunk);
+        res.on('end', () => {
+          let json = null;
+          try { if (raw) json = JSON.parse(raw); } catch {}
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            data: json,
+            raw
+          });
+        });
+      });
+
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
 
 /**
  * Helper to extract session token from header or query param
@@ -29,6 +81,19 @@ router.post('/start', async (req, res, next) => {
   try {
     const rawNumber = req.body?.studentNumber || req.body?.number || req.body?.studentIdentifier;
     const validatedNumber = validateStudentNumber(rawNumber);
+
+    // Option A: Forward to persistent worker service if configured
+    if (config.workerServiceUrl) {
+      const fwdHeaders = { 'Content-Type': 'application/json' };
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/start`,
+        'POST',
+        fwdHeaders,
+        { studentNumber: validatedNumber }
+      );
+      return res.status(fwdRes.statusCode || 202).json(fwdRes.data || { raw: fwdRes.raw });
+    }
 
     // De-duplication: check if student has an existing active or recent session
     const existingSession = defaultSessionManager.findActiveSessionByStudent(validatedNumber);
@@ -71,10 +136,18 @@ router.post('/start', async (req, res, next) => {
       });
     }
 
-    // Initial wait window (up to 3s) for quick feedback or immediate completion
+    // In serverless environments (e.g. Vercel), hold connection open long enough for the workflow to complete
+    // so the serverless container CPU is not frozen before Playwright finishes.
+    const isServerless = Boolean(
+      process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_VERSION ||
+      process.env.LAMBDA_TASK_ROOT
+    );
+    const waitWindowMs = isServerless ? 45000 : 3000;
+
     let timeoutId;
     const initialWaitPromise = new Promise((resolve) => {
-      timeoutId = setTimeout(resolve, 3000);
+      timeoutId = setTimeout(resolve, waitWindowMs);
     });
 
     await Promise.race([workflowPromise, initialWaitPromise]);
@@ -103,10 +176,22 @@ router.post('/start', async (req, res, next) => {
  * GET /api/automation/status/:sessionId and GET /api/automation/:sessionId/status
  * Returns the current workflow progress for a specific session
  */
-const statusHandler = (req, res, next) => {
+const statusHandler = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
+
+    if (config.workerServiceUrl) {
+      const fwdHeaders = {};
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      if (token) fwdHeaders['x-session-token'] = token;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/status/${sessionId}`,
+        'GET',
+        fwdHeaders
+      );
+      return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
+    }
 
     const session = defaultSessionManager.getSession(sessionId, token);
     if (!session) {
@@ -135,10 +220,23 @@ router.get('/:sessionId/status', statusHandler);
  * GET /api/automation/view/:sessionId
  * Serves the rendered examination result view with the top navigation bar hidden
  */
-router.get('/view/:sessionId', (req, res, next) => {
+router.get('/view/:sessionId', async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
+
+    if (config.workerServiceUrl) {
+      const fwdHeaders = {};
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      if (token) fwdHeaders['x-session-token'] = token;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/view/${sessionId}`,
+        'GET',
+        fwdHeaders
+      );
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(fwdRes.statusCode || 200).send(fwdRes.raw);
+    }
 
     const session = defaultSessionManager.getSession(sessionId, token);
     if (!session) {
@@ -269,6 +367,19 @@ router.post('/:sessionId/download', async (req, res, next) => {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
 
+    if (config.workerServiceUrl) {
+      const fwdHeaders = {};
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      if (token) fwdHeaders['x-session-token'] = token;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/${sessionId}/download`,
+        'POST',
+        fwdHeaders,
+        req.body
+      );
+      return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
+    }
+
     const result = await defaultAutomationService.triggerPortalDownload(sessionId, token);
 
     res.json({
@@ -292,6 +403,11 @@ router.get('/:sessionId/file', (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
+
+    if (config.workerServiceUrl) {
+      const redirectUrl = `${config.workerServiceUrl}/api/automation/${sessionId}/file${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      return res.redirect(redirectUrl);
+    }
 
     const session = defaultSessionManager.getSession(sessionId, token);
     if (!session) {
@@ -346,6 +462,19 @@ router.post('/:sessionId/close', async (req, res, next) => {
     const { sessionId } = req.params;
     const token = getSessionToken(req);
 
+    if (config.workerServiceUrl) {
+      const fwdHeaders = {};
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      if (token) fwdHeaders['x-session-token'] = token;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/${sessionId}/close`,
+        'POST',
+        fwdHeaders,
+        req.body
+      );
+      return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
+    }
+
     // Verify ownership
     const session = defaultSessionManager.getSession(sessionId, token);
     if (session) {
@@ -365,11 +494,26 @@ router.post('/:sessionId/close', async (req, res, next) => {
  * GET /api/automation/metrics
  * Returns operational metrics, queue status, and resource usage
  */
-router.get('/metrics', (req, res) => {
-  res.json({
-    success: true,
-    data: defaultAutomationService.getMetrics()
-  });
+router.get('/metrics', async (req, res, next) => {
+  try {
+    if (config.workerServiceUrl) {
+      const fwdHeaders = {};
+      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
+      const fwdRes = await forwardRequest(
+        `${config.workerServiceUrl}/api/automation/metrics`,
+        'GET',
+        fwdHeaders
+      );
+      return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
+    }
+
+    res.json({
+      success: true,
+      data: defaultAutomationService.getMetrics()
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

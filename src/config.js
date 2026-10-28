@@ -73,6 +73,18 @@ const config = Object.freeze({
   pdfGenerationTimeoutMs: parseInt(process.env.TIMEOUT_PDF_GEN_MS, 10) || 25000,
   overallRequestTimeoutMs: parseInt(process.env.TIMEOUT_OVERALL_REQUEST_MS, 10) || 55000,
   
+  // Browser Pool Settings
+  browserPoolMinBrowsers: parseInt(process.env.BROWSER_POOL_MIN_BROWSERS, 10) || 1,
+  browserPoolMaxBrowsers: parseInt(process.env.BROWSER_POOL_MAX_BROWSERS, 10) || (
+    (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.LAMBDA_TASK_ROOT) ? 2 : 4
+  ),
+  browserPoolMaxContextsPerBrowser: parseInt(process.env.BROWSER_POOL_MAX_CONTEXTS, 10) || 4,
+  browserPoolIdleTimeoutMs: parseInt(process.env.BROWSER_POOL_IDLE_TIMEOUT_MS, 10) || 180000,
+
+  // Optional Persistent Worker Service (Option A)
+  workerServiceUrl: process.env.WORKER_SERVICE_URL ? process.env.WORKER_SERVICE_URL.replace(/\/+$/, '') : null,
+  workerApiKey: process.env.WORKER_API_KEY || null,
+
   // Rate Limiting
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
   rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 600,
