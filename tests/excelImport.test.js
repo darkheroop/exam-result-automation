@@ -115,3 +115,84 @@ test('ExcelImport - Preview cache lifecycle with storePreview, getPreview, clear
   const retrievedAfter = service.getPreview(previewToken);
   assert.equal(retrievedAfter, null);
 });
+
+test('ExcelImport - parses complex attendance sheet layouts with title banners, trailing spaces, and sub-rows', () => {
+  const wb = xlsx.utils.book_new();
+
+  const attendanceData = [
+    ['ABES Engineering College, Ghaziabad'],
+    ['Attendance Sheet of Session: ODD SEM 2025-26'],
+    ['Branch & Section  B.Tech.  (1st Sem) CSE - 11'],
+    [],
+    ['1. Name of Faculty : Prof. Sharma', null, null, null, null, null, null, null, '2. Subject Code : CS101'],
+    [],
+    [],
+    ['S.\r\nNo.', 'Roll No.', 'Admission No', 'Student Name', 'Sec', 'Group', 'Student  Mob.', 'H/D', 'Regular'],
+    [],
+    [null, null, null, null, null, null, null, null, 1, 2, 3], // attendance sub-header row
+    [1, null, '2025B01010018', 'AADI KRISHNATRAYA', 'CSE11', 'G1', 8700385139],
+    [2, null, '2025B01010727', 'AADITYA CHOUDHARY', 'CSE11', 'G1', 8239257234],
+    [3, null, '2025B01011199', 'AAKASH GUPTA', 'CSE11', 'G1', 9266035110]
+  ];
+
+  const ws = xlsx.utils.aoa_to_sheet(attendanceData);
+  xlsx.utils.book_append_sheet(wb, ws, 'CSE-11');
+
+  const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const result = parseExcelBuffer(buffer, 'attendance_test.xlsx');
+
+  assert.equal(result.validRecords.length, 3);
+  assert.equal(result.missingAdmissionRecords.length, 0);
+
+  const r0 = result.validRecords[0];
+  assert.equal(r0.name, 'AADI KRISHNATRAYA');
+  assert.equal(r0.admission_number, '2025B01010018');
+  assert.equal(r0.phone_number, '8700385139');
+  assert.equal(r0.section, 'CSE11');
+
+  const r1 = result.validRecords[1];
+  assert.equal(r1.name, 'AADITYA CHOUDHARY');
+  assert.equal(r1.admission_number, '2025B01010727');
+  assert.equal(r1.phone_number, '8239257234');
+});
+
+test('ExcelImport - parses consolidated student registers with ADMISSION and NAME STUDENT headers', () => {
+  const wb = xlsx.utils.book_new();
+
+  const consolidatedData = [
+    ['ABES ENGINEERING COLLEGE, GHAZIABAD\r\nCONSOLIDATED DETAILS OF STUDENTS \r\n '],
+    ['S. NO', 'ADMISSION', 'COLLEGE ROLL NO', 'UNIV. ROLL NO.', 'NAME STUDENT'],
+    ['01', '2024B01011076', 2400320100715, 2400320100715, 'MUKESH KUMAR\r\n'],
+    ['02', '2025B01010018', 2503201000001, 2500320100001, 'AADI KRISHNATRAYA']
+  ];
+
+  const ws = xlsx.utils.aoa_to_sheet(consolidatedData);
+  xlsx.utils.book_append_sheet(wb, ws, 'Total Students 2247');
+
+  const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const result = parseExcelBuffer(buffer, 'consolidated_test.xlsx');
+
+  assert.equal(result.validRecords.length, 2);
+  assert.equal(result.validRecords[0].name, 'MUKESH KUMAR');
+  assert.equal(result.validRecords[0].admission_number, '2024B01011076');
+  assert.equal(result.validRecords[1].name, 'AADI KRISHNATRAYA');
+  assert.equal(result.validRecords[1].admission_number, '2025B01010018');
+});
+
+test('ExcelImport - accepts Base64 encoded Excel strings directly', () => {
+  const wb = xlsx.utils.book_new();
+  const data = [
+    ['Student Name', 'Admission No', 'Phone'],
+    ['Base64 Student', '2025B999', '9876543210']
+  ];
+  const ws = xlsx.utils.aoa_to_sheet(data);
+  xlsx.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  const base64Data = xlsx.write(wb, { type: 'base64', bookType: 'xlsx' });
+  const result = parseExcelBuffer(`data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64Data}`, 'b64.xlsx');
+
+  assert.equal(result.validRecords.length, 1);
+  assert.equal(result.validRecords[0].name, 'Base64 Student');
+  assert.equal(result.validRecords[0].admission_number, '2025B999');
+  assert.equal(result.validRecords[0].phone_number, '9876543210');
+});

@@ -3,15 +3,6 @@
 const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 
-const NAME_REGEX = /^(student\s*name|candidate\s*name|full\s*name|student|candidate|name)$/i;
-const ADMISSION_REGEX = /^(admission\s*(no\.?|num\.?|number)?|adm\.?\s*no\.?|roll\s*(no\.?|num\.?|number)?|reg\s*(no\.?|num\.?|number)?|registration\s*(no\.?|num\.?|number)?|student\s*id|enrollment\s*(no\.?|num\.?|number)?|adm_no|roll_no|reg_no)$/i;
-const PHONE_REGEX = /^(phone\s*(no\.?|num\.?|number)?|mobile\s*(no\.?|num\.?|number)?|contact\s*(no\.?|num\.?|number)?|phone_number|mobile_number|contact_number|cell(\s*no\.?)?|whatsapp)$/i;
-const SECTION_REGEX = /^(section|sec|class|batch|branch)$/i;
-const USERNAME_REGEX = /^(user\s*name|username|login\s*id|user\s*id|user)$/i;
-const PASSWORD_REGEX = /^(password|pwd|pass)$/i;
-
-const INLINE_SECTION_REGEX = /^\s*(?:section|sec|class|batch)\s*[:\-]?\s*([a-z0-9\-_ ]+)/i;
-
 /**
  * Cleans string and numeric values from Excel cells, retaining leading zeros
  * and avoiding scientific notation or floating point trailing '.0'.
@@ -42,14 +33,124 @@ function cleanStringValue(val) {
 }
 
 /**
- * Parses an Excel file buffer into structured student records.
+ * Matches a header cell string against recognized column roles.
+ * Priority order:
+ *  1. Admission number (explicit admission > enrollment/reg > roll)
+ *  2. Name
+ *  3. Phone/Mobile
+ *  4. Section
+ *  5. Roll number (fallback if no admission column)
+ *  6. Username
+ *  7. Password
  */
-function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
-  if (!buffer || !Buffer.isBuffer(buffer)) {
-    throw new Error('Invalid Excel file buffer provided');
+function matchHeaderColumn(headerCell) {
+  if (!headerCell || typeof headerCell !== 'string') return null;
+  const h = headerCell
+    .toLowerCase()
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[.:\-_]+$/, '')
+    .trim();
+
+  if (!h) return null;
+
+  // 1. Admission number takes highest priority
+  if (/(?:^|\b)(?:admission|adm)(?:\s*(?:no|num|number))?(?:$|\b)/i.test(h) ||
+      /^(?:admission_no|adm_no|admission_number|enrollment(?:\s*(?:no|num|number))?)$/i.test(h)) {
+    return 'adm';
   }
 
-  const workbook = xlsx.read(buffer, { type: 'buffer', cellDates: true, raw: false });
+  // 2. Student Name
+  if (/(?:student\s*name|candidate\s*name|name\s*student|name\s*of\s*student|full\s*name|^name$)/i.test(h)) {
+    return 'name';
+  }
+
+  // 3. Mobile / Phone
+  if (/(?:student\s*mob|student\s*mobile|mob\s*no|mobile\s*no|^mob$|mobile|phone|contact|cell|whatsapp)/i.test(h)) {
+    return 'phone';
+  }
+
+  // 4. Section
+  if (/^(?:sec|sec\.|section|branch|class|batch)$/i.test(h)) {
+    return 'section';
+  }
+
+  // 5. Roll number (lower priority admission identifier)
+  if (/(?:roll\s*(?:no|num|number)|student\s*id|registration)/i.test(h) ||
+      /^(?:roll_no|reg_no)$/i.test(h)) {
+    return 'roll';
+  }
+
+  // 6. Username
+  if (/^(?:user\s*name|username|login\s*id|user\s*id|user)$/i.test(h)) {
+    return 'username';
+  }
+
+  // 7. Password
+  if (/^(?:password|pwd|pass)$/i.test(h)) {
+    return 'password';
+  }
+
+  return null;
+}
+
+/**
+ * Extracts section identifier from table title banners like:
+ * "Branch & Section  B.Tech.  (1st Sem) CSE - 11"
+ * "Attendance Sheet of Session: ... CSE-12"
+ * "Section: Batch-Alpha"
+ */
+function detectSectionFromTitle(cellText) {
+  if (!cellText || typeof cellText !== 'string') return null;
+  const text = cellText.replace(/\s+/g, ' ').trim();
+
+  // Pattern: Branch & Section B.Tech. (1st Sem) CSE - 11 or Branch & Section : CSEDS-1
+  const branchMatch = text.match(/(?:branch\s*&\s*section|branch|section)\s*[:\-]?\s*(?:b\.?tech\.?)?\s*(?:\([^)]*\))?\s*([a-z0-9\-_ ]+)/i);
+  if (branchMatch && branchMatch[1]) {
+    let sec = branchMatch[1].trim();
+    // Normalize "CSE - 11" to "CSE-11"
+    sec = sec.replace(/\s*-\s*/g, '-');
+    if (sec.length >= 2 && !/^(name|faculty|date|total|sheet|session|semester)/i.test(sec)) {
+      return sec;
+    }
+  }
+
+  // Pattern: "Section: A" or "Sec - B"
+  const secMatch = text.match(/^\s*(?:section|sec|class|batch)\s*[:\-]?\s*([a-z0-9\-_ ]+)/i);
+  if (secMatch && secMatch[1]) {
+    let sec = secMatch[1].trim().replace(/\s*-\s*/g, '-');
+    if (sec.length >= 1) return sec;
+  }
+
+  return null;
+}
+
+/**
+ * Parses an Excel buffer or workbook into structured student records.
+ * Supports any workbook layout: multi-section attendance sheets, single consolidated sheets,
+ * custom column orderings, inline sections, and missing headers via smart fallback scanning.
+ */
+function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
+  if (!buffer) {
+    throw new Error('No Excel buffer or data provided');
+  }
+
+  let rawBuffer = buffer;
+  // Convert base64 string to buffer if string was supplied
+  if (typeof buffer === 'string') {
+    if (buffer.startsWith('data:')) {
+      const commaIdx = buffer.indexOf(',');
+      rawBuffer = Buffer.from(buffer.slice(commaIdx + 1), 'base64');
+    } else {
+      try {
+        rawBuffer = Buffer.from(buffer, 'base64');
+      } catch (e) {
+        rawBuffer = Buffer.from(buffer, 'utf8');
+      }
+    }
+  }
+
+  const workbook = xlsx.read(rawBuffer, { type: 'buffer', cellDates: true, raw: false });
   const sheetNames = workbook.SheetNames || [];
 
   if (sheetNames.length === 0) {
@@ -69,16 +170,17 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    // Convert sheet to array of arrays
+    // Convert sheet to array of rows
     const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     if (!rows || rows.length === 0) continue;
 
-    // Detect if sheet name itself indicates a section
-    let sheetDefaultSection = '';
+    // Default section from sheet name if informative
     const cleanSheetName = sheetName.trim();
-    if (sheetNames.length > 1 || /^(?:section|sec|batch|class|[a-z0-9]+-[0-9]+|[a-z0-9]+-[a-z])/i.test(cleanSheetName)) {
-      sheetDefaultSection = cleanSheetName;
-      sectionsFoundSet.add(sheetDefaultSection);
+    let sheetDefaultSection = cleanSheetName;
+    if (cleanSheetName && !/^(sheet\d+|total students\s*\d*)$/i.test(cleanSheetName)) {
+      sectionsFoundSet.add(cleanSheetName);
+    } else {
+      sheetDefaultSection = 'Default';
     }
 
     let currentSection = sheetDefaultSection;
@@ -88,129 +190,163 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
       const row = rows[rIdx];
       if (!Array.isArray(row)) continue;
 
-      // Filter non-empty cells
-      const nonEmpties = row.map(cell => cleanStringValue(cell)).filter(Boolean);
-      if (nonEmpties.length === 0) continue; // Skip blank rows
+      // Filter non-empty cell strings
+      const nonEmpties = row.map(cleanStringValue).filter(Boolean);
+      if (nonEmpties.length === 0) continue;
 
       totalRawRowsCount++;
 
-      // Check for inline section markers (e.g. cell containing "Section: A" or "Section - CSE-1")
-      if (nonEmpties.length <= 3) {
-        const firstCell = nonEmpties[0];
-        const match = firstCell.match(INLINE_SECTION_REGEX);
-        if (match && match[1]) {
-          currentSection = match[1].trim();
+      // 1. Check for title section marker in early non-empty cells
+      for (const cell of nonEmpties.slice(0, 3)) {
+        const detectedSec = detectSectionFromTitle(cell);
+        if (detectedSec) {
+          currentSection = detectedSec;
           sectionsFoundSet.add(currentSection);
-          // Reset colMap for new section table if needed
-          colMap = null;
-          continue;
+          colMap = null; // reset column map for new section table
+          break;
         }
       }
 
-      // Check if this row is a header row
-      let detectedAdmCol = -1;
-      let detectedNameCol = -1;
-      let detectedPhoneCol = -1;
-      let detectedSecCol = -1;
-      let detectedUserCol = -1;
-      let detectedPassCol = -1;
-
+      // 2. Check if this row is a header row
+      const tempMap = {};
       for (let c = 0; c < row.length; c++) {
-        const cell = cleanStringValue(row[c]).toLowerCase();
-        if (!cell) continue;
-
-        if (detectedAdmCol === -1 && ADMISSION_REGEX.test(cell)) detectedAdmCol = c;
-        else if (detectedNameCol === -1 && NAME_REGEX.test(cell)) detectedNameCol = c;
-        else if (detectedPhoneCol === -1 && PHONE_REGEX.test(cell)) detectedPhoneCol = c;
-        else if (detectedSecCol === -1 && SECTION_REGEX.test(cell)) detectedSecCol = c;
-        else if (detectedUserCol === -1 && USERNAME_REGEX.test(cell)) detectedUserCol = c;
-        else if (detectedPassCol === -1 && PASSWORD_REGEX.test(cell)) detectedPassCol = c;
+        const role = matchHeaderColumn(cleanStringValue(row[c]));
+        if (role && tempMap[role] === undefined) {
+          tempMap[role] = c;
+        }
       }
 
-      if (detectedAdmCol !== -1 || (detectedNameCol !== -1 && detectedPhoneCol !== -1)) {
+      // Prioritize explicit 'adm' column over 'roll' column
+      const effectiveAdmCol = tempMap.adm !== undefined ? tempMap.adm : tempMap.roll;
+
+      if (effectiveAdmCol !== undefined && (tempMap.name !== undefined || tempMap.phone !== undefined)) {
         colMap = {
-          adm: detectedAdmCol,
-          name: detectedNameCol,
-          phone: detectedPhoneCol,
-          section: detectedSecCol,
-          username: detectedUserCol,
-          password: detectedPassCol
+          adm: effectiveAdmCol,
+          name: tempMap.name !== undefined ? tempMap.name : -1,
+          phone: tempMap.phone !== undefined ? tempMap.phone : -1,
+          section: tempMap.section !== undefined ? tempMap.section : -1,
+          username: tempMap.username !== undefined ? tempMap.username : -1,
+          password: tempMap.password !== undefined ? tempMap.password : -1
         };
         continue; // Header row consumed
       }
 
-      // If no header found yet, skip decorative banner or title rows
+      // If no valid column mapping established yet, skip non-data banner rows
       if (!colMap) {
         continue;
       }
 
-      // Process student data row
-      const rawAdm = colMap.adm >= 0 ? row[colMap.adm] : '';
-      const rawName = colMap.name >= 0 ? row[colMap.name] : '';
-      const rawPhone = colMap.phone >= 0 ? row[colMap.phone] : '';
-      const rawSec = colMap.section >= 0 ? row[colMap.section] : '';
-      const rawUser = colMap.username >= 0 ? row[colMap.username] : '';
-      const rawPass = colMap.password >= 0 ? row[colMap.password] : '';
+      // Extract values according to mapped columns
+      let rawAdm = colMap.adm >= 0 ? cleanStringValue(row[colMap.adm]) : '';
+      let rawName = colMap.name >= 0 ? cleanStringValue(row[colMap.name]) : '';
+      let rawPhone = colMap.phone >= 0 ? cleanStringValue(row[colMap.phone]) : '';
+      let rawSec = colMap.section >= 0 ? cleanStringValue(row[colMap.section]) : '';
+      let rawUser = colMap.username >= 0 ? cleanStringValue(row[colMap.username]) : '';
+      let rawPass = colMap.password >= 0 ? cleanStringValue(row[colMap.password]) : '';
 
-      const admStr = cleanStringValue(rawAdm);
-      const nameStr = cleanStringValue(rawName);
-      const phoneStr = cleanStringValue(rawPhone);
-      const userStr = cleanStringValue(rawUser);
-      const passStr = cleanStringValue(rawPass);
-
-      // Determine section for this row
-      let recordSection = cleanStringValue(rawSec) || currentSection || sheetDefaultSection || 'Default';
-      sectionsFoundSet.add(recordSection);
-
-      // Skip repeated header rows in data
-      if (NAME_REGEX.test(nameStr.toLowerCase()) && ADMISSION_REGEX.test(admStr.toLowerCase())) {
+      // Skip repeated header rows
+      if (matchHeaderColumn(rawName) === 'name' || matchHeaderColumn(rawAdm) === 'adm') {
         continue;
       }
 
-      // Flag records missing admission number
-      if (!admStr) {
-        if (nameStr || phoneStr) {
+      // Skip footer or summary rows (e.g. Total, HOD, Signature, Date)
+      if (/^(total|hod|s\.?\s*no|faculty|subject|regular|lecture|attendance|sign)/i.test(rawName) ||
+          /^(total|hod|s\.?\s*no)/i.test(rawAdm)) {
+        continue;
+      }
+
+      // 3. Fallback Cell Scanner:
+      // If admission number is missing from mapped column, scan the row for admission number patterns
+      if (!rawAdm) {
+        for (const cell of row) {
+          const s = cleanStringValue(cell);
+          if (/^202\d[A-Z0-9]{5,}$/i.test(s) || /^(?:201|202|203)\d{7,14}$/.test(s)) {
+            rawAdm = s;
+            break;
+          }
+        }
+      }
+
+      // If phone number is missing from mapped column, scan row for 10-digit mobile number
+      if (!rawPhone) {
+        for (const cell of row) {
+          const s = cleanStringValue(cell);
+          if (/^[6-9]\d{9}$/.test(s)) {
+            rawPhone = s;
+            break;
+          }
+        }
+      }
+
+      // If student name is missing and admission number exists, scan row for alphabetic name
+      if (!rawName && rawAdm) {
+        for (const cell of row) {
+          const s = cleanStringValue(cell);
+          if (s !== rawAdm && s !== rawPhone &&
+              /^[a-zA-Z\s.]{3,50}$/.test(s) &&
+              !/^(total|hod|s\.?\s*no|branch|sec|regular|group|absent|present)/i.test(s)) {
+            rawName = s;
+            break;
+          }
+        }
+      }
+
+      // Determine final section
+      let recordSection = rawSec;
+      // If rawSec is a group identifier like "G1" or "A1", or empty, prefer currentSection/sheetDefaultSection
+      if (!recordSection || /^[a-z]\d+$/i.test(recordSection)) {
+        recordSection = currentSection || sheetDefaultSection || 'Default';
+      }
+      sectionsFoundSet.add(recordSection);
+
+      // Handle records completely missing admission numbers
+      if (!rawAdm) {
+        if (rawName || rawPhone) {
           missingAdmissionRecords.push({
             sheet: sheetName,
             row: rIdx + 1,
-            name: nameStr,
-            phone_number: phoneStr,
+            name: rawName,
+            phone_number: rawPhone,
             section: recordSection,
             reason: 'Missing admission number'
           });
-          warnings.push(`Row ${rIdx + 1} in sheet '${sheetName}' skipped: student '${nameStr || 'Unknown'}' is missing an admission number.`);
+          if (warnings.length < 50) {
+            warnings.push(`Row ${rIdx + 1} in sheet '${sheetName}' skipped: student '${rawName || 'Unknown'}' is missing an admission number.`);
+          }
         }
         continue;
       }
 
-      // Check duplicates within the file
-      if (seenAdmissionNumbers.has(admStr)) {
-        const previous = seenAdmissionNumbers.get(admStr);
+      // Duplicate detection within the file
+      if (seenAdmissionNumbers.has(rawAdm)) {
+        const previous = seenAdmissionNumbers.get(rawAdm);
         duplicateWithinFile.push({
-          admission_number: admStr,
-          name: nameStr,
+          admission_number: rawAdm,
+          name: rawName,
           section: recordSection,
           sheet: sheetName,
           row: rIdx + 1,
           previousSheet: previous.sheet,
           previousRow: previous.row
         });
-        warnings.push(`Duplicate admission number '${admStr}' detected in file at sheet '${sheetName}', row ${rIdx + 1} (first seen on row ${previous.row}).`);
+        if (warnings.length < 50) {
+          warnings.push(`Duplicate admission number '${rawAdm}' detected in file at sheet '${sheetName}', row ${rIdx + 1} (first seen on row ${previous.row}).`);
+        }
       } else {
-        seenAdmissionNumbers.set(admStr, {
+        seenAdmissionNumbers.set(rawAdm, {
           row: rIdx + 1,
           sheet: sheetName,
-          name: nameStr
+          name: rawName
         });
       }
 
       validRecords.push({
-        name: nameStr || 'STUDENT',
-        admission_number: admStr,
-        phone_number: phoneStr,
+        name: rawName || 'STUDENT',
+        admission_number: rawAdm,
+        phone_number: rawPhone,
         section: recordSection,
-        username: userStr,
-        password: passStr
+        username: rawUser,
+        password: rawPass
       });
     }
   }
@@ -225,7 +361,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
     missingAdmissionRecords,
     duplicateWithinFile,
     warnings,
-    sample: validRecords.slice(0, 20)
+    sample: validRecords.slice(0, 25)
   };
 }
 
@@ -237,7 +373,7 @@ class ExcelImportService {
   }
 
   /**
-   * Parses an Excel buffer.
+   * Parses an Excel buffer or base64 data.
    */
   parseExcelBuffer(buffer, filename) {
     return parseExcelBuffer(buffer, filename);
@@ -299,5 +435,7 @@ module.exports = {
   ExcelImportService,
   defaultExcelImportService,
   parseExcelBuffer,
-  cleanStringValue
+  cleanStringValue,
+  matchHeaderColumn,
+  detectSectionFromTitle
 };

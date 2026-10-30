@@ -917,6 +917,214 @@
     }
   }
 
+  /**
+   * Universal client-side Excel parsing matching backend intelligence
+   */
+  function parseWorkbookClient(arrayBuffer, filename) {
+    if (typeof XLSX === 'undefined') return null;
+
+    try {
+      const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, raw: false });
+      const sheetNames = wb.SheetNames || [];
+      if (sheetNames.length === 0) return null;
+
+      const validRecords = [];
+      const missingAdmissionRecords = [];
+      const duplicateWithinFile = [];
+      const warnings = [];
+      const sectionsFoundSet = new Set();
+      const seenAdm = new Map();
+      let totalRawRowsCount = 0;
+
+      const cleanVal = (val) => {
+        if (val === null || val === undefined) return '';
+        let str = String(val).trim();
+        if (/^\d+\.0+$/.test(str)) str = str.replace(/\.0+$/, '');
+        return str;
+      };
+
+      const matchCol = (headerCell) => {
+        if (!headerCell || typeof headerCell !== 'string') return null;
+        const h = headerCell.toLowerCase().replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').replace(/[.:\-_]+$/, '').trim();
+        if (!h) return null;
+        if (/(?:^|\b)(?:admission|adm)(?:\s*(?:no|num|number))?(?:$|\b)/i.test(h) || /^(?:admission_no|adm_no|admission_number|enrollment(?:\s*(?:no|num|number))?)$/i.test(h)) return 'adm';
+        if (/(?:student\s*name|candidate\s*name|name\s*student|name\s*of\s*student|full\s*name|^name$)/i.test(h)) return 'name';
+        if (/(?:student\s*mob|student\s*mobile|mob\s*no|mobile\s*no|^mob$|mobile|phone|contact|cell|whatsapp)/i.test(h)) return 'phone';
+        if (/^(?:sec|sec\.|section|branch|class|batch)$/i.test(h)) return 'section';
+        if (/(?:roll\s*(?:no|num|number)|student\s*id|registration)/i.test(h) || /^(?:roll_no|reg_no)$/i.test(h)) return 'roll';
+        if (/^(?:user\s*name|username|login\s*id|user\s*id|user)$/i.test(h)) return 'username';
+        if (/^(?:password|pwd|pass)$/i.test(h)) return 'password';
+        return null;
+      };
+
+      const detectSec = (cellText) => {
+        if (!cellText || typeof cellText !== 'string') return null;
+        const text = cellText.replace(/\s+/g, ' ').trim();
+        const branchMatch = text.match(/(?:branch\s*&\s*section|branch|section)\s*[:\-]?\s*(?:b\.?tech\.?)?\s*(?:\([^)]*\))?\s*([a-z0-9\-_ ]+)/i);
+        if (branchMatch && branchMatch[1]) {
+          const s = branchMatch[1].trim().replace(/\s*-\s*/g, '-');
+          if (s.length >= 2 && !/^(name|faculty|date|total|sheet|session)/i.test(s)) return s;
+        }
+        const secMatch = text.match(/^\s*(?:section|sec|class|batch)\s*[:\-]?\s*([a-z0-9\-_ ]+)/i);
+        if (secMatch && secMatch[1]) return secMatch[1].trim().replace(/\s*-\s*/g, '-');
+        return null;
+      };
+
+      for (const sName of sheetNames) {
+        const sheet = wb.Sheets[sName];
+        if (!sheet) continue;
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        if (!rows || rows.length === 0) continue;
+
+        const cleanSheetName = sName.trim();
+        let sheetDefaultSec = cleanSheetName;
+        if (cleanSheetName && !/^(sheet\d+|total students\s*\d*)$/i.test(cleanSheetName)) {
+          sectionsFoundSet.add(cleanSheetName);
+        } else {
+          sheetDefaultSec = 'Default';
+        }
+
+        let currentSec = sheetDefaultSec;
+        let colMap = null;
+
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          const row = rows[rIdx];
+          if (!Array.isArray(row)) continue;
+          const nonEmpties = row.map(cleanVal).filter(Boolean);
+          if (nonEmpties.length === 0) continue;
+
+          totalRawRowsCount++;
+
+          for (const cell of nonEmpties.slice(0, 3)) {
+            const dSec = detectSec(cell);
+            if (dSec) {
+              currentSec = dSec;
+              sectionsFoundSet.add(currentSec);
+              colMap = null;
+              break;
+            }
+          }
+
+          const tempMap = {};
+          for (let c = 0; c < row.length; c++) {
+            const role = matchCol(cleanVal(row[c]));
+            if (role && tempMap[role] === undefined) tempMap[role] = c;
+          }
+
+          const effAdm = tempMap.adm !== undefined ? tempMap.adm : tempMap.roll;
+          if (effAdm !== undefined && (tempMap.name !== undefined || tempMap.phone !== undefined)) {
+            colMap = {
+              adm: effAdm,
+              name: tempMap.name !== undefined ? tempMap.name : -1,
+              phone: tempMap.phone !== undefined ? tempMap.phone : -1,
+              section: tempMap.section !== undefined ? tempMap.section : -1,
+              username: tempMap.username !== undefined ? tempMap.username : -1,
+              password: tempMap.password !== undefined ? tempMap.password : -1
+            };
+            continue;
+          }
+
+          if (!colMap) continue;
+
+          let rawAdm = colMap.adm >= 0 ? cleanVal(row[colMap.adm]) : '';
+          let rawName = colMap.name >= 0 ? cleanVal(row[colMap.name]) : '';
+          let rawPhone = colMap.phone >= 0 ? cleanVal(row[colMap.phone]) : '';
+          let rawSec = colMap.section >= 0 ? cleanVal(row[colMap.section]) : '';
+          let rawUser = colMap.username >= 0 ? cleanVal(row[colMap.username]) : '';
+          let rawPass = colMap.password >= 0 ? cleanVal(row[colMap.password]) : '';
+
+          if (matchCol(rawName) === 'name' || matchCol(rawAdm) === 'adm') continue;
+          if (/^(total|hod|s\.?\s*no|faculty|subject|regular|lecture|attendance|sign)/i.test(rawName) || /^(total|hod|s\.?\s*no)/i.test(rawAdm)) continue;
+
+          if (!rawAdm) {
+            for (const cell of row) {
+              const s = cleanVal(cell);
+              if (/^202\d[A-Z0-9]{5,}$/i.test(s) || /^(?:201|202|203)\d{7,14}$/.test(s)) {
+                rawAdm = s;
+                break;
+              }
+            }
+          }
+
+          if (!rawPhone) {
+            for (const cell of row) {
+              const s = cleanVal(cell);
+              if (/^[6-9]\d{9}$/.test(s)) {
+                rawPhone = s;
+                break;
+              }
+            }
+          }
+
+          if (!rawName && rawAdm) {
+            for (const cell of row) {
+              const s = cleanVal(cell);
+              if (s !== rawAdm && s !== rawPhone && /^[a-zA-Z\s.]{3,50}$/.test(s) && !/^(total|hod|s\.?\s*no|branch|sec|regular|group|absent|present)/i.test(s)) {
+                rawName = s;
+                break;
+              }
+            }
+          }
+
+          let recSec = rawSec;
+          if (!recSec || /^[a-z]\d+$/i.test(recSec)) {
+            recSec = currentSec || sheetDefaultSec || 'Default';
+          }
+          sectionsFoundSet.add(recSec);
+
+          if (!rawAdm) {
+            if (rawName || rawPhone) {
+              missingAdmissionRecords.push({
+                sheet: sName,
+                row: rIdx + 1,
+                name: rawName,
+                phone_number: rawPhone,
+                section: recSec
+              });
+            }
+            continue;
+          }
+
+          if (seenAdm.has(rawAdm)) {
+            const prev = seenAdm.get(rawAdm);
+            duplicateWithinFile.push({
+              admission_number: rawAdm,
+              name: rawName,
+              section: recSec,
+              row: rIdx + 1,
+              prevRow: prev.row
+            });
+          } else {
+            seenAdm.set(rawAdm, { row: rIdx + 1, sheet: sName, name: rawName });
+          }
+
+          validRecords.push({
+            name: rawName || 'STUDENT',
+            admission_number: rawAdm,
+            phone_number: rawPhone,
+            section: recSec,
+            username: rawUser,
+            password: rawPass
+          });
+        }
+      }
+
+      return {
+        filename,
+        sectionsFound: Array.from(sectionsFoundSet).filter(Boolean),
+        totalRecords: totalRawRowsCount,
+        validRecords,
+        missingAdmissionRecords,
+        duplicateWithinFile,
+        warnings,
+        sample: validRecords.slice(0, 25)
+      };
+    } catch (e) {
+      console.warn('Client workbook parsing notice:', e.message);
+      return null;
+    }
+  }
+
   async function processSelectedExcelFile(file) {
     const validExtensions = ['.xlsx', '.xlxs', '.xls', '.xlsm', '.xlsb', '.csv'];
     const fileName = (file.name || '').toLowerCase();
@@ -929,44 +1137,119 @@
       return;
     }
 
-    setUploadProgress(25, 'Reading workbook & extracting sections...');
+    setUploadProgress(20, 'Reading file contents...');
 
-    const formData = new FormData();
-    formData.append('file', file);
+    // 1. Read file as ArrayBuffer & Base64
+    let arrayBuffer = null;
+    let base64String = null;
+    try {
+      arrayBuffer = await file.arrayBuffer();
+      const reader = new FileReader();
+      base64String = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    } catch (readErr) {
+      console.warn('FileReader error:', readErr);
+    }
 
+    // 2. Perform instant client-side parsing if SheetJS is available
+    let clientParsed = null;
+    if (arrayBuffer) {
+      setUploadProgress(40, 'Parsing student records across all sections...');
+      clientParsed = parseWorkbookClient(arrayBuffer, file.name);
+    }
+
+    if (clientParsed && clientParsed.validRecords.length > 0) {
+      // Store local parsed records immediately so UI is responsive and preview is ready!
+      state.pendingUpload = {
+        fileName: file.name,
+        previewToken: null,
+        records: clientParsed.validRecords,
+        summary: {
+          filename: file.name,
+          sectionsFound: clientParsed.sectionsFound,
+          totalRecords: clientParsed.totalRecords,
+          validRecordsCount: clientParsed.validRecords.length,
+          missingAdmissionCount: clientParsed.missingAdmissionRecords.length,
+          duplicateWithinFileCount: clientParsed.duplicateWithinFile.length,
+          warnings: clientParsed.warnings
+        },
+        sample: clientParsed.sample,
+        ...clientParsed
+      };
+      renderImportPreview(state.pendingUpload, file.name);
+    }
+
+    // 3. Send to server for server preview verification and previewToken issuance
+    setUploadProgress(70, 'Syncing with server...');
     const token = localStorage.getItem('admin_token');
 
     try {
-      setUploadProgress(50, 'Uploading to server for multi-section parsing...');
-      const response = await fetch('/api/admin/upload-preview', {
-        method: 'POST',
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: formData
-      });
+      let response;
+      if (base64String) {
+        // Send as clean Base64 JSON payload (no multipart timeouts or Vercel socket drops!)
+        response = await fetch('/api/admin/upload-preview', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            fileBase64: base64String,
+            records: clientParsed ? clientParsed.validRecords : undefined
+          })
+        });
+      } else {
+        // Fallback to FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        response = await fetch('/api/admin/upload-preview', {
+          method: 'POST',
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: formData
+        });
+      }
 
-      setUploadProgress(100, 'Parsing complete.');
+      setUploadProgress(100, 'Processing complete.');
       setTimeout(() => setUploadProgress(0), 400);
 
       const resData = await response.json();
 
       if (response.ok && resData.success) {
-        state.pendingUpload = {
-          previewToken: resData.previewToken,
-          fileName: file.name,
-          ...resData
-        };
-        renderImportPreview(resData, file.name);
+        if (!state.pendingUpload || !state.pendingUpload.records || state.pendingUpload.records.length === 0) {
+          state.pendingUpload = {
+            fileName: file.name,
+            previewToken: resData.previewToken,
+            records: clientParsed ? clientParsed.validRecords : undefined,
+            ...resData
+          };
+          renderImportPreview(resData, file.name);
+        } else {
+          state.pendingUpload.previewToken = resData.previewToken;
+        }
       } else {
-        const errorMsg = (resData && (resData.error?.message || resData.message)) || 'Failed to parse Excel workbook.';
-        showToast(errorMsg, 'error');
-        resetImportPreview();
+        // If server had a non-critical warning but client parsed successfully, keep client preview
+        if (!state.pendingUpload || !state.pendingUpload.records || state.pendingUpload.records.length === 0) {
+          const errorMsg = (resData && (resData.error?.message || resData.message)) || 'Failed to parse Excel workbook.';
+          showToast(errorMsg, 'error');
+          resetImportPreview();
+        }
       }
     } catch (err) {
       setUploadProgress(0);
-      showToast(`Upload failed: ${err.message}`, 'error');
-      resetImportPreview();
+      // If client already parsed and rendered preview, network failure on preview is non-fatal!
+      if (state.pendingUpload && state.pendingUpload.records && state.pendingUpload.records.length > 0) {
+        console.warn('Server preview network notice, retaining client-parsed preview:', err.message);
+      } else {
+        showToast(`Upload failed: ${err.message}`, 'error');
+        resetImportPreview();
+      }
     }
   }
 
@@ -1055,7 +1338,7 @@
   }
 
   async function handleConfirmImport() {
-    if (!state.pendingUpload || !state.pendingUpload.previewToken) {
+    if (!state.pendingUpload || (!state.pendingUpload.previewToken && (!state.pendingUpload.records || state.pendingUpload.records.length === 0))) {
       showToast('No pending import found. Please select an Excel file first.', 'warning');
       return;
     }
@@ -1067,7 +1350,8 @@
     }
 
     const payload = {
-      previewToken: state.pendingUpload.previewToken
+      previewToken: state.pendingUpload.previewToken,
+      records: state.pendingUpload.records // Stateless resilience across serverless lambdas!
     };
 
     const res = await apiFetch('/api/admin/upload-confirm', {
@@ -1081,10 +1365,10 @@
     }
 
     if (res && res.ok && res.data) {
-      const summary = res.data.summary || {};
+      const summary = res.data.result || res.data.summary || {};
       displayImportSummary(summary);
       resetImportPreview();
-      showToast('Excel workbook successfully imported into Neon PostgreSQL database.', 'success');
+      showToast(res.data.message || 'Excel workbook successfully imported into Neon PostgreSQL database.', 'success');
       loadStudents();
       loadDashboardStats();
     } else {

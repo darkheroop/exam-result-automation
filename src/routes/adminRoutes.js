@@ -358,10 +358,62 @@ router.delete('/students/:id', requireAdminAuth, async (req, res, next) => {
 /**
  * POST /api/admin/upload-preview
  * Parses uploaded Excel workbook without committing, creates a previewToken.
+ * Accepts multipart/form-data, JSON Base64 ({ filename, fileBase64 }), or pre-parsed records.
  */
 router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, next) => {
   try {
-    if (!req.file || !req.file.buffer) {
+    let buffer = null;
+    let originalname = 'upload.xlsx';
+
+    // 1. Check if multipart file uploaded
+    if (req.file && req.file.buffer) {
+      buffer = req.file.buffer;
+      originalname = req.file.originalname || 'upload.xlsx';
+    } else if (req.body && req.body.fileBase64) {
+      // 2. Check if sent as Base64 JSON payload
+      originalname = req.body.filename || req.body.fileName || 'upload.xlsx';
+      let b64 = req.body.fileBase64;
+      if (typeof b64 === 'string' && b64.startsWith('data:')) {
+        b64 = b64.slice(b64.indexOf(',') + 1);
+      }
+      buffer = Buffer.from(b64, 'base64');
+    } else if (req.body && Array.isArray(req.body.records) && req.body.records.length > 0) {
+      // 3. Check if sent as pre-parsed client records
+      const records = req.body.records;
+      const filename = req.body.filename || req.body.fileName || 'client_parsed.xlsx';
+      const sectionsSet = new Set();
+      for (const r of records) {
+        if (r.section) sectionsSet.add(r.section);
+      }
+      const previewToken = defaultExcelImportService.storePreview({
+        filename,
+        sectionsFound: Array.from(sectionsSet),
+        totalRecords: records.length,
+        validRecords: records,
+        missingAdmissionRecords: [],
+        duplicateWithinFile: [],
+        warnings: [],
+        sample: records.slice(0, 25)
+      });
+      return res.json({
+        success: true,
+        previewToken,
+        summary: {
+          filename,
+          sectionsFound: Array.from(sectionsSet),
+          totalRecords: records.length,
+          validRecordsCount: records.length,
+          missingAdmissionCount: 0,
+          duplicateWithinFileCount: 0,
+          warnings: []
+        },
+        sample: records.slice(0, 25),
+        missingAdmissionRecords: [],
+        duplicatesWithinFile: []
+      });
+    }
+
+    if (!buffer) {
       return res.status(400).json({
         success: false,
         error: {
@@ -372,8 +424,8 @@ router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, 
     }
 
     const parsedResult = defaultExcelImportService.parseExcelBuffer(
-      req.file.buffer,
-      req.file.originalname || 'upload.xlsx'
+      buffer,
+      originalname
     );
 
     const previewToken = defaultExcelImportService.storePreview(parsedResult);
@@ -401,23 +453,30 @@ router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, 
 
 /**
  * POST /api/admin/upload-confirm
- * Commits the parsed records from previewToken into the database.
+ * Commits the parsed records into the database.
+ * Supports previewToken with stateless fallback to direct records payload for serverless resilience.
  */
 router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
   try {
-    const { previewToken } = req.body || {};
-    if (!previewToken) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          message: 'previewToken is required to confirm import',
-          code: 'MISSING_PARAM'
-        }
-      });
+    const { previewToken, records } = req.body || {};
+
+    let recordsToImport = null;
+
+    // Check previewToken cache first
+    if (previewToken) {
+      const preview = defaultExcelImportService.getPreview(previewToken);
+      if (preview && Array.isArray(preview.validRecords)) {
+        recordsToImport = preview.validRecords;
+        defaultExcelImportService.clearPreview(previewToken);
+      }
     }
 
-    const preview = defaultExcelImportService.getPreview(previewToken);
-    if (!preview) {
+    // Serverless-resilient fallback: if token was not in memory or container restarted, use client records payload
+    if (!recordsToImport && Array.isArray(records) && records.length > 0) {
+      recordsToImport = records;
+    }
+
+    if (!recordsToImport || recordsToImport.length === 0) {
       return res.status(410).json({
         success: false,
         error: {
@@ -427,8 +486,7 @@ router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
       });
     }
 
-    const importResult = await defaultAdminDbService.batchUpsertStudents(preview.validRecords);
-    defaultExcelImportService.clearPreview(previewToken);
+    const importResult = await defaultAdminDbService.batchUpsertStudents(recordsToImport);
 
     return res.json({
       success: true,

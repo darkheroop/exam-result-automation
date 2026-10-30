@@ -490,6 +490,8 @@ class AdminDbService {
 
   /**
    * Batch upserts a list of student objects.
+   * Uses high-performance chunked multi-row queries when Neon is active to prevent timeouts,
+   * with automatic fallback.
    * Returns { added, updated, duplicates, skipped, errors, total }.
    */
   async batchUpsertStudents(studentsList = []) {
@@ -502,13 +504,95 @@ class AdminDbService {
       total: studentsList.length
     };
 
+    const validItems = [];
     for (let i = 0; i < studentsList.length; i++) {
       const item = studentsList[i];
       if (!item || !item.admission_number || !String(item.admission_number).trim()) {
         summary.skipped++;
         continue;
       }
+      validItems.push({
+        index: i,
+        name: String(item.name || 'STUDENT').trim(),
+        admission_number: String(item.admission_number).trim(),
+        phone_number: String(item.phone_number || '').trim(),
+        section: String(item.section || '').trim(),
+        username: String(item.username || '').trim(),
+        password: String(item.password || '').trim()
+      });
+    }
 
+    if (this.sql && validItems.length > 0) {
+      try {
+        await this.ensureSchema();
+
+        const CHUNK_SIZE = 100;
+        for (let c = 0; c < validItems.length; c += CHUNK_SIZE) {
+          const chunk = validItems.slice(c, c + CHUNK_SIZE);
+          const valueClauses = [];
+          const params = [];
+          let pIdx = 1;
+
+          for (const s of chunk) {
+            valueClauses.push(`($${pIdx}, $${pIdx + 1}, $${pIdx + 2}, $${pIdx + 3}, $${pIdx + 4}, $${pIdx + 5}, NOW())`);
+            params.push(s.name, s.admission_number, s.phone_number, s.section, s.username, s.password);
+            pIdx += 6;
+          }
+
+          const query = `
+            INSERT INTO managed_students (name, admission_number, phone_number, section, username, password, updated_at)
+            VALUES ${valueClauses.join(', ')}
+            ON CONFLICT (admission_number) DO UPDATE SET
+              name = EXCLUDED.name,
+              phone_number = CASE WHEN EXCLUDED.phone_number <> '' THEN EXCLUDED.phone_number ELSE managed_students.phone_number END,
+              section = CASE WHEN EXCLUDED.section <> '' THEN EXCLUDED.section ELSE managed_students.section END,
+              username = CASE WHEN EXCLUDED.username <> '' THEN EXCLUDED.username ELSE managed_students.username END,
+              password = CASE WHEN EXCLUDED.password <> '' THEN EXCLUDED.password ELSE managed_students.password END,
+              updated_at = NOW()
+            RETURNING (xmax = 0) AS inserted, admission_number;
+          `;
+
+          try {
+            const returnedRows = await this.sql.query(query, params);
+            for (const r of returnedRows) {
+              if (r.inserted) {
+                summary.added++;
+              } else {
+                summary.updated++;
+                summary.duplicates++;
+              }
+            }
+          } catch (chunkErr) {
+            // Fallback for this chunk item-by-item
+            console.warn('[Admin DB] Batch chunk upsert encountered error, falling back to item-by-item:', chunkErr.message);
+            for (const s of chunk) {
+              try {
+                const res = await this.upsertStudent(s);
+                if (res.isUpdate) {
+                  summary.updated++;
+                  summary.duplicates++;
+                } else {
+                  summary.added++;
+                }
+              } catch (singleErr) {
+                summary.errors.push({
+                  row: s.index + 1,
+                  admission_number: s.admission_number,
+                  message: singleErr.message
+                });
+              }
+            }
+          }
+        }
+
+        return summary;
+      } catch (err) {
+        console.warn('[Admin DB] batchUpsertStudents fatal error, using memory fallback:', err.message);
+      }
+    }
+
+    // Memory Store processing
+    for (const item of validItems) {
       try {
         const result = await this.upsertStudent(item);
         if (result.isUpdate) {
@@ -519,7 +603,7 @@ class AdminDbService {
         }
       } catch (err) {
         summary.errors.push({
-          row: i + 1,
+          row: item.index + 1,
           admission_number: item.admission_number,
           message: err.message
         });

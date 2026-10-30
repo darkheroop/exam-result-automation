@@ -332,3 +332,90 @@ test('Admin API - Excel Upload accepts .xlxs extension variation', async () => {
     server.close();
   }
 });
+
+test('Admin API - Excel Upload accepts JSON Base64 payload', async () => {
+  const { server, url } = await startTestServer();
+  try {
+    const loginRes = await requestJson(`${url}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, { username: 'inexpert_trifler', password: 'om sai 0987654321' });
+    const token = loginRes.data.token;
+
+    const wb = xlsx.utils.book_new();
+    const wsData = [
+      ['Student Name', 'Admission No', 'Student Mob.'],
+      ['B64 Student', '2025B64001', '9899123456']
+    ];
+    const ws = xlsx.utils.aoa_to_sheet(wsData);
+    xlsx.utils.book_append_sheet(wb, ws, 'CSE-11');
+    const base64Data = xlsx.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+    const previewRes = await requestJson(`${url}/api/admin/upload-preview`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }, {
+      filename: 'base64_upload.xlsx',
+      fileBase64: `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64Data}`
+    });
+
+    assert.equal(previewRes.statusCode, 200);
+    assert.equal(previewRes.data.success, true);
+    assert.ok(previewRes.data.previewToken);
+    assert.equal(previewRes.data.summary.validRecordsCount, 1);
+    assert.equal(previewRes.data.sample[0].name, 'B64 Student');
+    assert.equal(previewRes.data.sample[0].admission_number, '2025B64001');
+    assert.equal(previewRes.data.sample[0].phone_number, '9899123456');
+  } finally {
+    server.close();
+  }
+});
+
+test('Admin API - Excel Upload supports stateless confirm with direct records payload', async () => {
+  const { server, url } = await startTestServer();
+  try {
+    const loginRes = await requestJson(`${url}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, { username: 'inexpert_trifler', password: 'om sai 0987654321' });
+    const token = loginRes.data.token;
+
+    // Direct confirmation without prior preview in memory (simulating new serverless container)
+    const directRecords = [
+      {
+        name: 'Stateless Student',
+        admission_number: '2025STATELESS01',
+        phone_number: '9877778888',
+        section: 'CSE-12'
+      }
+    ];
+
+    const confirmRes = await requestJson(`${url}/api/admin/upload-confirm`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }, {
+      previewToken: 'expired-or-nonexistent-token',
+      records: directRecords
+    });
+
+    assert.equal(confirmRes.statusCode, 200);
+    assert.equal(confirmRes.data.success, true);
+    assert.equal(confirmRes.data.result.added, 1);
+
+    // Verify record in database/memory
+    const getRes = await requestJson(`${url}/api/admin/students?search=2025STATELESS01`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    assert.equal(getRes.statusCode, 200);
+    assert.equal(getRes.data.students.length, 1);
+    assert.equal(getRes.data.students[0].name, 'Stateless Student');
+  } finally {
+    server.close();
+  }
+});
