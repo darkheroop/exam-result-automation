@@ -593,4 +593,217 @@ router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
   }
 });
 
+// =========================================================================
+// Exception Management Routes (Protected by requireAdminAuth)
+// =========================================================================
+
+/**
+ * GET /api/admin/exceptions
+ * List all configured student exceptions with pagination and search.
+ */
+router.get('/exceptions', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50, search = '' } = req.query;
+    const result = await defaultAdminDbService.listExceptions({
+      page: parseInt(page, 10) || 1,
+      limit: parseInt(limit, 10) || 50,
+      search: String(search || '')
+    });
+    return res.json({
+      success: true,
+      data: result.exceptions,
+      exceptions: result.exceptions,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/admin/exceptions/:id
+ * Retrieve a single exception record by ID.
+ */
+router.get('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const exception = await defaultAdminDbService.getExceptionById(id);
+    if (!exception) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Exception record not found.',
+          code: 'EXCEPTION_NOT_FOUND'
+        }
+      });
+    }
+    return res.json({
+      success: true,
+      data: exception,
+      exception
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * POST /api/admin/exceptions
+ * Create a new exception record.
+ */
+router.post('/exceptions', requireAdminAuth, async (req, res, next) => {
+  try {
+    const studentNumber = String(req.body?.student_number || req.body?.studentNumber || '').trim();
+    const customMessage = String(req.body?.custom_message || req.body?.customMessage || '').trim();
+
+    if (!studentNumber) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Student number is required.',
+          code: 'MISSING_STUDENT_NUMBER'
+        }
+      });
+    }
+
+    if (!customMessage) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Custom message is required.',
+          code: 'MISSING_CUSTOM_MESSAGE'
+        }
+      });
+    }
+
+    try {
+      const created = await defaultAdminDbService.createException({
+        student_number: studentNumber,
+        custom_message: customMessage
+      });
+      return res.status(201).json({
+        success: true,
+        message: 'Exception rule created successfully.',
+        data: created,
+        exception: created
+      });
+    } catch (createErr) {
+      if (createErr.code === 'DUPLICATE_EXCEPTION' || createErr.message?.includes('already exists') || createErr.code === '23505') {
+        return res.status(409).json({
+          success: false,
+          error: {
+            message: 'An exception for this student number already exists. Please edit the existing exception instead.',
+            code: 'DUPLICATE_EXCEPTION'
+          }
+        });
+      }
+      throw createErr;
+    }
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * PUT /api/admin/exceptions/:id
+ * Update an existing exception record.
+ */
+router.put('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const studentNumber = (req.body?.student_number !== undefined || req.body?.studentNumber !== undefined)
+      ? String(req.body?.student_number || req.body?.studentNumber || '').trim()
+      : undefined;
+    const customMessage = (req.body?.custom_message !== undefined || req.body?.customMessage !== undefined)
+      ? String(req.body?.custom_message || req.body?.customMessage || '').trim()
+      : undefined;
+
+    if (studentNumber === '') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Student number cannot be empty.',
+          code: 'INVALID_STUDENT_NUMBER'
+        }
+      });
+    }
+
+    if (customMessage === '') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Custom message cannot be empty.',
+          code: 'INVALID_CUSTOM_MESSAGE'
+        }
+      });
+    }
+
+    try {
+      const updated = await defaultAdminDbService.updateException(id, {
+        student_number: studentNumber,
+        custom_message: customMessage
+      });
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'Exception record not found.',
+            code: 'EXCEPTION_NOT_FOUND'
+          }
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Exception rule updated successfully.',
+        data: updated,
+        exception: updated
+      });
+    } catch (updErr) {
+      if (updErr.code === 'DUPLICATE_EXCEPTION' || updErr.message?.includes('already exists') || updErr.code === '23505') {
+        return res.status(409).json({
+          success: false,
+          error: {
+            message: 'Another exception rule already exists for this student number.',
+            code: 'DUPLICATE_EXCEPTION'
+          }
+        });
+      }
+      throw updErr;
+    }
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * DELETE /api/admin/exceptions/:id
+ * Delete an exception record.
+ */
+router.delete('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await defaultAdminDbService.deleteException(id);
+    if (!result || !result.deleted) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Exception record not found.',
+          code: 'EXCEPTION_NOT_FOUND'
+        }
+      });
+    }
+    return res.json({
+      success: true,
+      message: 'Exception rule removed successfully.'
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

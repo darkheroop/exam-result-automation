@@ -22,8 +22,10 @@ class AdminDbService {
     this.memoryStudents = new Map(); // key: admission_number, value: student object
     this.memoryAdminSessions = new Map(); // key: token, value: session object
     this.memorySearchLogs = []; // array of log objects
+    this.memoryExceptions = new Map(); // key: student_number (TEXT), value: exception object
     this.nextStudentId = 1;
     this.nextSearchLogId = 1;
+    this.nextExceptionId = 1;
 
     this.getSql();
   }
@@ -199,6 +201,26 @@ class AdminDbService {
           await sql`CREATE INDEX IF NOT EXISTS idx_search_logs_adm ON search_logs(admission_number);`;
         } catch (logErr) {
           console.warn('[Admin DB] search_logs schema check notice:', logErr.message);
+        }
+
+        // 4. student_exceptions table & indexes (and view/alias)
+        try {
+          await sql`
+            CREATE TABLE IF NOT EXISTS student_exceptions (
+              id BIGSERIAL PRIMARY KEY,
+              student_number TEXT UNIQUE NOT NULL,
+              custom_message TEXT NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `;
+          await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_exceptions_number ON student_exceptions(student_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_student_exceptions_created ON student_exceptions(created_at DESC);`;
+          try {
+            await sql`CREATE OR REPLACE VIEW exceptions AS SELECT * FROM student_exceptions;`;
+          } catch (_) {}
+        } catch (excErr) {
+          console.warn('[Admin DB] student_exceptions schema check notice:', excErr.message);
         }
 
         this.schemaInitialized = true;
@@ -1825,6 +1847,356 @@ class AdminDbService {
       apiErrors,
       studentsNotFound,
       searchesToday
+    };
+  }
+
+  // =========================================================================
+  // Exception Management (Blocking & Custom Responses)
+  // =========================================================================
+
+  /**
+   * Retrieves an exception by student number (e.g. 10-digit phone number or identifier).
+   * Exact match, preserves leading zeros as text.
+   * @param {string} studentNumber
+   * @returns {Promise<Object|null>}
+   */
+  async getExceptionByStudentNumber(studentNumber) {
+    const cleanNumber = String(studentNumber || '').trim();
+    if (!cleanNumber) return null;
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          SELECT * FROM student_exceptions
+          WHERE student_number = ${cleanNumber}
+          LIMIT 1;
+        `;
+        if (rows && rows.length > 0) {
+          return this._formatException(rows[0]);
+        }
+        return null;
+      } catch (err) {
+        console.warn('[Admin DB] Neon getExceptionByStudentNumber fallback to memory:', err.message);
+      }
+    }
+
+    const exc = this.memoryExceptions.get(cleanNumber);
+    return exc ? this._formatException(exc) : null;
+  }
+
+  /**
+   * Lists all exceptions with optional search and pagination.
+   * @param {Object} options
+   * @returns {Promise<{exceptions: Array, total: number, page: number, limit: number, totalPages: number}>}
+   */
+  async listExceptions({ page = 1, limit = 50, search = '' } = {}) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    const cleanSearch = String(search || '').trim();
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        let rows;
+        let countRes;
+        if (cleanSearch) {
+          const searchPattern = `%${cleanSearch}%`;
+          rows = await sql`
+            SELECT * FROM student_exceptions
+            WHERE student_number ILIKE ${searchPattern}
+               OR custom_message ILIKE ${searchPattern}
+            ORDER BY id DESC
+            LIMIT ${limitNum} OFFSET ${offset};
+          `;
+          countRes = await sql`
+            SELECT COUNT(*)::int AS total FROM student_exceptions
+            WHERE student_number ILIKE ${searchPattern}
+               OR custom_message ILIKE ${searchPattern};
+          `;
+        } else {
+          rows = await sql`
+            SELECT * FROM student_exceptions
+            ORDER BY id DESC
+            LIMIT ${limitNum} OFFSET ${offset};
+          `;
+          countRes = await sql`
+            SELECT COUNT(*)::int AS total FROM student_exceptions;
+          `;
+        }
+
+        const total = countRes[0]?.total || 0;
+        return {
+          exceptions: rows.map(r => this._formatException(r)),
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.max(1, Math.ceil(total / limitNum))
+        };
+      } catch (err) {
+        console.warn('[Admin DB] Neon listExceptions fallback to memory:', err.message);
+      }
+    }
+
+    // In-memory fallback
+    let all = Array.from(this.memoryExceptions.values());
+    if (cleanSearch) {
+      const q = cleanSearch.toLowerCase();
+      all = all.filter(e =>
+        String(e.student_number || '').toLowerCase().includes(q) ||
+        String(e.custom_message || '').toLowerCase().includes(q)
+      );
+    }
+    all.sort((a, b) => Number(b.id) - Number(a.id));
+
+    const total = all.length;
+    const paged = all.slice(offset, offset + limitNum);
+
+    return {
+      exceptions: paged.map(e => this._formatException(e)),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum))
+    };
+  }
+
+  /**
+   * Retrieves an exception record by ID.
+   * @param {number|string} id
+   * @returns {Promise<Object|null>}
+   */
+  async getExceptionById(id) {
+    const idNum = parseInt(id, 10);
+    if (!idNum) return null;
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          SELECT * FROM student_exceptions
+          WHERE id = ${idNum}
+          LIMIT 1;
+        `;
+        if (rows && rows.length > 0) {
+          return this._formatException(rows[0]);
+        }
+        return null;
+      } catch (err) {
+        console.warn('[Admin DB] Neon getExceptionById fallback to memory:', err.message);
+      }
+    }
+
+    for (const exc of this.memoryExceptions.values()) {
+      if (Number(exc.id) === idNum) {
+        return this._formatException(exc);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Creates a new student exception rule.
+   * Prevents duplicates by student_number.
+   * @param {Object} data
+   * @returns {Promise<Object>}
+   */
+  async createException({ student_number, custom_message }) {
+    const cleanNumber = String(student_number || '').trim();
+    const cleanMessage = String(custom_message || '').trim();
+
+    if (!cleanNumber) {
+      const err = new Error('Student number is required.');
+      err.code = 'MISSING_STUDENT_NUMBER';
+      throw err;
+    }
+    if (!cleanMessage) {
+      const err = new Error('Custom message is required.');
+      err.code = 'MISSING_CUSTOM_MESSAGE';
+      throw err;
+    }
+
+    // Check existing
+    const existing = await this.getExceptionByStudentNumber(cleanNumber);
+    if (existing) {
+      const err = new Error('An exception for this student number already exists.');
+      err.code = 'DUPLICATE_EXCEPTION';
+      throw err;
+    }
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          INSERT INTO student_exceptions (student_number, custom_message, created_at, updated_at)
+          VALUES (${cleanNumber}, ${cleanMessage}, NOW(), NOW())
+          RETURNING *;
+        `;
+        const formatted = this._formatException(rows[0]);
+        this.memoryExceptions.set(cleanNumber, formatted);
+        return formatted;
+      } catch (err) {
+        if (err.code === '23505') {
+          const dupErr = new Error('An exception for this student number already exists.');
+          dupErr.code = 'DUPLICATE_EXCEPTION';
+          throw dupErr;
+        }
+        console.warn('[Admin DB] Neon createException fallback to memory:', err.message);
+      }
+    }
+
+    // In-memory fallback
+    const id = this.nextExceptionId++;
+    const now = new Date().toISOString();
+    const newExc = {
+      id,
+      student_number: cleanNumber,
+      custom_message: cleanMessage,
+      created_at: now,
+      updated_at: now
+    };
+    this.memoryExceptions.set(cleanNumber, newExc);
+    return this._formatException(newExc);
+  }
+
+  /**
+   * Updates an existing exception rule by ID.
+   * @param {number|string} id
+   * @param {Object} data
+   * @returns {Promise<Object|null>}
+   */
+  async updateException(id, { student_number, custom_message }) {
+    const idNum = parseInt(id, 10);
+    if (!idNum) return null;
+
+    const existing = await this.getExceptionById(idNum);
+    if (!existing) return null;
+
+    const newNumber = student_number !== undefined ? String(student_number).trim() : existing.student_number;
+    const newMessage = custom_message !== undefined ? String(custom_message).trim() : existing.custom_message;
+
+    if (!newNumber) {
+      const err = new Error('Student number cannot be empty.');
+      err.code = 'INVALID_STUDENT_NUMBER';
+      throw err;
+    }
+    if (!newMessage) {
+      const err = new Error('Custom message cannot be empty.');
+      err.code = 'INVALID_CUSTOM_MESSAGE';
+      throw err;
+    }
+
+    // If changing student number, verify uniqueness
+    if (newNumber !== existing.student_number) {
+      const other = await this.getExceptionByStudentNumber(newNumber);
+      if (other && Number(other.id) !== idNum) {
+        const err = new Error('Another exception rule already exists for this student number.');
+        err.code = 'DUPLICATE_EXCEPTION';
+        throw err;
+      }
+    }
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          UPDATE student_exceptions
+          SET student_number = ${newNumber},
+              custom_message = ${newMessage},
+              updated_at = NOW()
+          WHERE id = ${idNum}
+          RETURNING *;
+        `;
+        if (rows && rows.length > 0) {
+          const formatted = this._formatException(rows[0]);
+          if (existing.student_number !== newNumber) {
+            this.memoryExceptions.delete(existing.student_number);
+          }
+          this.memoryExceptions.set(newNumber, formatted);
+          return formatted;
+        }
+        return null;
+      } catch (err) {
+        if (err.code === '23505') {
+          const dupErr = new Error('Another exception rule already exists for this student number.');
+          dupErr.code = 'DUPLICATE_EXCEPTION';
+          throw dupErr;
+        }
+        console.warn('[Admin DB] Neon updateException fallback to memory:', err.message);
+      }
+    }
+
+    // In-memory fallback
+    if (existing.student_number !== newNumber) {
+      this.memoryExceptions.delete(existing.student_number);
+    }
+    const updatedExc = {
+      id: idNum,
+      student_number: newNumber,
+      custom_message: newMessage,
+      created_at: existing.created_at,
+      updated_at: new Date().toISOString()
+    };
+    this.memoryExceptions.set(newNumber, updatedExc);
+    return this._formatException(updatedExc);
+  }
+
+  /**
+   * Deletes an exception record by ID.
+   * @param {number|string} id
+   * @returns {Promise<{success: boolean, deleted: boolean}>}
+   */
+  async deleteException(id) {
+    const idNum = parseInt(id, 10);
+    if (!idNum) return { success: false, deleted: false };
+
+    const sql = this.getSql();
+    if (sql && this.isNeonActive) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          DELETE FROM student_exceptions
+          WHERE id = ${idNum}
+          RETURNING *;
+        `;
+        if (rows && rows.length > 0) {
+          const deletedNum = rows[0].student_number;
+          this.memoryExceptions.delete(deletedNum);
+          return { success: true, deleted: true };
+        }
+        return { success: false, deleted: false };
+      } catch (err) {
+        console.warn('[Admin DB] Neon deleteException fallback to memory:', err.message);
+      }
+    }
+
+    // In-memory fallback
+    for (const [key, exc] of this.memoryExceptions.entries()) {
+      if (Number(exc.id) === idNum) {
+        this.memoryExceptions.delete(key);
+        return { success: true, deleted: true };
+      }
+    }
+    return { success: false, deleted: false };
+  }
+
+  /**
+   * Formats an exception object.
+   */
+  _formatException(row) {
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      student_number: String(row.student_number || '').trim(),
+      custom_message: String(row.custom_message || ''),
+      created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
     };
   }
 

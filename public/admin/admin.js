@@ -64,7 +64,20 @@
     logSearchDebounceTimer: null,
     searchRequestId: 0,
     universalSearchFilter: 'all',
-    deleteTargetId: null
+    deleteTargetId: null,
+    exceptions: [],
+    exceptionPagination: {
+      page: 1,
+      limit: 50,
+      total: 0,
+      totalPages: 1
+    },
+    exceptionFilters: {
+      search: ''
+    },
+    exceptionDebounceTimer: null,
+    deleteExceptionTargetId: null,
+    deleteExceptionTargetNumber: null
   };
 
   // =========================================================================
@@ -315,7 +328,7 @@
       if (a.classList.contains('nav-link')) return;
       a.addEventListener('click', (e) => {
         const target = a.getAttribute('href').replace('#', '');
-        if (['overview', 'students', 'upload', 'search', 'logs'].includes(target)) {
+        if (['overview', 'students', 'upload', 'search', 'logs', 'exceptions'].includes(target)) {
           e.preventDefault();
           switchTab(target, true);
         }
@@ -334,7 +347,7 @@
         if (sInput) sInput.focus();
       }, 50);
     }
-    const validTabs = ['overview', 'students', 'upload', 'logs'];
+    const validTabs = ['overview', 'students', 'upload', 'logs', 'exceptions'];
     if (!validTabs.includes(tabId)) tabId = 'overview';
 
     state.activeTab = tabId;
@@ -365,7 +378,8 @@
         overview: 'Dashboard Overview',
         students: 'Student Management',
         upload: 'Excel Upload & Import',
-        logs: 'Search Activity Logs'
+        logs: 'Search Activity Logs',
+        exceptions: 'Exception Management'
       };
       breadcrumb.textContent = titles[tabId] || 'Dashboard';
     }
@@ -376,6 +390,8 @@
       loadStudents();
     } else if (tabId === 'logs') {
       loadSearchLogs();
+    } else if (tabId === 'exceptions') {
+      loadExceptions();
     }
 
     closeMobileSidebar();
@@ -2528,6 +2544,502 @@
   }
 
   // =========================================================================
+  // VIEW 6: Exception Management
+  // =========================================================================
+  async function loadExceptions() {
+    const { page, limit } = state.exceptionPagination;
+    const { search } = state.exceptionFilters;
+
+    const queryParams = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+      search: search || ''
+    });
+
+    const res = await apiFetch(`/api/admin/exceptions?${queryParams.toString()}`);
+    if (res && res.ok && res.data) {
+      const data = res.data;
+      state.exceptions = data.exceptions || data.data || [];
+      state.exceptionPagination.total = data.total || 0;
+      state.exceptionPagination.page = data.page || page;
+      state.exceptionPagination.totalPages = data.totalPages || Math.max(1, Math.ceil(state.exceptionPagination.total / limit));
+    } else {
+      state.exceptions = [];
+      state.exceptionPagination.total = 0;
+      state.exceptionPagination.totalPages = 1;
+    }
+
+    renderExceptionsTable();
+  }
+
+  function renderExceptionsTable() {
+    const tbody = document.getElementById('exceptions-tbody');
+    const emptyState = document.getElementById('exceptions-empty-state');
+    const tableEl = document.getElementById('exceptions-table');
+    const paginationContainer = document.getElementById('exception-pagination-bar');
+
+    if (!tbody) return;
+
+    const exceptions = state.exceptions;
+
+    if (!exceptions || exceptions.length === 0) {
+      tbody.innerHTML = '';
+      if (tableEl) tableEl.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'block';
+      if (paginationContainer) paginationContainer.style.display = 'none';
+      updateExceptionPaginationText(0, 0, 0);
+      return;
+    }
+
+    if (tableEl) tableEl.style.display = 'table';
+    if (emptyState) emptyState.style.display = 'none';
+    if (paginationContainer) paginationContainer.style.display = 'flex';
+
+    tbody.innerHTML = exceptions.map(exc => {
+      const id = exc.id;
+      const studentNum = exc.student_number || '—';
+      const message = exc.custom_message || '';
+      const dateStr = formatISTDate(exc.created_at);
+      const timeStr = formatISTTime(exc.created_at);
+
+      return `
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              <span class="font-mono font-semibold text-slate-900" style="font-size: 0.95rem;">${escapeHtml(studentNum)}</span>
+            </div>
+          </td>
+          <td>
+            <div class="custom-message-cell" style="white-space: pre-wrap; font-size: 0.85rem; color: var(--slate-700); max-width: 480px; word-break: break-word;">${escapeHtml(message)}</div>
+          </td>
+          <td>
+            <div class="font-mono text-slate-700" style="font-size: 0.85rem;">${dateStr}</div>
+            <div class="font-mono text-slate-400" style="font-size: 0.75rem;">${timeStr}</div>
+          </td>
+          <td style="text-align: right;">
+            <div class="action-btn-group" style="justify-content: flex-end;">
+              <button type="button" class="btn btn-secondary btn-sm btn-exc-edit" data-id="${id}" title="Edit Exception Message">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                <span>Edit</span>
+              </button>
+              <button type="button" class="btn btn-danger-outline btn-sm btn-exc-delete" data-id="${id}" data-number="${escapeHtml(studentNum)}" title="Delete Exception Rule">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Attach listeners
+    tbody.querySelectorAll('.btn-exc-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        openEditExceptionModal(id);
+      });
+    });
+
+    tbody.querySelectorAll('.btn-exc-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const number = btn.getAttribute('data-number');
+        openDeleteExceptionModal(id, number);
+      });
+    });
+
+    const { page, limit, total, totalPages } = state.exceptionPagination;
+    const startRecord = total > 0 ? (page - 1) * limit + 1 : 0;
+    const endRecord = Math.min(page * limit, total);
+    updateExceptionPaginationText(startRecord, endRecord, total);
+    renderExceptionPaginationButtons(page, totalPages);
+  }
+
+  function updateExceptionPaginationText(start, end, total) {
+    const textEl = document.getElementById('exception-pagination-info');
+    if (!textEl) return;
+    if (total === 0) {
+      textEl.textContent = 'Showing 0 exceptions';
+    } else {
+      textEl.textContent = `Showing ${start.toLocaleString()} to ${end.toLocaleString()} of ${total.toLocaleString()} exceptions`;
+    }
+  }
+
+  function renderExceptionPaginationButtons(currentPage, totalPages) {
+    const container = document.getElementById('exception-pagination-buttons');
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    // Previous Button
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'page-btn' + (currentPage <= 1 ? ' disabled' : '');
+    prevBtn.disabled = currentPage <= 1;
+    prevBtn.setAttribute('aria-label', 'Previous Page');
+    prevBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    `;
+    prevBtn.addEventListener('click', () => {
+      if (state.exceptionPagination.page > 1) {
+        state.exceptionPagination.page--;
+        loadExceptions();
+      }
+    });
+    container.appendChild(prevBtn);
+
+    // Page numbers
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    if (startPage > 1) {
+      const p1 = createExcPageButton(1, currentPage);
+      container.appendChild(p1);
+      if (startPage > 2) {
+        const dots = document.createElement('span');
+        dots.className = 'pagination-ellipsis';
+        dots.textContent = '…';
+        container.appendChild(dots);
+      }
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+      const pBtn = createExcPageButton(p, currentPage);
+      container.appendChild(pBtn);
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        const dots = document.createElement('span');
+        dots.className = 'pagination-ellipsis';
+        dots.textContent = '…';
+        container.appendChild(dots);
+      }
+      const pLast = createExcPageButton(totalPages, currentPage);
+      container.appendChild(pLast);
+    }
+
+    // Next Button
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'page-btn' + (currentPage >= totalPages ? ' disabled' : '');
+    nextBtn.disabled = currentPage >= totalPages;
+    nextBtn.setAttribute('aria-label', 'Next Page');
+    nextBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    `;
+    nextBtn.addEventListener('click', () => {
+      if (state.exceptionPagination.page < totalPages) {
+        state.exceptionPagination.page++;
+        loadExceptions();
+      }
+    });
+    container.appendChild(nextBtn);
+  }
+
+  function createExcPageButton(pageNum, activePage) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'page-btn' + (pageNum === activePage ? ' active' : '');
+    btn.textContent = String(pageNum);
+    btn.addEventListener('click', () => {
+      if (state.exceptionPagination.page !== pageNum) {
+        state.exceptionPagination.page = pageNum;
+        loadExceptions();
+      }
+    });
+    return btn;
+  }
+
+  function openAddExceptionModal() {
+    const form = document.getElementById('form-add-exception');
+    if (form) form.reset();
+    const modal = document.getElementById('modal-add-exception');
+    if (modal) modal.classList.add('active');
+    setTimeout(() => {
+      const numInput = document.getElementById('add-exc-student-number');
+      if (numInput) numInput.focus();
+    }, 50);
+  }
+
+  function closeAddExceptionModal() {
+    const modal = document.getElementById('modal-add-exception');
+    if (modal) modal.classList.remove('active');
+  }
+
+  async function openEditExceptionModal(id) {
+    let exc = state.exceptions.find(e => String(e.id) === String(id));
+    if (!exc) {
+      const res = await apiFetch(`/api/admin/exceptions/${id}`);
+      if (res && res.ok && res.data) {
+        exc = res.data.exception || res.data.data;
+      }
+    }
+    if (!exc) {
+      showToast('Exception record not found.', 'error');
+      return;
+    }
+
+    const idInput = document.getElementById('edit-exc-id');
+    const numInput = document.getElementById('edit-exc-student-number');
+    const msgInput = document.getElementById('edit-exc-custom-message');
+
+    if (idInput) idInput.value = exc.id;
+    if (numInput) numInput.value = exc.student_number;
+    if (msgInput) msgInput.value = exc.custom_message;
+
+    const modal = document.getElementById('modal-edit-exception');
+    if (modal) modal.classList.add('active');
+    setTimeout(() => {
+      if (msgInput) msgInput.focus();
+    }, 50);
+  }
+
+  function closeEditExceptionModal() {
+    const modal = document.getElementById('modal-edit-exception');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function openDeleteExceptionModal(id, studentNumber) {
+    state.deleteExceptionTargetId = id;
+    state.deleteExceptionTargetNumber = studentNumber;
+
+    const numSpan = document.getElementById('delete-exc-number');
+    if (numSpan) numSpan.textContent = studentNumber;
+
+    const modal = document.getElementById('modal-delete-exception');
+    if (modal) modal.classList.add('active');
+  }
+
+  function closeDeleteExceptionModal() {
+    state.deleteExceptionTargetId = null;
+    state.deleteExceptionTargetNumber = null;
+    const modal = document.getElementById('modal-delete-exception');
+    if (modal) modal.classList.remove('active');
+  }
+
+  async function handleSaveAddException(e) {
+    e.preventDefault();
+    const numInput = document.getElementById('add-exc-student-number');
+    const msgInput = document.getElementById('add-exc-custom-message');
+    const spinner = document.getElementById('btn-add-exc-spinner');
+    const btnText = document.getElementById('btn-add-exc-text');
+    const submitBtn = document.getElementById('btn-submit-add-exception');
+
+    const studentNumber = (numInput?.value || '').trim();
+    const customMessage = (msgInput?.value || '').trim();
+
+    if (!studentNumber) {
+      showToast('Please enter a student number.', 'error');
+      if (numInput) numInput.focus();
+      return;
+    }
+    if (!customMessage) {
+      showToast('Please enter a custom response message.', 'error');
+      if (msgInput) msgInput.focus();
+      return;
+    }
+
+    if (spinner) spinner.style.display = 'inline-block';
+    if (btnText) btnText.textContent = 'Saving...';
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const res = await apiFetch('/api/admin/exceptions', {
+        method: 'POST',
+        body: {
+          student_number: studentNumber,
+          custom_message: customMessage
+        }
+      });
+
+      if (res && res.ok) {
+        showToast(`Exception rule created for ${studentNumber}.`, 'success');
+        closeAddExceptionModal();
+        loadExceptions();
+      } else {
+        const errorMsg = res?.data?.error?.message || 'Failed to create exception rule.';
+        showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'An error occurred while creating exception.', 'error');
+    } finally {
+      if (spinner) spinner.style.display = 'none';
+      if (btnText) btnText.textContent = 'Save Exception';
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  async function handleSaveEditException(e) {
+    e.preventDefault();
+    const idInput = document.getElementById('edit-exc-id');
+    const numInput = document.getElementById('edit-exc-student-number');
+    const msgInput = document.getElementById('edit-exc-custom-message');
+    const spinner = document.getElementById('btn-save-exc-spinner');
+    const btnText = document.getElementById('btn-save-exc-text');
+    const submitBtn = document.getElementById('btn-save-edit-exception');
+
+    const id = idInput?.value;
+    const studentNumber = (numInput?.value || '').trim();
+    const customMessage = (msgInput?.value || '').trim();
+
+    if (!id) return;
+    if (!studentNumber) {
+      showToast('Student number cannot be empty.', 'error');
+      return;
+    }
+    if (!customMessage) {
+      showToast('Custom message cannot be empty.', 'error');
+      return;
+    }
+
+    if (spinner) spinner.style.display = 'inline-block';
+    if (btnText) btnText.textContent = 'Updating...';
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const res = await apiFetch(`/api/admin/exceptions/${id}`, {
+        method: 'PUT',
+        body: {
+          student_number: studentNumber,
+          custom_message: customMessage
+        }
+      });
+
+      if (res && res.ok) {
+        showToast('Exception rule updated successfully.', 'success');
+        closeEditExceptionModal();
+        loadExceptions();
+      } else {
+        const errorMsg = res?.data?.error?.message || 'Failed to update exception.';
+        showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'An error occurred while updating exception.', 'error');
+    } finally {
+      if (spinner) spinner.style.display = 'none';
+      if (btnText) btnText.textContent = 'Update Exception';
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  async function handleConfirmDeleteException() {
+    const id = state.deleteExceptionTargetId;
+    if (!id) return;
+
+    const spinner = document.getElementById('btn-delete-exc-spinner');
+    const btnText = document.getElementById('btn-delete-exc-text');
+    const deleteBtn = document.getElementById('btn-confirm-delete-exception');
+
+    if (spinner) spinner.style.display = 'inline-block';
+    if (btnText) btnText.textContent = 'Deleting...';
+    if (deleteBtn) deleteBtn.disabled = true;
+
+    try {
+      const res = await apiFetch(`/api/admin/exceptions/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (res && res.ok) {
+        showToast('Exception rule removed successfully.', 'info');
+        closeDeleteExceptionModal();
+        loadExceptions();
+      } else {
+        const errorMsg = res?.data?.error?.message || 'Failed to delete exception.';
+        showToast(errorMsg, 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'An error occurred while deleting exception.', 'error');
+    } finally {
+      if (spinner) spinner.style.display = 'none';
+      if (btnText) btnText.textContent = 'Delete Exception';
+      if (deleteBtn) deleteBtn.disabled = false;
+    }
+  }
+
+  function initExceptionHandlers() {
+    const openAddBtn = document.getElementById('btn-open-add-exception');
+    if (openAddBtn) {
+      openAddBtn.addEventListener('click', openAddExceptionModal);
+    }
+
+    const refreshBtn = document.getElementById('btn-refresh-exceptions');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        loadExceptions();
+        showToast('Exceptions list refreshed.', 'info');
+      });
+    }
+
+    const searchInput = document.getElementById('exception-search-input');
+    const clearBtn = document.getElementById('exception-search-clear');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        const val = searchInput.value.trim();
+        state.exceptionFilters.search = val;
+        state.exceptionPagination.page = 1;
+        if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none';
+
+        clearTimeout(state.exceptionDebounceTimer);
+        state.exceptionDebounceTimer = setTimeout(() => {
+          loadExceptions();
+        }, 250);
+      });
+    }
+
+    if (clearBtn && searchInput) {
+      clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        state.exceptionFilters.search = '';
+        state.exceptionPagination.page = 1;
+        clearBtn.style.display = 'none';
+        loadExceptions();
+        searchInput.focus();
+      });
+    }
+
+    const paginationLimit = document.getElementById('exception-pagination-limit');
+    if (paginationLimit) {
+      paginationLimit.addEventListener('change', () => {
+        state.exceptionPagination.limit = parseInt(paginationLimit.value, 10) || 50;
+        state.exceptionPagination.page = 1;
+        loadExceptions();
+      });
+    }
+
+    // Modal Close and Submit Handlers
+    const closeAddModalBtn = document.getElementById('btn-close-add-exc-modal');
+    const cancelAddModalBtn = document.getElementById('btn-cancel-add-exc-modal');
+    if (closeAddModalBtn) closeAddModalBtn.addEventListener('click', closeAddExceptionModal);
+    if (cancelAddModalBtn) cancelAddModalBtn.addEventListener('click', closeAddExceptionModal);
+
+    const closeEditModalBtn = document.getElementById('btn-close-edit-exc-modal');
+    const cancelEditModalBtn = document.getElementById('btn-cancel-edit-exc-modal');
+    if (closeEditModalBtn) closeEditModalBtn.addEventListener('click', closeEditExceptionModal);
+    if (cancelEditModalBtn) cancelEditModalBtn.addEventListener('click', closeEditExceptionModal);
+
+    const closeDeleteModalBtn = document.getElementById('btn-cancel-delete-exc-modal');
+    if (closeDeleteModalBtn) closeDeleteModalBtn.addEventListener('click', closeDeleteExceptionModal);
+
+    const formAdd = document.getElementById('form-add-exception');
+    if (formAdd) formAdd.addEventListener('submit', handleSaveAddException);
+
+    const formEdit = document.getElementById('form-edit-exception');
+    if (formEdit) formEdit.addEventListener('submit', handleSaveEditException);
+
+    const confirmDeleteBtn = document.getElementById('btn-confirm-delete-exception');
+    if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', handleConfirmDeleteException);
+  }
+
+  // =========================================================================
   // Application Bootstrap
   // =========================================================================
   async function initApp() {
@@ -2537,12 +3049,16 @@
     initModals();
     initExcelUpload();
     initUniversalSearch();
+    initExceptionHandlers();
 
     const isAuthenticated = await checkAuthSession();
     if (isAuthenticated) {
       loadDashboardStats();
       loadStudents();
       loadSearchLogs();
+      if (state.activeTab === 'exceptions') {
+        loadExceptions();
+      }
     }
   }
 

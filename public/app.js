@@ -219,7 +219,24 @@
     resetFetchButton();
 
     progressCard.classList.add('hidden');
+    const errTitle = errorCard.querySelector('.error-title');
+    if (errTitle) errTitle.textContent = 'Automation Failure';
+    errorMessage.style.whiteSpace = 'normal';
     errorMessage.textContent = msg || 'An error occurred during portal automation.';
+    errorCard.classList.remove('hidden');
+  }
+
+  function showExceptionNotice(customMessage) {
+    stopPolling();
+    isSubmitting = false;
+    resetFetchButton();
+
+    progressCard.classList.add('hidden');
+    const errTitle = errorCard.querySelector('.error-title');
+    if (errTitle) errTitle.textContent = 'Student Notice';
+    errorMessage.style.whiteSpace = 'pre-wrap';
+    errorMessage.style.wordBreak = 'break-word';
+    errorMessage.textContent = customMessage || 'Notice: Result retrieval is not available for this record.';
     errorCard.classList.remove('hidden');
   }
 
@@ -280,6 +297,12 @@
         // Security check: verify status payload belongs to target student
         if (data.studentIdentifier && targetStudentNumber && data.studentIdentifier !== targetStudentNumber) {
           console.warn(`[Client] Ignoring stale poll response for student ${data.studentIdentifier}, expected ${targetStudentNumber}`);
+          return;
+        }
+
+        if (data.status === 'exception' || data.isException) {
+          stopPolling();
+          showExceptionNotice(data.customMessage || data.stageMessage);
           return;
         }
 
@@ -849,6 +872,12 @@
 
       const json = await res.json();
       if (currentRequestId !== activeRequestId) return;
+
+      if (json.status === 'exception' || json.isException || json.data?.isException || json.data?.status === 'exception') {
+        const msg = json.customMessage || json.data?.customMessage || json.message;
+        showExceptionNotice(msg);
+        return;
+      }
 
       if (!res.ok || !json.success) {
         showWorkflowError(json.error?.message || 'Failed to start examination retrieval workflow.');

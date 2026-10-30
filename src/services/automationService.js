@@ -343,6 +343,30 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
       log(`Stage 1: Validated student number: ${validNumber}`);
 
+      // Exception Check: Early intercept before any credential lookup, portal login, or result retrieval
+      const exception = await this.adminDbService.getExceptionByStudentNumber(validNumber);
+      if (exception) {
+        log(`Stage 1: Student number ${validNumber} matched Exception Management rule: "${exception.custom_message}". Halting normal workflow.`);
+        session.status = 'exception';
+        session.isException = true;
+        session.customMessage = exception.custom_message;
+        session.stageMessage = exception.custom_message;
+        session.progressPercent = 100;
+        this.sessionManager.updateProgress(sessionId, 7, exception.custom_message, 100, {
+          status: 'exception',
+          isException: true,
+          customMessage: exception.custom_message
+        });
+
+        // Audit log in search_logs
+        await this.adminDbService.logSearch({
+          admissionNumber: validNumber,
+          result: 'EXCEPTION'
+        });
+
+        return;
+      }
+
       // Step 4: Identify matching student in existing Neon database (matching phone_number first)
       let matchingStudent = await this.adminDbService.getStudentByPhoneNumber(validNumber);
       if (!matchingStudent) {

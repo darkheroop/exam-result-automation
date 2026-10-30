@@ -95,14 +95,19 @@ router.post('/start', async (req, res, next) => {
     // De-duplication: check if student has an existing active or recent session
     const existingSession = defaultSessionManager.findActiveSessionByStudent(validatedNumber);
     if (existingSession && !req.query?.force) {
-      return res.status(202).json({
+      const isExistingExc = existingSession.status === 'exception' || Boolean(existingSession.isException);
+      return res.status(isExistingExc ? 200 : 202).json({
         success: true,
         sessionId: existingSession.sessionId,
         sessionToken: existingSession.sessionToken,
         status: existingSession.status,
-        message: existingSession.status === 'ready'
-          ? 'Examination result retrieval completed successfully.'
-          : (existingSession.stageMessage || 'Examination result retrieval already in progress.'),
+        isException: isExistingExc,
+        customMessage: existingSession.customMessage || null,
+        message: isExistingExc
+          ? existingSession.customMessage
+          : (existingSession.status === 'ready'
+              ? 'Examination result retrieval completed successfully.'
+              : (existingSession.stageMessage || 'Examination result retrieval already in progress.')),
         error: existingSession.error ? {
           message: existingSession.error.message,
           code: existingSession.error.code
@@ -149,14 +154,19 @@ router.post('/start', async (req, res, next) => {
     await Promise.race([workflowPromise, initialWaitPromise]);
     if (timeoutId) clearTimeout(timeoutId);
 
-    res.status(202).json({
+    const isExc = session.status === 'exception' || Boolean(session.isException);
+    res.status(isExc ? 200 : 202).json({
       success: true,
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
       status: session.status,
-      message: session.status === 'ready'
-        ? 'Examination result retrieval completed successfully.'
-        : (session.error ? session.error.message : (session.stageMessage || 'Examination result retrieval initialized.')),
+      isException: isExc,
+      customMessage: session.customMessage || null,
+      message: isExc
+        ? session.customMessage
+        : (session.status === 'ready'
+            ? 'Examination result retrieval completed successfully.'
+            : (session.error ? session.error.message : (session.stageMessage || 'Examination result retrieval initialized.'))),
       error: session.error ? {
         message: session.error.message,
         code: session.error.code

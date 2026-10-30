@@ -311,6 +311,8 @@ class SessionManager {
       studentIdentifier: session.studentIdentifier,
       studentNumber: session.studentIdentifier,
       status: session.status,
+      isException: Boolean(session.isException || session.status === 'exception'),
+      customMessage: session.customMessage || null,
       stage: session.stage,
       stageMessage: session.status === 'queued'
         ? `Waiting in queue (position ${queuePosition})...`
