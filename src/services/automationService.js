@@ -12,6 +12,24 @@ const { normalizeResultData } = require('./resultNormalizer');
 // Persistent HTTPS Connection Pooling with Keep-Alive
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 
+const ERROR_STUDENT_NOT_FOUND = 'Given number is not a student number.\nTo get number search it below.';
+const ERROR_CREDENTIALS_CHANGED = 'The user has changed the password. An update will come to get the result.';
+
+/**
+ * Standardizes public error messages to exact user-facing notices.
+ */
+function sanitizePublicErrorMessage(msg) {
+  if (!msg || typeof msg !== 'string') return msg;
+  const trimmed = msg.trim();
+  if (/^Student not found for identifier/i.test(trimmed)) {
+    return ERROR_STUDENT_NOT_FOUND;
+  }
+  if (/^No authorized student record found for identifier/i.test(trimmed)) {
+    return ERROR_CREDENTIALS_CHANGED;
+  }
+  return msg;
+}
+
 /**
  * Executes a promise with an operation-specific timeout and clean error code.
  */
@@ -410,7 +428,7 @@ class AutomationService {
       }
 
       if (!matchingStudent) {
-        const notFoundErr = new Error(`Student not found for identifier ${validNumber}.`);
+        const notFoundErr = new Error(ERROR_STUDENT_NOT_FOUND);
         notFoundErr.code = 'NOT_FOUND';
         notFoundErr.statusCode = 404;
         throw notFoundErr;
@@ -464,6 +482,13 @@ class AutomationService {
               await this.adminDbService.clearStudentCredentialsByPhone(validNumber);
             } catch (clearErr) {
               console.error(`[AutomationService] Error clearing credentials for phone ${validNumber}:`, clearErr.message);
+            }
+            if (apiErr.code === 'STUDENT_NOT_FOUND' || apiErr.statusCode === 404) {
+              const notFoundErr = new Error(apiErr.message || ERROR_CREDENTIALS_CHANGED);
+              notFoundErr.code = 'STUDENT_NOT_FOUND';
+              notFoundErr.statusCode = 404;
+              notFoundErr.originalError = apiErr;
+              throw notFoundErr;
             }
             const failErr = new Error(`Portal credentials rejected and fresh credentials could not be retrieved from lookup API: ${apiErr.message}`);
             failErr.code = 'AUTH_CREDENTIALS_FAILED';
@@ -530,8 +555,8 @@ class AutomationService {
           );
         } catch (credErr) {
           if (credErr.code === 'STUDENT_NOT_FOUND' || credErr.statusCode === 404) {
-            const notFoundErr = new Error(credErr.message || `Student not found for identifier ${validNumber}.`);
-            notFoundErr.code = 'NOT_FOUND';
+            const notFoundErr = new Error(credErr.message || ERROR_CREDENTIALS_CHANGED);
+            notFoundErr.code = 'STUDENT_NOT_FOUND';
             notFoundErr.statusCode = 404;
             throw notFoundErr;
           }
@@ -889,10 +914,11 @@ class AutomationService {
       log(`Workflow completed successfully for student: ${normalized.student.name} (YGPA: ${normalized.overallYgpa}, Status: ${normalized.overallRemarks})`);
 
     } catch (err) {
-      log(`Workflow error: ${err.message}`);
+      const sanitizedMessage = sanitizePublicErrorMessage(err.message) || 'An unexpected error occurred during portal automation.';
+      log(`Workflow error: ${sanitizedMessage}`);
       session.status = 'error';
       session.error = {
-        message: err.message || 'An unexpected error occurred during portal automation.',
+        message: sanitizedMessage,
         code: err.code || 'SYSTEM_ERROR'
       };
       // Explicitly wipe all partial/stale result data to prevent any data leakage
@@ -900,7 +926,7 @@ class AutomationService {
       session.renderedHtml = null;
       session.downloadedFile = null;
       session.examSummary = null;
-      this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
+      this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${sanitizedMessage}`, session.progressPercent || 10);
 
       // Map error code to one-word status:
       let resultStatus = 'SYSTEM_ERROR';

@@ -212,7 +212,7 @@ class CredentialService {
 
     if (response.status === 404 || response.data?.error?.code === 'STUDENT_NOT_FOUND') {
       throw new CredentialError(
-        `No authorized student record found for identifier ${validNumber}.`,
+        'The user has changed the password. An update will come to get the result.',
         404,
         'STUDENT_NOT_FOUND'
       );

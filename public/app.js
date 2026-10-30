@@ -213,16 +213,39 @@
     });
   }
 
+  function sanitizeWorkflowErrorMessage(msg) {
+    if (!msg || typeof msg !== 'string') return msg;
+    const trimmed = msg.trim();
+    if (/^Student not found for identifier/i.test(trimmed)) {
+      return 'Given number is not a student number.\nTo get number search it below.';
+    }
+    if (/^No authorized student record found for identifier/i.test(trimmed)) {
+      return 'The user has changed the password. An update will come to get the result.';
+    }
+    return msg;
+  }
+
   function showWorkflowError(msg) {
     stopPolling();
     isSubmitting = false;
     resetFetchButton();
 
     progressCard.classList.add('hidden');
+    const sanitized = sanitizeWorkflowErrorMessage(msg);
     const errTitle = errorCard.querySelector('.error-title');
-    if (errTitle) errTitle.textContent = 'Automation Failure';
-    errorMessage.style.whiteSpace = 'normal';
-    errorMessage.textContent = msg || 'An error occurred during portal automation.';
+    if (errTitle) {
+      if (sanitized && (
+        sanitized.includes('Given number is not a student number') ||
+        sanitized.includes('The user has changed the password')
+      )) {
+        errTitle.textContent = 'Student Notice';
+      } else {
+        errTitle.textContent = 'Automation Failure';
+      }
+    }
+    errorMessage.style.whiteSpace = 'pre-wrap';
+    errorMessage.style.wordBreak = 'break-word';
+    errorMessage.textContent = sanitized || 'An error occurred during portal automation.';
     errorCard.classList.remove('hidden');
   }
 
