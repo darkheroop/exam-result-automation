@@ -138,16 +138,7 @@ class CredentialService {
       };
     }
 
-    // Check memory cache first
-    const cached = this.cache.get(validNumber);
-    if (cached && (Date.now() - cached.timestamp < this.cacheTtlMs)) {
-      return {
-        username: cached.username,
-        password: cached.password,
-        studentNumber: validNumber
-      };
-    }
-
+    // Always query upstream API to ensure latest credentials are never assumed from stale memory cache
     if (!this.apiUrl || !this.apiKey) {
       throw new CredentialError(
         'Student Lookup API configuration is incomplete. Missing API URL or Bearer token.',

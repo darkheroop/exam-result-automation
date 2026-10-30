@@ -154,15 +154,25 @@ class AdminSearchService {
       const studentByAdm = await this.dbService.getStudentByAdmissionNumber(cleanQuery);
       if (studentByAdm) {
         effectiveType = 'Admission Number';
+      } else {
+        const studentByPhone = await this.dbService.getStudentByPhoneNumber(cleanQuery);
+        if (studentByPhone) {
+          effectiveType = 'Admission Number';
+        }
       }
     }
 
     try {
       // -------------------------------------------------------------
-      // CASE 1: Admission Number Search (Automatic Credential Lookup)
+      // CASE 1: Admission / Student Lookup Search (Automatic Credential Lookup)
       // -------------------------------------------------------------
       if (effectiveType === 'Admission Number') {
-        const existingStudent = await this.dbService.getStudentByAdmissionNumber(cleanQuery);
+        let existingStudent = await this.dbService.getStudentByAdmissionNumber(cleanQuery);
+        let matchedByPhone = false;
+        if (!existingStudent) {
+          existingStudent = await this.dbService.getStudentByPhoneNumber(cleanQuery);
+          if (existingStudent) matchedByPhone = true;
+        }
 
         if (!existingStudent) {
           // Rule: If student does NOT exist in local database, log NOT_FOUND and do NOT call credential API.
@@ -198,10 +208,19 @@ class AdminSearchService {
         if (apiResult.status === 'SUCCESS') {
           try {
             // Update credentials in database without overwriting name, phone, section, created_at
-            const updatedStudent = await this.dbService.updateStudentCredentials(existingStudent.admission_number, {
-              username: apiResult.username,
-              password: apiResult.password
-            });
+            let updatedStudent = null;
+            if (matchedByPhone && existingStudent.phone_number) {
+              updatedStudent = await this.dbService.updateStudentCredentialsByPhone(existingStudent.phone_number, {
+                username: apiResult.username,
+                password: apiResult.password
+              });
+            }
+            if (!updatedStudent) {
+              updatedStudent = await this.dbService.updateStudentCredentials(existingStudent.admission_number, {
+                username: apiResult.username,
+                password: apiResult.password
+              });
+            }
 
             if (!updatedStudent) {
               const log = await this.dbService.logSearch({
@@ -227,7 +246,7 @@ class AdminSearchService {
             return {
               success: true,
               result: 'SUCCESS',
-              updated: true,
+              updated: Boolean(updatedStudent && updatedStudent.updated !== false),
               students: [updatedStudent],
               log
             };

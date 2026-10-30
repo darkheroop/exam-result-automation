@@ -298,33 +298,6 @@ class AutomationService {
       }
 
       const cached = await this.dbService.getCachedResult(validNumber);
-      const studentHasCredentials = Boolean(matchingStudent && matchingStudent.username && matchingStudent.password);
-
-      if (cached && studentHasCredentials) {
-        log(`Cache hit: Serving student result from Neon DB cache for ${validNumber}`);
-        session.resultData = cached;
-        session.examSummary = {
-          title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
-          isPending: session.resultData.annualSummary?.status === 'PENDING',
-          hasTable: Boolean(session.resultData?.semesters?.length),
-          portalUrl: config.portalResultsUrl
-        };
-        this.sessionManager.updateProgress(sessionId, 7, 'Examination result loaded from cache.', 100, {
-          status: 'ready',
-          resultData: cached
-        });
-        await this.adminDbService.logSearch({
-          admissionNumber: validNumber,
-          result: 'SUCCESS'
-        });
-        this.dbService.logSearch({
-          studentNumber: validNumber,
-          cacheHit: true,
-          responseTimeMs: Date.now() - startTime,
-          status: 'SUCCESS'
-        }).catch(() => {});
-        return;
-      }
 
       // Stage 2: Retrieve authorized credentials from backend APIs with timeout
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);

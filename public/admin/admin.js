@@ -2313,7 +2313,7 @@
       studentSearchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          loadStudents();
+          submitStudentSearch();
         }
       });
     }
@@ -2321,7 +2321,7 @@
     const submitStudentSearchBtn = document.getElementById('btn-student-search-submit');
     if (submitStudentSearchBtn) {
       submitStudentSearchBtn.addEventListener('click', () => {
-        loadStudents();
+        submitStudentSearch();
       });
     }
 
