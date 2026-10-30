@@ -1974,7 +1974,8 @@ mark.search-highlight {
 }
 
 .modal-backdrop.show,
-.modal-backdrop.open {
+.modal-backdrop.open,
+.modal-backdrop.active {
   display: flex;
   opacity: 1;
 }
@@ -1992,7 +1993,8 @@ mark.search-highlight {
 }
 
 .modal-backdrop.show .modal-dialog,
-.modal-backdrop.open .modal-dialog {
+.modal-backdrop.open .modal-dialog,
+.modal-backdrop.active .modal-dialog {
   transform: scale(1);
 }
 

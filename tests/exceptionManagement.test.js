@@ -418,4 +418,63 @@ test('Exception Management - UI Components & Scripts Integrity', () => {
   // 7. Public search app.js displays exception notice safely
   assert.ok(publicAppJs.includes('showExceptionNotice'), 'public/app.js must implement showExceptionNotice');
   assert.ok(publicAppJs.includes('pre-wrap'), 'public/app.js must preserve line breaks');
+
+  // 8. Modal open & close system utilizes openModal & closeModal
+  assert.ok(adminJs.includes("openModal('modal-add-exception')"), 'admin.js must use openModal for modal-add-exception');
+  assert.ok(adminJs.includes("openModal('modal-edit-exception')"), 'admin.js must use openModal for modal-edit-exception');
+  assert.ok(adminJs.includes("openModal('modal-delete-exception')"), 'admin.js must use openModal for modal-delete-exception');
+});
+
+// =========================================================================
+// Scenario 7: Cross-Attribute and Phone Normalization Exception Interception
+// =========================================================================
+test('Exception Management - Cross-attribute (phone & admission) and phone normalization', async () => {
+  const adminDb = new AdminDbService();
+  const sessionManager = new SessionManager({ maxSessions: 50 });
+
+  let portalAuthCalled = false;
+
+  const autoService = new AutomationService({
+    adminDbService: adminDb,
+    sessionManager,
+    portalAuthHandler: async () => {
+      portalAuthCalled = true;
+      return { id: '999', mobile: '9555112233' };
+    }
+  });
+
+  // Student in DB: Admission ADM7788, Phone 9555112233
+  await adminDb.upsertStudent({
+    name: 'Cross Attribute Student',
+    admission_number: 'ADM7788',
+    phone_number: '9555112233',
+    username: 'user_cross',
+    password: 'pass_cross'
+  });
+
+  // Exception is added using admission number ADM7788
+  await adminDb.createException({
+    student_number: 'ADM7788',
+    custom_message: 'Blocked via admission number exception.'
+  });
+
+  // Student searches using their phone number: 9555112233
+  const session = sessionManager.createSession('9555112233');
+  await autoService.executeWorkflow(session.sessionId, session.sessionToken, '9555112233');
+
+  assert.equal(session.status, 'exception');
+  assert.equal(session.isException, true);
+  assert.equal(session.customMessage, 'Blocked via admission number exception.');
+  assert.equal(portalAuthCalled, false, 'Portal authentication must NOT be called');
+
+  // Test Phone Normalization: Exception stored with +91 or spaces matches query without +91
+  const normExc = await adminDb.createException({
+    student_number: '+91 9777888999',
+    custom_message: 'Blocked via +91 phone number.'
+  });
+  assert.ok(normExc);
+
+  const matched = await adminDb.getExceptionByStudentNumber('9777888999');
+  assert.ok(matched, 'Clean 10-digit number must match exception stored with +91 or spaces');
+  assert.equal(matched.custom_message, 'Blocked via +91 phone number.');
 });

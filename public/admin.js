@@ -879,6 +879,9 @@
         closeModal('modal-add-student');
         closeModal('modal-delete-student');
         closeModal('modal-clear-logs');
+        closeModal('modal-add-exception');
+        closeModal('modal-edit-exception');
+        closeModal('modal-delete-exception');
       }
     });
 
@@ -2762,8 +2765,7 @@
   function openAddExceptionModal() {
     const form = document.getElementById('form-add-exception');
     if (form) form.reset();
-    const modal = document.getElementById('modal-add-exception');
-    if (modal) modal.classList.add('active');
+    openModal('modal-add-exception');
     setTimeout(() => {
       const numInput = document.getElementById('add-exc-student-number');
       if (numInput) numInput.focus();
@@ -2771,8 +2773,7 @@
   }
 
   function closeAddExceptionModal() {
-    const modal = document.getElementById('modal-add-exception');
-    if (modal) modal.classList.remove('active');
+    closeModal('modal-add-exception');
   }
 
   async function openEditExceptionModal(id) {
@@ -2796,16 +2797,14 @@
     if (numInput) numInput.value = exc.student_number;
     if (msgInput) msgInput.value = exc.custom_message;
 
-    const modal = document.getElementById('modal-edit-exception');
-    if (modal) modal.classList.add('active');
+    openModal('modal-edit-exception');
     setTimeout(() => {
       if (msgInput) msgInput.focus();
     }, 50);
   }
 
   function closeEditExceptionModal() {
-    const modal = document.getElementById('modal-edit-exception');
-    if (modal) modal.classList.remove('active');
+    closeModal('modal-edit-exception');
   }
 
   function openDeleteExceptionModal(id, studentNumber) {
@@ -2815,15 +2814,13 @@
     const numSpan = document.getElementById('delete-exc-number');
     if (numSpan) numSpan.textContent = studentNumber;
 
-    const modal = document.getElementById('modal-delete-exception');
-    if (modal) modal.classList.add('active');
+    openModal('modal-delete-exception');
   }
 
   function closeDeleteExceptionModal() {
     state.deleteExceptionTargetId = null;
     state.deleteExceptionTargetNumber = null;
-    const modal = document.getElementById('modal-delete-exception');
-    if (modal) modal.classList.remove('active');
+    closeModal('modal-delete-exception');
   }
 
   async function handleSaveAddException(e) {
@@ -2866,8 +2863,32 @@
         closeAddExceptionModal();
         loadExceptions();
       } else {
+        const errCode = res?.data?.error?.code;
         const errorMsg = res?.data?.error?.message || 'Failed to create exception rule.';
-        showToast(errorMsg, 'error');
+        if (errCode === 'DUPLICATE_EXCEPTION' || res?.status === 409) {
+          // Find existing exception by student number to allow immediate editing
+          let existing = state.exceptions.find(e => String(e.student_number).trim() === studentNumber);
+          if (!existing) {
+            const fetchRes = await apiFetch(`/api/admin/exceptions?search=${encodeURIComponent(studentNumber)}`);
+            if (fetchRes && fetchRes.ok && fetchRes.data) {
+              const list = fetchRes.data.exceptions || fetchRes.data.data || [];
+              existing = list.find(e => String(e.student_number).trim() === studentNumber) || list[0];
+            }
+          }
+          closeAddExceptionModal();
+          if (existing && existing.id) {
+            showToast('Student number already has an active exception. Opened for editing.', 'warning');
+            openEditExceptionModal(existing.id);
+            const editMsgInput = document.getElementById('edit-exc-custom-message');
+            if (editMsgInput && customMessage) {
+              editMsgInput.value = customMessage;
+            }
+          } else {
+            showToast(errorMsg, 'error');
+          }
+        } else {
+          showToast(errorMsg, 'error');
+        }
       }
     } catch (err) {
       showToast(err.message || 'An error occurred while creating exception.', 'error');
@@ -2951,6 +2972,9 @@
       if (res && res.ok) {
         showToast('Exception rule removed successfully.', 'info');
         closeDeleteExceptionModal();
+        if (state.exceptions.length === 1 && state.exceptionPagination.page > 1) {
+          state.exceptionPagination.page--;
+        }
         loadExceptions();
       } else {
         const errorMsg = res?.data?.error?.message || 'Failed to delete exception.';
@@ -2970,6 +2994,10 @@
     if (openAddBtn) {
       openAddBtn.addEventListener('click', openAddExceptionModal);
     }
+
+    document.querySelectorAll('.btn-empty-add-exception').forEach(btn => {
+      btn.addEventListener('click', openAddExceptionModal);
+    });
 
     const refreshBtn = document.getElementById('btn-refresh-exceptions');
     if (refreshBtn) {

@@ -344,7 +344,24 @@ class AutomationService {
       log(`Stage 1: Validated student number: ${validNumber}`);
 
       // Exception Check: Early intercept before any credential lookup, portal login, or result retrieval
-      const exception = await this.adminDbService.getExceptionByStudentNumber(validNumber);
+      let exception = await this.adminDbService.getExceptionByStudentNumber(validNumber);
+
+      // Step 4: Identify matching student in existing Neon database (matching phone_number first)
+      let matchingStudent = await this.adminDbService.getStudentByPhoneNumber(validNumber);
+      if (!matchingStudent) {
+        matchingStudent = await this.adminDbService.getStudentByAdmissionNumber(validNumber);
+      }
+
+      // If not matched on searched value directly, check matching student's associated phone & admission numbers
+      if (!exception && matchingStudent) {
+        if (matchingStudent.phone_number && matchingStudent.phone_number !== validNumber) {
+          exception = await this.adminDbService.getExceptionByStudentNumber(matchingStudent.phone_number);
+        }
+        if (!exception && matchingStudent.admission_number && matchingStudent.admission_number !== validNumber) {
+          exception = await this.adminDbService.getExceptionByStudentNumber(matchingStudent.admission_number);
+        }
+      }
+
       if (exception) {
         log(`Stage 1: Student number ${validNumber} matched Exception Management rule: "${exception.custom_message}". Halting normal workflow.`);
         session.status = 'exception';
@@ -365,12 +382,6 @@ class AutomationService {
         });
 
         return;
-      }
-
-      // Step 4: Identify matching student in existing Neon database (matching phone_number first)
-      let matchingStudent = await this.adminDbService.getStudentByPhoneNumber(validNumber);
-      if (!matchingStudent) {
-        matchingStudent = await this.adminDbService.getStudentByAdmissionNumber(validNumber);
       }
       if (!matchingStudent && (this.mockMode || process.env.MOCK_AUTOMATION === 'true')) {
         matchingStudent = {

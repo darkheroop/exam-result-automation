@@ -1861,8 +1861,17 @@ class AdminDbService {
    * @returns {Promise<Object|null>}
    */
   async getExceptionByStudentNumber(studentNumber) {
-    const cleanNumber = String(studentNumber || '').trim();
-    if (!cleanNumber) return null;
+    const rawNumber = String(studentNumber || '').trim();
+    if (!rawNumber) return null;
+
+    const normalizePhone = (num) => {
+      let s = String(num || '').trim().replace(/[\s\-\(\)]/g, '');
+      if (s.startsWith('+91')) s = s.slice(3);
+      if (s.startsWith('91') && s.length === 12) s = s.slice(2);
+      return s;
+    };
+
+    const cleanNumber = normalizePhone(rawNumber);
 
     const sql = this.getSql();
     if (sql && this.isNeonActive) {
@@ -1870,7 +1879,10 @@ class AdminDbService {
         await this.ensureSchema();
         const rows = await sql`
           SELECT * FROM student_exceptions
-          WHERE student_number = ${cleanNumber}
+          WHERE student_number = ${rawNumber}
+             OR student_number = ${cleanNumber}
+             OR student_number = ${'+91' + cleanNumber}
+             OR student_number = ${'+91 ' + cleanNumber}
           LIMIT 1;
         `;
         if (rows && rows.length > 0) {
@@ -1882,7 +1894,17 @@ class AdminDbService {
       }
     }
 
-    const exc = this.memoryExceptions.get(cleanNumber);
+    let exc = this.memoryExceptions.get(rawNumber) || this.memoryExceptions.get(cleanNumber);
+    if (!exc) {
+      for (const item of this.memoryExceptions.values()) {
+        const itemRaw = String(item.student_number || '').trim();
+        const itemClean = normalizePhone(itemRaw);
+        if (itemRaw === rawNumber || itemClean === cleanNumber) {
+          exc = item;
+          break;
+        }
+      }
+    }
     return exc ? this._formatException(exc) : null;
   }
 
