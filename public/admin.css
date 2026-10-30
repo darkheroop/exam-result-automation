@@ -1919,7 +1919,8 @@ mark.search-highlight {
   transition: opacity 0.2s ease-in-out;
 }
 
-.modal-backdrop.show {
+.modal-backdrop.show,
+.modal-backdrop.open {
   display: flex;
   opacity: 1;
 }
@@ -1936,7 +1937,8 @@ mark.search-highlight {
   transition: transform 0.2s ease-in-out;
 }
 
-.modal-backdrop.show .modal-dialog {
+.modal-backdrop.show .modal-dialog,
+.modal-backdrop.open .modal-dialog {
   transform: scale(1);
 }
 
@@ -2249,4 +2251,193 @@ mark.search-highlight {
   .user-role {
     display: none;
   }
+}
+
+/* ==========================================================================
+   Search Activity & Logs Styles
+   ========================================================================== */
+
+/* Search Submit Buttons */
+.search-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--indigo-600);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  margin-right: 0.25rem;
+}
+
+.search-submit-btn:hover {
+  background: var(--indigo-700);
+  transform: scale(1.05);
+}
+
+.universal-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--indigo-600);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+}
+
+.universal-submit-btn:hover {
+  background: var(--indigo-700);
+}
+
+/* Date filter input */
+.date-filter-input {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--slate-700);
+  background: #ffffff;
+  font-family: inherit;
+}
+
+/* Overview Search Activity Card */
+.search-activity-overview-card {
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--slate-200);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.search-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.search-stat-pill {
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.search-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.search-stat-val {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--slate-900);
+  font-family: var(--font-mono);
+}
+
+.text-emerald { color: var(--emerald-600) !important; }
+.text-rose { color: var(--rose-600) !important; }
+.text-slate { color: var(--slate-600) !important; }
+.text-indigo { color: var(--indigo-600) !important; }
+
+/* Status Badges */
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.badge-status-success {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--emerald-600);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badge-status-found {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--emerald-600);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badge-status-api-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--rose-600);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.badge-status-invalid-response {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber-600);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-status-timeout {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber-600);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-status-network-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--rose-600);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.badge-status-not-found {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--slate-600);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.badge-status-invalid-input {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--slate-600);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.badge-status-database-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--rose-600);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.badge-status-auth-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--rose-600);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.badge-status-unavailable {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber-600);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-status-system-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--rose-600);
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }

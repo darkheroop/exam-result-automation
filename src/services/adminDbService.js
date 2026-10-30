@@ -44,7 +44,7 @@ class AdminDbService {
 
   getSql() {
     if (this.sql) return this.sql;
-    const connStr = this.connectionString || this._resolveConnectionString();
+    const connStr = this._resolveConnectionString() || this.connectionString;
     if (connStr && neonClient) {
       try {
         this.connectionString = connStr;
@@ -85,6 +85,11 @@ class AdminDbService {
               updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
           `;
+          try {
+            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS username VARCHAR(128) DEFAULT '';`;
+            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS password VARCHAR(255) DEFAULT '';`;
+            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS section VARCHAR(64) DEFAULT '';`;
+          } catch (_) {}
           await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);`;
           await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);`;
           await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);`;
@@ -162,7 +167,8 @@ class AdminDbService {
     if (sortBy === 'updated') sortField = 'updated_at';
     const sortDirection = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
 
@@ -198,24 +204,35 @@ class AdminDbService {
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const countQuery = `SELECT COUNT(*) AS total FROM managed_students ${whereClause};`;
-        const countRows = await this.sql.query(countQuery, params);
+        const countRows = await sql.query(countQuery, params);
         const total = parseInt(countRows[0]?.total || 0, 10);
 
         const listQuery = `
           SELECT id, name, admission_number, phone_number, username, password, section, created_at, updated_at
           FROM managed_students
           ${whereClause}
-          ORDER BY ${sortField} ${sortDirection}
+          ORDER BY ${sortField} ${sortDirection}, id DESC
           LIMIT $${pIndex} OFFSET $${pIndex + 1};
         `;
-        const students = await this.sql.query(listQuery, [...params, limitNum, offset]);
+        const students = await sql.query(listQuery, [...params, limitNum, offset]);
+
+        let sections = [];
+        try {
+          const secRows = await sql`
+            SELECT DISTINCT section FROM managed_students 
+            WHERE section IS NOT NULL AND section <> '' 
+            ORDER BY section ASC;
+          `;
+          sections = secRows.map(r => r.section);
+        } catch (_) {}
 
         return {
           students: students.map(s => this._formatStudent(s)),
           total,
           page: pageNum,
           totalPages: Math.ceil(total / limitNum) || 1,
-          limit: limitNum
+          limit: limitNum,
+          sections
         };
       } catch (err) {
         console.warn('[Admin DB] listStudents query error, falling back to memory:', err.message);
@@ -266,13 +283,15 @@ class AdminDbService {
 
     const total = all.length;
     const paginated = all.slice(offset, offset + limitNum).map(s => this._formatStudent(s));
+    const memorySections = Array.from(new Set(Array.from(this.memoryStudents.values()).map(s => s.section).filter(Boolean))).sort();
 
     return {
       students: paginated,
       total,
       page: pageNum,
       totalPages: Math.ceil(total / limitNum) || 1,
-      limit: limitNum
+      limit: limitNum,
+      sections: memorySections
     };
   }
 
@@ -283,10 +302,11 @@ class AdminDbService {
     const studentId = parseInt(id, 10);
     if (!studentId || isNaN(studentId)) return null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT * FROM managed_students WHERE id = ${studentId} LIMIT 1;
         `;
         if (rows && rows.length > 0) {
@@ -365,16 +385,17 @@ class AdminDbService {
     let isUpdate = false;
     let savedStudent = null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
         // Check if student existed before this query
-        const existingRows = await this.sql`
-          SELECT id, username, password FROM managed_students WHERE admission_number = ${cleanAdm} LIMIT 1;
+        const existingRows = await sql`
+          SELECT id, username, password FROM managed_students WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm})) LIMIT 1;
         `;
         isUpdate = existingRows && existingRows.length > 0;
 
-        const rows = await this.sql`
+        const rows = await sql`
           INSERT INTO managed_students (
             name, admission_number, phone_number, username, password, section, created_at, updated_at
           ) VALUES (
@@ -482,10 +503,11 @@ class AdminDbService {
       newPassword = String(fields.password).trim();
     }
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           UPDATE managed_students
           SET
             name = ${cleanName},
@@ -542,10 +564,11 @@ class AdminDbService {
     if (!student) return false;
 
     let deleted = false;
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           DELETE FROM managed_students WHERE id = ${studentId} RETURNING id;
         `;
         deleted = rows && rows.length > 0;
@@ -592,7 +615,8 @@ class AdminDbService {
       });
     }
 
-    if (this.sql && validItems.length > 0) {
+    const sql = this.getSql();
+    if (sql && validItems.length > 0) {
       try {
         await this.ensureSchema();
 
@@ -623,7 +647,7 @@ class AdminDbService {
           `;
 
           try {
-            const returnedRows = await this.sql.query(query, params);
+            const returnedRows = await sql.query(query, params);
             for (const r of returnedRows) {
               if (r.inserted) {
                 summary.added++;
@@ -687,11 +711,12 @@ class AdminDbService {
    * Computes comprehensive dashboard statistics.
    */
   async getDashboardStats() {
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
 
-        const statsQuery = await this.sql`
+        const statsQuery = await sql`
           SELECT
             COUNT(*)::int AS total_students,
             COUNT(DISTINCT section) FILTER (WHERE section IS NOT NULL AND section <> '')::int AS total_sections,
@@ -702,21 +727,21 @@ class AdminDbService {
           FROM managed_students;
         `;
 
-        const recentAdded = await this.sql`
+        const recentAdded = await sql`
           SELECT id, name, admission_number, phone_number, section, created_at
           FROM managed_students
           ORDER BY id DESC
           LIMIT 5;
         `;
 
-        const recentUpdated = await this.sql`
+        const recentUpdated = await sql`
           SELECT id, name, admission_number, phone_number, section, updated_at
           FROM managed_students
           ORDER BY updated_at DESC
           LIMIT 5;
         `;
 
-        const sectionRows = await this.sql`
+        const sectionRows = await sql`
           SELECT
             CASE WHEN section IS NULL OR section = '' THEN 'Unassigned' ELSE section END AS section,
             COUNT(*)::int AS count
@@ -815,10 +840,11 @@ class AdminDbService {
       expiresAt
     });
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`
+        await sql`
           INSERT INTO admin_sessions (token, username, created_at, expires_at)
           VALUES (${token}, ${username}, NOW(), NOW() + (${ttlHours} || ' hours')::interval)
           ON CONFLICT (token) DO UPDATE SET
@@ -840,10 +866,11 @@ class AdminDbService {
   async getAdminSession(token) {
     if (!token) return null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT token, username, created_at, expires_at
           FROM admin_sessions
           WHERE token = ${token}
@@ -880,10 +907,11 @@ class AdminDbService {
 
     this.memoryAdminSessions.delete(token);
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`
+        await sql`
           DELETE FROM admin_sessions WHERE token = ${token};
         `;
         return true;
@@ -906,10 +934,11 @@ class AdminDbService {
       }
     }
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`
+        await sql`
           DELETE FROM admin_sessions WHERE expires_at <= NOW();
         `;
       } catch (err) {
@@ -1064,10 +1093,11 @@ class AdminDbService {
     const cleanType = String(searchType || 'Admission Number').trim();
     const cleanResult = String(result || 'SYSTEM_ERROR').trim().toUpperCase();
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           INSERT INTO search_logs (admission_number, search_query, search_type, result, created_at)
           VALUES (${cleanAdm}, ${cleanQuery}, ${cleanType}, ${cleanResult}, NOW())
           RETURNING id, COALESCE(admission_number, search_query) AS admission_number, search_query, search_type, result, created_at;
@@ -1106,16 +1136,17 @@ class AdminDbService {
     const cleanType = String(searchType || '').trim();
     const cleanDate = String(date || '').trim();
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
 
         // High-performance direct path for default view (no filters applied)
         if (!cleanSearch && !cleanResult && !cleanType && !cleanDate) {
-          const countRes = await this.sql`SELECT COUNT(*) AS total FROM search_logs;`;
+          const countRes = await sql`SELECT COUNT(*) AS total FROM search_logs;`;
           const total = parseInt(countRes[0]?.total || 0, 10);
 
-          const rows = await this.sql`
+          const rows = await sql`
             SELECT id, COALESCE(admission_number, search_query) AS admission_number, search_query, search_type, result, created_at
             FROM search_logs
             ORDER BY created_at DESC, id DESC
@@ -1162,7 +1193,7 @@ class AdminDbService {
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const countQuery = `SELECT COUNT(*) AS total FROM search_logs ${whereClause};`;
-        const countRows = await this.sql.query(countQuery, params);
+        const countRows = await sql.query(countQuery, params);
         const total = parseInt(countRows[0]?.total || 0, 10);
 
         const listQuery = `
@@ -1172,7 +1203,7 @@ class AdminDbService {
           ORDER BY created_at DESC, id DESC
           LIMIT $${pIdx} OFFSET $${pIdx + 1};
         `;
-        const rows = await this.sql.query(listQuery, [...params, limitNum, offset]);
+        const rows = await sql.query(listQuery, [...params, limitNum, offset]);
 
         return {
           logs: rows.map(r => this._formatSearchLog(r)),
@@ -1231,10 +1262,11 @@ class AdminDbService {
   async clearSearchLogs() {
     this.memorySearchLogs = [];
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`DELETE FROM search_logs;`;
+        await sql`DELETE FROM search_logs;`;
         return true;
       } catch (err) {
         console.warn('[Admin DB] clearSearchLogs error:', err.message);
@@ -1248,10 +1280,11 @@ class AdminDbService {
    * Retrieves summary statistics from the search_logs table.
    */
   async getSearchLogStats() {
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT 
             COUNT(*) AS total_searches,
             COUNT(*) FILTER (WHERE result = 'SUCCESS') AS successful_lookups,

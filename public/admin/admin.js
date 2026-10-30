@@ -602,7 +602,7 @@
     const tbody = document.getElementById('students-table-body');
     const tableEl = document.getElementById('students-table');
     const emptyState = document.getElementById('students-empty-state');
-    const paginationContainer = document.querySelector('.pagination-bar');
+    const paginationContainer = document.querySelector('#view-students .pagination-bar') || document.querySelector('.pagination-bar');
 
     if (!tbody) return;
 
@@ -1791,12 +1791,12 @@
     // Apply client-side chip filtering if active
     const field = state.universalSearchFilter;
     if (field && field !== 'all') {
-      const q = query.toLowerCase();
+      const q = query.toLowerCase().trim();
       results = results.filter(s => {
         if (field === 'name') return (s.name || '').toLowerCase().includes(q);
-        if (field === 'adm' || field === 'admissionNumber') return (s.admission_number || s.admissionNumber || '').toLowerCase().includes(q);
-        if (field === 'phone' || field === 'phoneNumber') return (s.phone_number || s.phone || '').toLowerCase().includes(q);
-        if (field === 'username') return (s.username || '').toLowerCase().includes(q);
+        if (field === 'adm' || field === 'admissionNumber') return (s.admission_number || s.admissionNumber || '').toLowerCase().trim().includes(q);
+        if (field === 'phone' || field === 'phoneNumber') return (s.phone_number || s.phone || '').toLowerCase().trim().includes(q);
+        if (field === 'username') return (s.username || '').toLowerCase().trim().includes(q);
         return true;
       });
     }

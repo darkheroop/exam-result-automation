@@ -40,7 +40,7 @@ class DbService {
 
   getSql() {
     if (this.sql) return this.sql;
-    const connStr = this.connectionString || this._resolveConnectionString();
+    const connStr = this._resolveConnectionString() || this.connectionString;
     if (connStr && neonClient) {
       try {
         this.connectionString = connStr;
@@ -60,12 +60,13 @@ class DbService {
    * Automatically initializes the required Neon database schema.
    */
   async ensureSchema() {
-    if (!this.sql || this.schemaInitialized) return true;
+    const sql = this.getSql();
+    if (!sql || this.schemaInitialized) return true;
     if (this.schemaPromise) return this.schemaPromise;
 
     this.schemaPromise = (async () => {
       try {
-        await this.sql`
+        await sql`
           CREATE TABLE IF NOT EXISTS cached_student_results (
             student_number VARCHAR(16) PRIMARY KEY,
             student_name VARCHAR(128),
@@ -86,7 +87,7 @@ class DbService {
           );
         `;
 
-        await this.sql`
+        await sql`
           CREATE TABLE IF NOT EXISTS durable_sessions (
             session_id VARCHAR(64) PRIMARY KEY,
             session_token VARCHAR(64) NOT NULL,
@@ -103,7 +104,7 @@ class DbService {
           );
         `;
 
-        await this.sql`
+        await sql`
           CREATE TABLE IF NOT EXISTS search_audit_logs (
             id BIGSERIAL PRIMARY KEY,
             student_number VARCHAR(16) NOT NULL,
@@ -115,11 +116,11 @@ class DbService {
           );
         `;
 
-        await this.sql`
+        await sql`
           CREATE INDEX IF NOT EXISTS idx_cached_results_expires ON cached_student_results(expires_at);
         `;
 
-        await this.sql`
+        await sql`
           CREATE INDEX IF NOT EXISTS idx_durable_sessions_token ON durable_sessions(session_token);
         `;
 
@@ -144,10 +145,11 @@ class DbService {
     const cleanNum = String(studentNumber || '').trim();
     if (!cleanNum) return null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT normalized_data, expires_at
           FROM cached_student_results
           WHERE student_number = ${cleanNum}
@@ -201,11 +203,12 @@ class DbService {
       expiresAt: Date.now() + (ttlDays * 24 * 60 * 60 * 1000)
     });
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
         const jsonData = JSON.stringify(normalizedResult);
-        await this.sql`
+        await sql`
           INSERT INTO cached_student_results (
             student_number, student_name, roll_no, seat_no, class_name,
             academic_year, session, ygpa, status, total_marks, credits_earned,
@@ -250,20 +253,21 @@ class DbService {
     // Memory fallback update
     this.memorySessions.set(session.sessionId, { ...session });
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
         const resultJson = session.resultData ? JSON.stringify(session.resultData) : null;
         const errMsg = session.error?.message || null;
 
-        await this.sql`
+        await sql`
           INSERT INTO durable_sessions (
             session_id, session_token, student_number, status, stage,
             progress_percent, stage_message, result_data, error_message, updated_at
           ) VALUES (
             ${session.sessionId}, ${session.sessionToken}, ${session.studentIdentifier || ''},
             ${session.status || 'initializing'}, ${session.stage || 1}, ${session.progressPercent || 0},
-            ${session.stageMessage || ''}, ${resultJson ? this.sql`${resultJson}::jsonb` : null},
+            ${session.stageMessage || ''}, ${resultJson ? sql`${resultJson}::jsonb` : null},
             ${errMsg}, NOW()
           )
           ON CONFLICT (session_id) DO UPDATE SET
@@ -290,10 +294,11 @@ class DbService {
   async getSession(sessionId, sessionToken) {
     if (!sessionId) return null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT * FROM durable_sessions
           WHERE session_id = ${sessionId}
             AND expires_at > NOW()
@@ -342,10 +347,11 @@ class DbService {
     if (!sessionId) return false;
     this.memorySessions.delete(sessionId);
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`DELETE FROM durable_sessions WHERE session_id = ${sessionId};`;
+        await sql`DELETE FROM durable_sessions WHERE session_id = ${sessionId};`;
         return true;
       } catch (err) {
         console.warn(`[Neon DB] Session delete error for ${sessionId}:`, err.message);
@@ -372,10 +378,11 @@ class DbService {
     });
     if (this.memoryLogs.length > 500) this.memoryLogs.shift();
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        await this.sql`
+        await sql`
           INSERT INTO search_audit_logs (
             student_number, cache_hit, response_time_ms, status, error_code, created_at
           ) VALUES (
@@ -392,7 +399,8 @@ class DbService {
    * Reports health & connectivity status of database.
    */
   async getHealth() {
-    if (!this.sql) {
+    const sql = this.getSql();
+    if (!sql) {
       return {
         connected: false,
         driver: 'memory-fallback',
@@ -402,7 +410,7 @@ class DbService {
 
     const start = Date.now();
     try {
-      await this.sql`SELECT 1 as test;`;
+      await sql`SELECT 1 as test;`;
       return {
         connected: true,
         driver: 'neon-serverless',
