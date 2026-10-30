@@ -2,9 +2,20 @@
 
 /**
  * Normalizes genuine portal API responses into a clean, consistent data structure for the frontend marksheet.
- * Preserves exact numerical values, grades, and metadata without fabricating or rounding values.
+ * Thoroughly extracts Semester I and Semester II data from ManageExamInfo publishingDetails:
+ * - Semesters array with semester name/title, SGPA, credits earned, total credits, general remarks.
+ * - Overall YGPA, overall credits earned, overall total credits, overall remarks.
+ * - Subjects array for each semester with acadSubjectCode, acadSubjectLngTitle, subjectType,
+ *   maxPointsToPrint, minPointsToPrint, obtResolutionGracesMarksToPrint, gradeLetterToPrint,
+ *   gradePointsToPrint, creditPointsToPrint, creditEarnedToPrint, and allExamAsmtTypeMarksDataArr.
  */
-function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, semesterwiseCardDetails, expectedStudentNumber = null, authenticatedUserData = null }) {
+function normalizeResultData({
+  annualwiseCardDetails,
+  manageExamInfoDetails,
+  semesterwiseCardDetails,
+  expectedStudentNumber = null,
+  authenticatedUserData = null
+}) {
   if (!annualwiseCardDetails && !manageExamInfoDetails) {
     return null;
   }
@@ -20,7 +31,7 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
     }
   }
 
-  // Extract annual cards
+  // Extract annual cards if provided
   const annualCards = annualwiseCardDetails?.collection?.response?.data || 
                       annualwiseCardDetails?.data || 
                       (Array.isArray(annualwiseCardDetails) ? annualwiseCardDetails : []);
@@ -28,83 +39,41 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
   // Find published annual card (one that has ygpa and yearlyRemark), or fallback to first card
   const publishedCard = annualCards.find(c => c.ygpa && c.yearlyRemark) || annualCards[0] || {};
 
-  // Extract exam info data
+  // Extract exam info publishing details
   const pubDetails = manageExamInfoDetails?.collection?.response?.examInfo?.publishingDetails || 
                      manageExamInfoDetails?.examInfo?.publishingDetails || 
                      manageExamInfoDetails?.publishingDetails;
   const semDataArr = pubDetails?.data || [];
 
-  // Find student metadata
+  // Find student metadata across semester records
   const firstSem = semDataArr[0] || {};
   const rawStudent = firstSem?.allStudentMarksRawDataArr?.[0] || {};
+
+  // Find a student record that has YGPA or yearlyRemark populated (e.g. from Sem II)
+  let rawStudentWithYgpa = null;
+  for (const sem of semDataArr) {
+    const s = sem.allStudentMarksRawDataArr?.[0];
+    if (s && (s.ygpa || s.yearlyRemark)) {
+      rawStudentWithYgpa = s;
+      break;
+    }
+  }
+  if (!rawStudentWithYgpa) rawStudentWithYgpa = rawStudent;
 
   const sYear = publishedCard.acadSyear || firstSem?.examClassMpCtgryAcademicYears || '2025';
   const nextYear = parseInt(sYear, 10) + 1;
 
   // Extract result publish date
   let publishedOn = '2026-07-22';
-  if (firstSem.allStudentMarksRawDataArr?.[0]?.resultPublishDetails?.[0]?.resultPublishDate) {
-    publishedOn = firstSem.allStudentMarksRawDataArr[0].resultPublishDetails[0].resultPublishDate;
+  if (rawStudent.resultPublishDate) {
+    publishedOn = rawStudent.resultPublishDate;
+  } else if (rawStudent.resultPublishDetails?.[0]?.resultPublishDate) {
+    publishedOn = rawStudent.resultPublishDetails[0].resultPublishDate;
   } else if (publishedCard.semesters?.[0]?.resultPublishDate) {
     publishedOn = publishedCard.semesters[0].resultPublishDate;
   }
 
-  const student = {
-    name: rawStudent.fullName || 'STUDENT',
-    fullName: rawStudent.fullName || 'STUDENT',
-    studentNumber: expectedStudentNumber || (authenticatedUserData ? authenticatedUserData.mobile : '') || '',
-    regnNo: rawStudent.seatNo || rawStudent.rollNo || publishedCard.seatNo || '',
-    seatNo: rawStudent.seatNo || publishedCard.seatNo || '',
-    rollNo: rawStudent.rollNo || '',
-    pnrNo: rawStudent.pnrNo || '',
-    className: publishedCard.acadClassTitle || rawStudent.classAffPrgLngName || 'FY-B.Tech CSE',
-    course: rawStudent.classAffPrgLngName || 'Bachelor of Technology in Computer Science & Engineering',
-    motherName: rawStudent.motherName || '',
-    fatherName: rawStudent.fatherName || '',
-    academicYear: sYear,
-    publishedOn: publishedOn,
-    session: `${sYear}-${String(nextYear).slice(-2)} (REGULAR)`,
-    abcId: rawStudent.abcId || '#N/A',
-    semesters: '1, 2',
-    status: publishedCard.yearlyRemark || 'PASS',
-    ygpa: publishedCard.ygpa || '',
-    creditsEarned: publishedCard.totalEarnedCredits !== undefined && publishedCard.totalEarnedCredits !== ''
-      ? Number(publishedCard.totalEarnedCredits)
-      : (publishedCard.totalCredits !== undefined && publishedCard.totalCredits !== '' ? Number(publishedCard.totalCredits) : 46),
-    totalCredits: publishedCard.totalCredits !== undefined && publishedCard.totalCredits !== ''
-      ? Number(publishedCard.totalCredits)
-      : 46,
-    obtainedMarks: publishedCard.earnedMarks !== undefined && publishedCard.earnedMarks !== ''
-      ? Number(publishedCard.earnedMarks)
-      : 0,
-    totalMarks: publishedCard.totalMarks !== undefined && publishedCard.totalMarks !== ''
-      ? Number(publishedCard.totalMarks)
-      : 0,
-    marks: `${publishedCard.earnedMarks || ''}/${publishedCard.totalMarks || ''}`,
-    cop: publishedCard.failedSubjectCodes ? publishedCard.failedSubjectCodes : '—'
-  };
-
-  const institution = {
-    name: 'ABES Engineering College',
-    subTitle: '(Autonomous College)',
-    accreditation: 'NAAC Accredited, NBA Accredited B.Tech. Branches (CSE, ECE, ME)',
-    affiliation: 'Approved by AICTE, New Delhi & Affiliated to Dr. APJ Abdul Kalam Technical University, Lucknow, UP',
-    address: '19th Km Stone, NH-09, Ghaziabad, UP, (INDIA)',
-    headerTitle: 'ABES Engineering College : Annual Result'
-  };
-
-  const annualSummary = {
-    status: student.status,
-    ygpa: student.ygpa,
-    creditsEarned: student.creditsEarned,
-    totalCredits: student.totalCredits,
-    obtainedMarks: student.obtainedMarks,
-    totalMarks: student.totalMarks,
-    marksRatio: student.marks,
-    cop: student.cop
-  };
-
-  // Sort semesters so Semester I is first, Semester II is second
+  // Sort semesters so Semester I is first (index 0), Semester II is second (index 1)
   const sortedSems = [...semDataArr].sort((a, b) => {
     const titleA = (a.examClassMpCtgryTitle || '').toUpperCase();
     const titleB = (b.examClassMpCtgryTitle || '').toUpperCase();
@@ -119,7 +88,7 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
     const semTitle = sem.examClassMpCtgryTitle || (sIdx === 0 ? 'Semester I' : 'Semester II');
     const semNumber = semTitle.includes('II') ? 2 : (semTitle.includes('I') ? 1 : sIdx + 1);
 
-    // Match semester metadata from publishedCard using strict matching
+    // Match semester metadata from publishedCard using strict matching if card is available
     const cardSem = (publishedCard.semesters || []).find(s => {
       const cardTitle = (s.semesterTitle || '').trim().toUpperCase();
       if (semNumber === 1) {
@@ -181,12 +150,14 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
         ? Number(sub.obtResolutionGracesPoints)
         : (sub.obtPoints !== undefined ? Number(sub.obtPoints) : 0);
 
-      const creditPoints = Number(sub.creditPoints || 0);
-      const gradePoints = Number(sub.gradePoints || 0);
-      const creditEarned = sub.creditEarned !== undefined ? Number(sub.creditEarned) : creditPoints;
+      const creditPoints = Number(sub.creditPoints !== undefined ? sub.creditPoints : (sub.creditPointsToPrint || 0));
+      const gradePoints = Number(sub.gradePoints !== undefined ? sub.gradePoints : (sub.gradePointsToPrint || 0));
+      const creditEarned = sub.creditEarned !== undefined
+        ? Number(sub.creditEarned)
+        : (sub.creditEarnedToPrint !== undefined ? Number(sub.creditEarnedToPrint) : creditPoints);
       const cgPoints = sub.cgPoints !== undefined ? Number(sub.cgPoints) : (creditPoints * gradePoints);
 
-      const grade = sub.gradeLetter || '';
+      const grade = sub.gradeLetter || sub.gradeLetterToPrint || '';
       let result = 'PASS';
       if (grade === 'F') {
         result = 'FAIL';
@@ -197,6 +168,22 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
       }
 
       return {
+        // Explicit required subject fields
+        acadSubjectCode: sub.acadSubjectCode || '',
+        acadSubjectLngTitle: sub.acadSubjectLngTitle || '',
+        subjectType: sub.subjectType || (isTheory ? 'Theory' : 'Practical'),
+        maxPointsToPrint: sub.maxPointsToPrint !== undefined ? sub.maxPointsToPrint : (sub.maxPoints !== undefined ? Number(sub.maxPoints) : 100),
+        minPointsToPrint: sub.minPointsToPrint !== undefined ? sub.minPointsToPrint : (sub.minPoints !== undefined ? Number(sub.minPoints) : 40),
+        obtResolutionGracesMarksToPrint: sub.obtResolutionGracesMarksToPrint !== undefined
+          ? sub.obtResolutionGracesMarksToPrint
+          : (sub.obtResolutionGracesPoints !== undefined ? sub.obtResolutionGracesPoints : totalObt),
+        gradeLetterToPrint: sub.gradeLetterToPrint || sub.gradeLetter || '',
+        gradePointsToPrint: sub.gradePointsToPrint !== undefined ? sub.gradePointsToPrint : (sub.gradePoints !== undefined ? String(sub.gradePoints) : ''),
+        creditPointsToPrint: sub.creditPointsToPrint !== undefined ? sub.creditPointsToPrint : creditPoints,
+        creditEarnedToPrint: sub.creditEarnedToPrint !== undefined ? sub.creditEarnedToPrint : creditEarned,
+        allExamAsmtTypeMarksDataArr: sub.allExamAsmtTypeMarksDataArr || [],
+
+        // Preserved backward-compatible fields
         code: sub.acadSubjectCode || '',
         name: sub.acadSubjectLngTitle || '',
         title: sub.acadSubjectLngTitle || '',
@@ -234,43 +221,160 @@ function normalizeResultData({ annualwiseCardDetails, manageExamInfoDetails, sem
 
     const semEarnedMarks = cardSem.earnedMarks !== undefined && cardSem.earnedMarks !== ''
       ? Number(cardSem.earnedMarks)
-      : subjects.reduce((sum, s) => sum + s.total.obt, 0);
+      : (studMarks.overAllObtResolutionGracesPoints !== undefined && studMarks.overAllObtResolutionGracesPoints !== ''
+         ? Number(studMarks.overAllObtResolutionGracesPoints)
+         : (studMarks.overAllObtResolutionGracesPointsToPrint !== undefined && studMarks.overAllObtResolutionGracesPointsToPrint !== ''
+            ? Number(studMarks.overAllObtResolutionGracesPointsToPrint)
+            : subjects.reduce((sum, s) => sum + s.total.obt, 0)));
 
     const semTotalMarks = cardSem.totalMarks !== undefined && cardSem.totalMarks !== ''
       ? Number(cardSem.totalMarks)
-      : subjects.reduce((sum, s) => sum + s.total.max, 0);
+      : (studMarks.overAllMaxPoints !== undefined && studMarks.overAllMaxPoints !== ''
+         ? Number(studMarks.overAllMaxPoints)
+         : (studMarks.overAllMaxPointsToPrint !== undefined && studMarks.overAllMaxPointsToPrint !== ''
+            ? Number(studMarks.overAllMaxPointsToPrint)
+            : subjects.reduce((sum, s) => sum + s.total.max, 0)));
 
     const semCredits = cardSem.credits !== undefined && cardSem.credits !== ''
       ? Number(cardSem.credits)
-      : subjects.reduce((sum, s) => sum + s.credits, 0);
+      : (studMarks.overAllCreditPoints !== undefined && studMarks.overAllCreditPoints !== ''
+         ? Number(studMarks.overAllCreditPoints)
+         : (studMarks.overAllCreditPointsToPrint !== undefined && studMarks.overAllCreditPointsToPrint !== ''
+            ? Number(studMarks.overAllCreditPointsToPrint)
+            : subjects.reduce((sum, s) => sum + s.credits, 0)));
 
     const semEarnedCredits = cardSem.earnedCredits !== undefined && cardSem.earnedCredits !== ''
       ? Number(cardSem.earnedCredits)
-      : subjects.reduce((sum, s) => sum + s.creditsEarned, 0);
+      : (studMarks.overAllCreditEarnedPoints !== undefined && studMarks.overAllCreditEarnedPoints !== ''
+         ? Number(studMarks.overAllCreditEarnedPoints)
+         : (studMarks.overAllCreditEarnedPointsToPrint !== undefined && studMarks.overAllCreditEarnedPointsToPrint !== ''
+            ? Number(studMarks.overAllCreditEarnedPointsToPrint)
+            : subjects.reduce((sum, s) => sum + s.creditsEarned, 0)));
+
+    const semSgpa = cardSem.sgpa !== undefined && cardSem.sgpa !== ''
+      ? String(cardSem.sgpa)
+      : (studMarks.overAllSgpaPointsToPrint !== undefined && studMarks.overAllSgpaPointsToPrint !== ''
+         ? String(studMarks.overAllSgpaPointsToPrint)
+         : (studMarks.overAllSgpaPoints !== undefined && studMarks.overAllSgpaPoints !== '' ? String(studMarks.overAllSgpaPoints) : ''));
+
+    const semRemark = cardSem.generalRemark ||
+                      studMarks.overAllGeneralRemarks ||
+                      studMarks.overAllRemarks ||
+                      (semNumber === 2 && (publishedCard.yearlyRemark === 'PWG' || rawStudentWithYgpa.yearlyRemark === 'PWG') ? 'PWG' : 'PASS');
 
     return {
       semesterNumber: semNumber,
       title: semTitle,
+      name: semTitle,
       semesterTitle: semTitle,
-      sgpa: cardSem.sgpa || '',
+      sgpa: semSgpa,
       totalMarks: semTotalMarks,
       earnedMarks: semEarnedMarks,
       obtainedMarks: semEarnedMarks,
       marks: `${semEarnedMarks}/${semTotalMarks}`,
       credits: semCredits,
+      totalCredits: semCredits,
       earnedCredits: semEarnedCredits,
       creditsEarned: semEarnedCredits,
-      status: cardSem.generalRemark || (semNumber === 2 && student.status === 'PWG' ? 'PWG' : 'PASS'),
-      generalRemark: cardSem.generalRemark || (semNumber === 2 && student.status === 'PWG' ? 'PWG' : 'PASS'),
+      status: semRemark,
+      generalRemark: semRemark,
+      generalRemarks: semRemark,
       subjects
     };
   });
+
+  // Calculate overall YGPA, overall credits earned, overall total credits, overall remarks
+  const overallYgpa = publishedCard.ygpa !== undefined && publishedCard.ygpa !== ''
+    ? String(publishedCard.ygpa)
+    : (rawStudentWithYgpa.ygpa !== undefined && rawStudentWithYgpa.ygpa !== '' ? String(rawStudentWithYgpa.ygpa) : '');
+
+  const overallRemarks = publishedCard.yearlyRemark ||
+                         rawStudentWithYgpa.yearlyRemark ||
+                         rawStudentWithYgpa.overAllGeneralRemarks ||
+                         rawStudentWithYgpa.overAllRemarks ||
+                         'PASS';
+
+  const overallCreditsEarned = publishedCard.totalEarnedCredits !== undefined && publishedCard.totalEarnedCredits !== ''
+    ? Number(publishedCard.totalEarnedCredits)
+    : (publishedCard.totalCredits !== undefined && publishedCard.totalCredits !== ''
+       ? Number(publishedCard.totalCredits)
+       : semesters.reduce((sum, sem) => sum + sem.creditsEarned, 0));
+
+  const overallTotalCredits = publishedCard.totalCredits !== undefined && publishedCard.totalCredits !== ''
+    ? Number(publishedCard.totalCredits)
+    : semesters.reduce((sum, sem) => sum + sem.totalCredits, 0);
+
+  const overallEarnedMarks = publishedCard.earnedMarks !== undefined && publishedCard.earnedMarks !== ''
+    ? Number(publishedCard.earnedMarks)
+    : semesters.reduce((sum, sem) => sum + sem.earnedMarks, 0);
+
+  const overallTotalMarks = publishedCard.totalMarks !== undefined && publishedCard.totalMarks !== ''
+    ? Number(publishedCard.totalMarks)
+    : semesters.reduce((sum, sem) => sum + sem.totalMarks, 0);
+
+  const student = {
+    name: rawStudent.fullName || 'STUDENT',
+    fullName: rawStudent.fullName || 'STUDENT',
+    studentNumber: expectedStudentNumber || (authenticatedUserData ? authenticatedUserData.mobile : '') || '',
+    regnNo: rawStudent.seatNo || rawStudent.rollNo || publishedCard.seatNo || '',
+    seatNo: rawStudent.seatNo || publishedCard.seatNo || '',
+    rollNo: rawStudent.rollNo || '',
+    pnrNo: rawStudent.pnrNo || '',
+    className: publishedCard.acadClassTitle || rawStudent.classAffPrgLngName || rawStudent.classNameLedger || 'FY-B.Tech CSE',
+    course: rawStudent.classAffPrgLngName || 'Bachelor of Technology in Computer Science & Engineering',
+    motherName: rawStudent.motherName || '',
+    fatherName: rawStudent.fatherName || '',
+    academicYear: sYear,
+    publishedOn: publishedOn,
+    session: `${sYear}-${String(nextYear).slice(-2)} (REGULAR)`,
+    abcId: rawStudent.abcId || '#N/A',
+    semesters: '1, 2',
+    status: overallRemarks,
+    ygpa: overallYgpa,
+    creditsEarned: overallCreditsEarned,
+    totalCredits: overallTotalCredits,
+    obtainedMarks: overallEarnedMarks,
+    totalMarks: overallTotalMarks,
+    marks: `${overallEarnedMarks}/${overallTotalMarks}`,
+    cop: publishedCard.failedSubjectCodes ? publishedCard.failedSubjectCodes : '—',
+    overallYgpa,
+    overallCreditsEarned,
+    overallRemarks
+  };
+
+  const institution = {
+    name: 'ABES Engineering College',
+    subTitle: '(Autonomous College)',
+    accreditation: 'NAAC Accredited, NBA Accredited B.Tech. Branches (CSE, ECE, ME)',
+    affiliation: 'Approved by AICTE, New Delhi & Affiliated to Dr. APJ Abdul Kalam Technical University, Lucknow, UP',
+    address: '19th Km Stone, NH-09, Ghaziabad, UP, (INDIA)',
+    headerTitle: 'ABES Engineering College : Annual Result'
+  };
+
+  const annualSummary = {
+    status: student.status,
+    ygpa: student.ygpa,
+    overallYgpa,
+    creditsEarned: student.creditsEarned,
+    overallCreditsEarned,
+    totalCredits: student.totalCredits,
+    overallTotalCredits,
+    overallRemarks,
+    obtainedMarks: student.obtainedMarks,
+    totalMarks: student.totalMarks,
+    marksRatio: student.marks,
+    cop: student.cop
+  };
 
   return {
     student,
     institution,
     annualSummary,
     semesters,
+    overallYgpa,
+    overallCreditsEarned,
+    overallTotalCredits,
+    overallRemarks,
     source: 'official-portal'
   };
 }

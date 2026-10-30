@@ -14,7 +14,7 @@ class SessionManager {
     this.tempDir = options.tempDir || config.tempStorageDir;
     this.sessions = new Map();
 
-    // Ensure temporary downloads directory exists safely without crashing on read-only file systems
+    // Ensure temporary storage directory exists safely without crashing on read-only file systems
     try {
       if (!fs.existsSync(this.tempDir)) {
         fs.mkdirSync(this.tempDir, { recursive: true });
@@ -49,7 +49,6 @@ class SessionManager {
           session.status === 'initializing' ||
           session.status === 'queued' ||
           session.status === 'processing' ||
-          session.status === 'downloading' ||
           (session.status === 'ready' && now - session.updatedAt < 60000)
         ) {
           return session;
@@ -223,12 +222,11 @@ class SessionManager {
 
     session.status = 'closed';
 
-    // Close Playwright browser context
     if (session.browserContext) {
       try {
         await session.browserContext.close();
       } catch (err) {
-        // Safe suppression of close errors
+        // Safe suppression
       }
       session.browserContext = null;
       session.page = null;
@@ -259,7 +257,7 @@ class SessionManager {
   }
 
   /**
-   * Safe public representation of a session (no secrets, no internal browser handles)
+   * Safe public representation of a session (no secrets, no internal handles, no PDF tracking)
    */
   toPublicState(session) {
     if (!session) return null;
@@ -280,10 +278,8 @@ class SessionManager {
       hasRenderedView: Boolean(session.renderedHtml || session.resultData),
       renderedHtml: session.renderedHtml || null,
       resultData: session.resultData || null,
-      hasDownloadableFile: Boolean(session.downloadedFile?.ready),
-      downloadFileName: session.downloadedFile?.fileName || null,
-      downloadUrl: session.downloadedFile?.ready ? `/api/automation/${session.sessionId}/file?token=${session.sessionToken}` : null,
-      pdfBase64: session.downloadedFile?.base64 || null,
+      overallYgpa: session.resultData?.overallYgpa || session.resultData?.annualSummary?.ygpa || null,
+      overallRemarks: session.resultData?.overallRemarks || session.resultData?.annualSummary?.status || null,
       examSummary: session.examSummary || null,
       workflowLogs: session.workflowLogs || [],
       error: session.error ? {

@@ -1,5 +1,6 @@
 'use strict';
 
+const test = require('node:test');
 const http = require('node:http');
 const assert = require('node:assert/strict');
 const app = require('../src/app');
@@ -280,16 +281,67 @@ async function runAllConcurrencyTests() {
   return results;
 }
 
-if (require.main === module) {
-  runAllConcurrencyTests()
-    .then(() => {
-      console.log('All concurrency load testing scenarios PASSED successfully.');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('Concurrency load test failed:', err);
-      process.exit(1);
-    });
-}
+test('Concurrency - 10 simultaneous student submissions maintain zero data leakage', async () => {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const serverUrl = `http://127.0.0.1:${server.address().port}`;
+
+  defaultAutomationService.mockMode = true;
+  defaultAutomationService.mockDelayMs = 15;
+  defaultCredentialService.mockMode = true;
+
+  try {
+    const report = await runConcurrencyScenario(serverUrl, 10, 1000000001);
+    assert.equal(report.failedRequests, 0);
+    assert.equal(report.successfulRequests, 10);
+    assert.equal(report.zeroLeakageVerified, true);
+  } finally {
+    defaultAutomationService.mockMode = false;
+    defaultCredentialService.mockMode = false;
+    server.close();
+  }
+});
+
+test('Concurrency - 25 simultaneous student submissions maintain zero data leakage', async () => {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const serverUrl = `http://127.0.0.1:${server.address().port}`;
+
+  defaultAutomationService.mockMode = true;
+  defaultAutomationService.mockDelayMs = 15;
+  defaultCredentialService.mockMode = true;
+
+  try {
+    const report = await runConcurrencyScenario(serverUrl, 25, 2000000001);
+    assert.equal(report.failedRequests, 0);
+    assert.equal(report.successfulRequests, 25);
+    assert.equal(report.zeroLeakageVerified, true);
+  } finally {
+    defaultAutomationService.mockMode = false;
+    defaultCredentialService.mockMode = false;
+    server.close();
+  }
+});
+
+test('Concurrency - 50 simultaneous student submissions maintain zero data leakage', async () => {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const serverUrl = `http://127.0.0.1:${server.address().port}`;
+
+  defaultAutomationService.mockMode = true;
+  defaultAutomationService.mockDelayMs = 15;
+  defaultCredentialService.mockMode = true;
+
+  try {
+    const report = await runConcurrencyScenario(serverUrl, 50, 3000000001);
+    assert.equal(report.failedRequests, 0);
+    assert.equal(report.successfulRequests, 50);
+    assert.equal(report.zeroLeakageVerified, true);
+  } finally {
+    defaultAutomationService.mockMode = false;
+    defaultCredentialService.mockMode = false;
+    server.close();
+  }
+});
 
 module.exports = { runConcurrencyScenario, runAllConcurrencyTests };

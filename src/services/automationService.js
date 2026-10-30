@@ -1,14 +1,14 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { chromium } = require('playwright-core');
+const crypto = require('crypto');
+const https = require('https');
 const config = require('../config');
 const { defaultCredentialService } = require('./credentialService');
 const { defaultSessionManager } = require('./sessionManager');
 const { normalizeResultData } = require('./resultNormalizer');
-const { defaultBrowserPool } = require('./browserPool');
+
+// Persistent HTTPS Connection Pooling with Keep-Alive
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 
 /**
  * Executes a promise with an operation-specific timeout and clean error code.
@@ -32,78 +32,72 @@ async function withTimeout(promise, timeoutMs, opName, opCode = 'TIMEOUT') {
   }
 }
 
-// Global extraction lock for serverless environments to prevent concurrent extraction collisions (ETXTBSY)
-let serverlessChromiumExtractionPromise = null;
+/**
+ * Performs a high-performance direct GET request to the educational portal APIs.
+ */
+function fetchPortalJson(urlStr, headers = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    try {
+      const u = new URL(urlStr);
+      const req = https.get(u, {
+        agent: httpsAgent,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+          ...headers
+        },
+        timeout: timeoutMs
+      }, (res) => {
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { raw += chunk; });
+        res.on('end', () => {
+          let parsed = null;
+          try {
+            if (raw) parsed = JSON.parse(raw);
+          } catch {
+            // not valid json
+          }
+          if (res.statusCode >= 400) {
+            const err = new Error(`Portal API responded with HTTP status ${res.statusCode}`);
+            err.statusCode = res.statusCode;
+            err.code = 'PORTAL_API_ERROR';
+            return reject(err);
+          }
+          resolve(parsed);
+        });
+      });
 
-async function extractChromiumSafely(sparticuzChromium) {
-  if (serverlessChromiumExtractionPromise) {
-    return serverlessChromiumExtractionPromise;
-  }
+      req.on('timeout', () => {
+        req.destroy();
+        const err = new Error(`Portal API request timed out after ${timeoutMs}ms.`);
+        err.name = 'TimeoutError';
+        err.code = 'PORTAL_TIMEOUT';
+        reject(err);
+      });
 
-  serverlessChromiumExtractionPromise = (async () => {
-    const finalBinary = path.join(os.tmpdir(), 'chromium');
-
-    // If the binary already exists and is completely inflated (>180MB), reuse it directly
-    if (fs.existsSync(finalBinary)) {
-      try {
-        const stat = fs.statSync(finalBinary);
-        if (stat.size > 180 * 1024 * 1024) {
-          return finalBinary;
-        }
-        // Incomplete / corrupt file from previous aborted write: clean up
-        console.warn(`Found incomplete /tmp/chromium (${stat.size} bytes). Cleaning up...`);
-        fs.unlinkSync(finalBinary);
-      } catch (_) {}
+      req.on('error', (err) => {
+        reject(err);
+      });
+    } catch (e) {
+      reject(e);
     }
-
-    const candidateBinPaths = [
-      path.resolve(process.cwd(), 'node_modules/@sparticuz/chromium/bin'),
-      path.resolve(__dirname, '../node_modules/@sparticuz/chromium/bin'),
-      path.resolve(__dirname, '../../node_modules/@sparticuz/chromium/bin'),
-      '/var/task/node_modules/@sparticuz/chromium/bin',
-      '/var/task/bin',
-    ];
-    const binPath = candidateBinPaths.find(p => fs.existsSync(p));
-
-    const execPath = binPath
-      ? await sparticuzChromium.executablePath(binPath)
-      : await sparticuzChromium.executablePath();
-
-    if (execPath && fs.existsSync(execPath)) {
-      try {
-        fs.chmodSync(execPath, 0o755);
-      } catch (_) {}
-    }
-
-    // Brief stabilization pause to ensure OS finishes flushing write handles
-    await new Promise(r => setTimeout(r, 200));
-    return execPath;
-  })();
-
-  try {
-    return await serverlessChromiumExtractionPromise;
-  } catch (err) {
-    serverlessChromiumExtractionPromise = null;
-    throw err;
-  }
+  });
 }
 
 class AutomationService {
   constructor(options = {}) {
     this.sessionManager = options.sessionManager || defaultSessionManager;
     this.credentialService = options.credentialService || defaultCredentialService;
-    this.browserPool = options.browserPool || defaultBrowserPool;
-    this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 3;
+    this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 10;
     this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
     this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
-    this.jobTimeoutMs = options.jobTimeoutMs || config.jobTimeoutMs || 90000;
-    this.mockMode = options.mockMode !== undefined ? options.mockMode : (config.mockMode || false);
+    this.jobTimeoutMs = options.jobTimeoutMs || config.jobTimeoutMs || 30000;
+    this.mockMode = options.mockMode !== undefined ? options.mockMode : (config.mockMode || process.env.MOCK_AUTOMATION === 'true' || false);
     this.mockDelayMs = options.mockDelayMs || 25;
 
     this.activeWorkers = 0;
     this.jobQueue = [];
-    this.browser = null;
-    this.browserInitPromise = null;
 
     // Metrics for diagnostics, load testing, and observability
     this.metrics = {
@@ -120,143 +114,14 @@ class AutomationService {
   }
 
   /**
-   * Initializes or returns the shared Chromium browser instance.
-   * Reuses browser across jobs while keeping contexts strictly isolated.
+   * Compatibility methods for graceful shutdown / testing
    */
   async getBrowser() {
-    if (this.browser && this.browser.isConnected()) {
-      return this.browser;
-    }
-
-    if (this.browserInitPromise) {
-      return this.browserInitPromise;
-    }
-
-    this.browserInitPromise = (async () => {
-      const isServerless = Boolean(
-        process.env.VERCEL ||
-        process.env.AWS_LAMBDA_FUNCTION_VERSION ||
-        process.env.LAMBDA_TASK_ROOT
-      );
-
-      // Stable, multi-context flags without single-process mode
-      let launchOptions = {
-        headless: config.headless,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-extensions'
-        ]
-      };
-
-      if (isServerless) {
-        try {
-          const sparticuzPkg = await import('@sparticuz/chromium');
-          const sparticuzChromium = sparticuzPkg.default || sparticuzPkg;
-
-          if (sparticuzChromium.setGraphicsMode !== undefined) {
-            sparticuzChromium.setGraphicsMode = false;
-          }
-
-          const execPath = await extractChromiumSafely(sparticuzChromium);
-
-          if (execPath) {
-            const execDir = path.dirname(execPath);
-            const al2023Lib = path.join(execDir, 'al2023', 'lib');
-            process.env.LD_LIBRARY_PATH = `${execDir}:${al2023Lib}:${process.env.LD_LIBRARY_PATH || ''}`;
-          }
-
-          // Clean up Sparticuz args: remove broken --headless='shell' with single quotes
-          const rawArgs = sparticuzChromium.args || [];
-          const cleanArgs = rawArgs
-            .filter(arg => !arg.startsWith('--headless'))
-            .concat([
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--disable-blink-features=AutomationControlled'
-            ]);
-          const uniqueArgs = Array.from(new Set(cleanArgs));
-
-          launchOptions = {
-            args: uniqueArgs,
-            executablePath: execPath,
-            headless: true
-          };
-        } catch (serverlessErr) {
-          console.error('Sparticuz Chromium init error:', serverlessErr);
-          if (config.chromePath) {
-            launchOptions.executablePath = config.chromePath;
-          } else {
-            throw new Error(`Headless browser initialization failed on serverless: ${serverlessErr.message}`);
-          }
-        }
-      } else {
-        if (config.chromePath) {
-          launchOptions.executablePath = config.chromePath;
-        } else {
-          launchOptions.channel = 'chrome';
-        }
-      }
-
-      try {
-        let browser;
-        const maxLaunchAttempts = 5;
-        for (let attempt = 1; attempt <= maxLaunchAttempts; attempt++) {
-          try {
-            browser = await chromium.launch(launchOptions);
-            break;
-          } catch (launchErr) {
-            const isBusy = (launchErr.message && launchErr.message.includes('ETXTBSY')) || launchErr.code === 'ETXTBSY';
-            if (isBusy && attempt < maxLaunchAttempts) {
-              const backoffMs = 500 * Math.pow(2, attempt - 1);
-              console.warn(`Chromium binary busy (ETXTBSY on launch attempt ${attempt}/${maxLaunchAttempts}). Retrying in ${backoffMs}ms...`);
-              await new Promise(r => setTimeout(r, backoffMs));
-              continue;
-            }
-            throw launchErr;
-          }
-        }
-
-        browser.on('disconnected', () => {
-          console.warn('Browser process disconnected. Resetting browser instance handle.');
-          this.browser = null;
-          this.browserInitPromise = null;
-        });
-
-        this.browser = browser;
-        return this.browser;
-      } catch (launchErr) {
-        this.browser = null;
-        throw launchErr;
-      } finally {
-        this.browserInitPromise = null;
-      }
-    })();
-
-    return this.browserInitPromise;
+    return null;
   }
 
-  /**
-   * Safely closes the browser instance (for shutdown or testing)
-   */
   async closeBrowser() {
-    this.browserInitPromise = null;
-    if (this.browserPool) {
-      await this.browserPool.closeAll().catch(() => {});
-    }
-    if (this.browser) {
-      try {
-        await this.browser.close().catch(() => {});
-      } catch (_) {}
-      this.browser = null;
-    }
+    return null;
   }
 
   /**
@@ -364,7 +229,13 @@ class AutomationService {
   }
 
   /**
-   * Internal core workflow execution with strict context isolation and operation timeouts.
+   * High-Performance Direct Portal API Workflow:
+   * 1. Retrieve authorized credentials from backend lookup.
+   * 2. Authenticate directly via GetUserAuthenticatedData using MD5 password.
+   * 3. Strictly verify student identity (userData.mobile === studentNumber).
+   * 4. Extract loggedInUsrId and class parameters.
+   * 5. Query ManageExamInfo and ManageStudentExamAnnualwiseDashboardCardDetails.
+   * 6. Normalize and store genuine examination marksheet in session.
    */
   async executeWorkflow(sessionId, sessionToken, studentNumber) {
     const session = this.sessionManager.getSession(sessionId, sessionToken);
@@ -377,10 +248,6 @@ class AutomationService {
       session.workflowLogs.push(entry);
     };
 
-    let page = null;
-    let context = null;
-    let lease = null;
-
     try {
       // Stage 1: Validate input
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
@@ -391,22 +258,24 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
       const credentials = await withTimeout(
         this.credentialService.fetchCredentials(validNumber),
-        config.credentialLookupTimeoutMs,
+        config.credentialLookupTimeoutMs || 15000,
         'Credential Lookup',
         'TIMEOUT_CREDENTIALS'
       );
+
       if (credentials.studentNumber && credentials.studentNumber !== validNumber) {
         const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${credentials.studentNumber}, expected ${validNumber}`);
         mismatchErr.code = 'CREDENTIAL_STUDENT_MISMATCH';
         throw mismatchErr;
       }
+
       const username = credentials.username;
       const password = credentials.password;
       session.username = username;
       log(`Stage 2: Retrieved credentials for user: ${username}`);
 
-      // Fast mock mode branch for controlled high-concurrency / load testing
-      if (this.mockMode) {
+      // Fast mock mode branch for load / capacity / unit testing
+      if (this.mockMode || process.env.MOCK_AUTOMATION === 'true') {
         log(`Executing in mock mode for load/capacity testing: student ${validNumber}`);
         this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
         await new Promise(r => setTimeout(r, this.mockDelayMs));
@@ -435,30 +304,59 @@ class AutomationService {
             status: 'PASS',
             ygpa: '8.50',
             creditsEarned: 44,
+            totalCredits: 44,
             marks: '850 / 1000',
-            cop: 'NIL'
+            cop: 'NIL',
+            overallYgpa: '8.50',
+            overallCreditsEarned: 44,
+            overallRemarks: 'PASS'
           },
-          annualSummary: { status: 'PASS', ygpa: '8.50', credits: 44 },
+          annualSummary: {
+            status: 'PASS',
+            ygpa: '8.50',
+            credits: 44,
+            overallYgpa: '8.50',
+            overallCreditsEarned: 44,
+            overallRemarks: 'PASS'
+          },
+          overallYgpa: '8.50',
+          overallCreditsEarned: 44,
+          overallRemarks: 'PASS',
           semesters: [
             {
               title: 'Semester I',
+              name: 'Semester I',
               sgpa: '8.40',
               creditsEarned: 22,
               credits: 22,
+              totalCredits: 22,
               obtainedMarks: 420,
               totalMarks: 500,
               status: 'PASS',
+              generalRemark: 'PASS',
+              generalRemarks: 'PASS',
               subjects: [
                 {
+                  acadSubjectCode: 'BAS101',
+                  acadSubjectLngTitle: 'Engineering Physics',
+                  subjectType: 'Theory',
                   code: 'BAS101',
                   name: 'Engineering Physics',
-                  type: 'Theory',
+                  type: 'THEORY',
                   grade: 'A',
+                  gradeLetterToPrint: 'A',
                   credits: 4,
+                  creditPointsToPrint: 4,
                   creditsEarned: 4,
+                  creditEarnedToPrint: 4,
                   gradePoints: 8,
+                  gradePointsToPrint: '8',
                   creditGrade: 32,
                   result: 'PASS',
+                  maxPointsToPrint: 100,
+                  minPointsToPrint: 40,
+                  obtResolutionGracesMarksToPrint: 91,
+                  allExamAsmtTypeMarksDataArr: [],
                   midTerm1: { obt: 25, min: 12, max: 30 },
                   midTerm2: { obt: 26, min: 12, max: 30 },
                   endTerm: { obt: 40, min: 20, max: 50 },
@@ -471,487 +369,217 @@ class AutomationService {
           ]
         };
 
-        const mockPdfBuffer = Buffer.from('%PDF-1.4\n%Mock PDF for ' + validNumber + '\n%%EOF');
-        session.pdfBuffer = mockPdfBuffer;
-        session.pdfBase64 = mockPdfBuffer.toString('base64');
-        session.downloadFileName = `Annual-Result-${validNumber}.pdf`;
         session.resultData = mockResultData;
-
         this.sessionManager.updateProgress(sessionId, 7, 'Examination result loaded successfully.', 100, {
           status: 'ready',
-          resultData: mockResultData,
-          downloadFileName: session.downloadFileName,
-          pdfBase64: session.pdfBase64
+          resultData: mockResultData
         });
         return;
       }
 
-      // Stage 3: Connect to the educational portal and lease isolated browser context from pool
+      // Stage 3: Connect to the educational portal
       this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-      log('Stage 3: Leasing isolated browser context from pre-warmed pool...');
-
-      // Lease isolated browser context from pool
-      try {
-        lease = await withTimeout(
-          this.browserPool.acquireContext(config.browserLaunchTimeoutMs),
-          config.browserLaunchTimeoutMs + 5000,
-          'Browser Pool Context Lease',
-          'TIMEOUT_BROWSER_ACQUIRE'
-        );
-        context = lease.context;
-        page = lease.page;
-      } catch (poolErr) {
-        log(`Initial pool lease delayed (${poolErr.message}). Retrying once...`);
-        this.metrics.retries++;
-        lease = await withTimeout(
-          this.browserPool.acquireContext(config.browserLaunchTimeoutMs),
-          config.browserLaunchTimeoutMs + 5000,
-          'Browser Pool Context Lease Retry',
-          'TIMEOUT_BROWSER_ACQUIRE_RETRY'
-        );
-        context = lease.context;
-        page = lease.page;
-      }
-
-      session.browserContext = context;
-      session.page = page;
-
-      // Track responses to capture genuine API payloads
-      let annualwiseCardDetailsJson = null;
-      let semesterwiseCardDetailsJson = null;
-      let assessmentDataJson = null;
-      let authErrorMessage = null;
-      let authenticatedUserData = null;
-      let authenticatedStudentMobile = null;
-      let authenticatedStudentName = null;
-
-      page.on('response', async (res) => {
-        const url = res.url();
-        const status = res.status();
-
-        if (url.includes('GetUserAuthenticatedData')) {
-          if (status >= 400) {
-            authErrorMessage = 'Portal authentication rejected credentials.';
-          } else if (status === 200) {
-            try {
-              const authJson = await res.json();
-              const uData = authJson?.collection?.response?.userData || authJson?.userData || authJson?.data;
-              if (uData) {
-                authenticatedUserData = uData;
-                if (uData.mobile) {
-                  authenticatedStudentMobile = String(uData.mobile).trim();
-                }
-                if (uData.firstName) {
-                  authenticatedStudentName = `${uData.firstName} ${uData.lastName || ''}`.trim();
-                }
-                log(`Intercepted GetUserAuthenticatedData: mobile=${authenticatedStudentMobile}, name=${authenticatedStudentName}`);
-              }
-            } catch (e) {}
-          }
-        }
-
-        if (status === 200) {
-          if (url.includes('ManageStudentExamAnnualwiseDashboardCardDetails')) {
-            try {
-              annualwiseCardDetailsJson = await res.json();
-              log('Intercepted ManageStudentExamAnnualwiseDashboardCardDetails');
-            } catch (e) {}
-          }
-          if (url.includes('ManageStudentExamSemesterwiseDashboardCardDetails')) {
-            try {
-              semesterwiseCardDetailsJson = await res.json();
-              log('Intercepted ManageStudentExamSemesterwiseDashboardCardDetails');
-            } catch (e) {}
-          }
-          if (url.includes('ManageExamInfo') && url.includes('getAssessmentDataToShowOnMobileWithAnnual')) {
-            try {
-              assessmentDataJson = await res.json();
-              log('Intercepted ManageExamInfo (getAssessmentDataToShowOnMobileWithAnnual)');
-            } catch (e) {}
-          }
-        }
-      });
-
-      // Track native download events
-      let capturedDownload = null;
-      page.on('download', async (download) => {
-        log(`Download event detected: ${download.suggestedFilename()}`);
-        capturedDownload = download;
-      });
-
-      // Sanitize portal login URL
-      const portalLoginUrl = (config.portalLoginUrl && config.portalLoginUrl.includes('/auth/login'))
-        ? config.portalLoginUrl
-        : 'https://ai-edunova.abes.ac.in/#/auth/login';
-
-      log(`Navigating to portal login: ${portalLoginUrl}`);
-      await withTimeout(
-        (async () => {
-          try {
-            await page.goto(portalLoginUrl, {
-              waitUntil: 'commit',
-              timeout: config.loginNavigationTimeoutMs
-            });
-          } catch (commitErr) {
-            log(`Notice on commit navigation: ${commitErr.message}. Attempting domcontentloaded...`);
-            await page.goto(portalLoginUrl, {
-              waitUntil: 'domcontentloaded',
-              timeout: config.loginNavigationTimeoutMs
-            }).catch((domErr) => {
-              log(`Notice on domcontentloaded: ${domErr.message}. Proceeding to element check.`);
-            });
-          }
-        })(),
-        config.loginNavigationTimeoutMs + 5000,
-        'Portal Login Navigation',
-        'TIMEOUT_LOGIN_NAV'
-      );
+      log('Stage 3: Preparing portal direct API client connection...');
 
       // Stage 4: Authenticate with the educational portal
       this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
 
-      log('Waiting for login form inputs to mount...');
-      await page.waitForFunction(() => {
-        return document.querySelectorAll('input').length > 0;
-      }, null, { timeout: config.authCompletionTimeoutMs }).catch(() => {});
+      // Compute MD5 hash of the plaintext password
+      const md5Password = crypto.createHash('md5').update(password).digest('hex');
+      const authPayload = JSON.stringify({
+        username,
+        password: md5Password,
+        authMethod: 'online'
+      });
 
-      const userInput = page.locator('input[placeholder*="username" i], input[type="text"]').first();
-      const passInput = page.locator('input[type="password"]').first();
-      const loginButton = page.locator('button:has-text("Login")').first();
+      const portalAuthUrl = `https://edunova.abes.ac.in/sims-services/digitalsims/?r=api/v1/User/GetUserAuthenticatedData&data=${encodeURIComponent(authPayload)}`;
+      log(`Stage 4: Authenticating user ${username} via GetUserAuthenticatedData...`);
 
-      await userInput.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
-      await userInput.fill(username);
-      await passInput.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-      await passInput.fill(password);
+      const authResponse = await withTimeout(
+        fetchPortalJson(portalAuthUrl, { hash: 'trr36pdthb9xbhcppyqkgbpkq' }, config.authCompletionTimeoutMs || 15000),
+        (config.authCompletionTimeoutMs || 15000) + 2000,
+        'Portal Direct Authentication',
+        'TIMEOUT_PORTAL_AUTH'
+      );
 
-      // Submit login credentials
-      log('Submitting login credentials...');
-      await loginButton.click().catch(() => {});
-      await passInput.press('Enter').catch(() => {});
+      const respStatus = authResponse?.collection?.response?.responseStatus;
+      const userData = authResponse?.collection?.response?.userData;
 
-      // Fast event-driven wait for authentication redirect away from login page
-      const authenticated = await page.waitForFunction(() => {
-        const h = window.location.hash || '';
-        return h.includes('dashboard') || (!h.includes('/auth/login') && h.length > 2);
-      }, null, { timeout: config.authCompletionTimeoutMs }).then(() => true).catch(() => false);
-
-      if (!authenticated) {
-        const errorText = await page.evaluate(() => {
-          const toast = document.querySelector('.p-toast-message-content, .p-toast-detail, .p-message');
-          return toast ? toast.innerText.trim() : null;
-        }).catch(() => null);
-
-        if (errorText) {
-          const authErr = new Error(`Authentication failed: ${errorText}`);
-          authErr.code = 'AUTH_REJECTED';
-          throw authErr;
-        }
-        if (authErrorMessage) {
-          const authErr = new Error(`Authentication failed: ${authErrorMessage}`);
-          authErr.code = 'AUTH_REJECTED';
-          throw authErr;
-        }
-        const authErr = new Error('Authentication timed out. Portal did not confirm authenticated session.');
-        authErr.code = 'AUTH_TIMEOUT';
+      if (respStatus !== 'SUCCESS' || !userData || userData === 'FALSE' || typeof userData !== 'object') {
+        const errorMsg = authResponse?.collection?.response?.responseMsg || 'Portal authentication rejected credentials.';
+        const authErr = new Error(`Authentication failed: ${errorMsg}`);
+        authErr.code = 'AUTH_REJECTED';
         throw authErr;
       }
 
-      // Allow brief moment for GetUserAuthenticatedData response to be received
-      if (!authenticatedUserData) {
-        for (let i = 0; i < 20; i++) {
-          if (authenticatedUserData) break;
-          await new Promise(r => setTimeout(r, 100));
-        }
-      }
-
-      // Authoritative identity check: verified student mobile from portal auth payload
-      if (authenticatedStudentMobile && authenticatedStudentMobile !== validNumber) {
+      // Strict User Identity Verification: verified mobile must match requested studentNumber
+      const authenticatedStudentMobile = String(userData.mobile || '').trim();
+      if (authenticatedStudentMobile !== validNumber) {
         const identityErr = new Error(`Student identity mismatch: authenticated account (${authenticatedStudentMobile}) does not match requested student (${validNumber}).`);
         identityErr.code = 'STUDENT_IDENTITY_MISMATCH';
         throw identityErr;
       }
 
-      log(`Portal authentication confirmed for student: ${authenticatedStudentName || username} (${authenticatedStudentMobile || validNumber})`);
+      const loggedInUsrId = String(userData.id);
+      const studentFullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || username;
+      log(`Stage 4: Portal authentication confirmed for ${studentFullName} (User ID: ${loggedInUsrId}, Mobile: ${authenticatedStudentMobile})`);
 
-      // Stage 5: Navigate to results page via official exam dashboard
-      this.sessionManager.updateProgress(sessionId, 5, 'Opening examination results...', 75);
+      // Stage 5: Prepare query parameters from userData.classData or default Year 1 mappings
+      this.sessionManager.updateProgress(sessionId, 5, 'Querying examination records...', 75);
 
-      const openAnnualResultViaDashboard = async () => {
-        log('Navigating to semester dashboard: https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard');
-        await page.goto('https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-dashboard', {
-          waitUntil: 'commit',
-          timeout: config.dashboardNavTimeoutMs
-        }).catch(async () => {
-          await page.waitForTimeout(1000);
-        });
+      const classList = Array.isArray(userData.classData) ? userData.classData : [];
+      const sem2Class = classList.find(c => String(c.mpId) === '2') ||
+                        classList.find(c => (c.classShortName && c.classShortName.includes('FY-')) || c.academicYear === '2025');
+      const sem1Class = classList.find(c => String(c.mpId) === '1') || sem2Class;
 
-        // Make loaders non-blocking so backdrop pointer events cannot intercept automation clicks
-        await page.addStyleTag({
-          content: 'de-loader, [class*="backdrop-blur"], div.fixed.inset-0 { pointer-events: none !important; }'
-        }).catch(() => {});
+      const examClassId = String(sem2Class?.classId || sem1Class?.classId || '4');
+      const examClassTitle = sem2Class?.classShortName || sem1Class?.classShortName || 'FY-B.Tech CSE (14)';
+      const academicYear = String(sem2Class?.academicYear || sem1Class?.academicYear || '2025');
+      const schoolId = String(sem2Class?.instId || sem1Class?.instId || '1');
+      const schoolTitle = sem2Class?.instShortName || sem1Class?.instShortName || 'ABES';
+      const asmtGrpId = '3';
 
-        // Wait for any initial loader overlay to clear
-        await page.waitForSelector('de-loader', { state: 'detached', timeout: 8000 }).catch(() => {});
+      const commonAsmtTypeTitles = [
+        { asmtTypeId: 9, asmtTypeName: 'CIA' },
+        { asmtTypeId: 6, asmtTypeName: 'End Term' },
+        { asmtTypeId: 7, asmtTypeName: 'Internal' },
+        { asmtTypeId: 8, asmtTypeName: 'External' },
+        { asmtTypeId: 4, asmtTypeName: 'Mid Term 1' },
+        { asmtTypeId: 5, asmtTypeName: 'Mid Term 2' }
+      ];
 
-        // Switch to "Annual" dashboard view
-        log('Switching to Annual dashboard tab...');
-        const annualToggle = page.locator('p-togglebutton').filter({ hasText: 'Annual' }).first();
-        await annualToggle.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+      const actionData = [
+        {
+          asmtGrpId,
+          examClassId,
+          examClassTitle,
+          examClassLngNames: examClassTitle,
+          examClassGrpId: '',
+          examClassMpCtgryAcademicYears: academicYear,
+          examClassMpCtgryId: '11',
+          examClassMpCtgryTitle: 'Semester II',
+          examScheduledSchoolId: schoolId,
+          examScheduledSchoolTitle: schoolTitle,
+          examScheduledSyear: academicYear,
+          examScheduledMpId: '2',
+          examScheduledMpTitle: 'Even Sem (2,4,6,8)',
+          examAttemptTypeId: '1',
+          examAttemptTypeTitle: 'Regular',
+          isRegularExamConducted: 'Y',
+          examAsmtCtgryId: '11',
+          examAsmtCtgryTitle: 'Semester II',
+          examAsmtTypeId: '1,2,3,4,5,6,7,8,9,990',
+          examAsmtTypeTitle: commonAsmtTypeTitles,
+          examCpMpId: '2',
+          loggedInUsrId,
+          showResultOnMobile: 'Y'
+        },
+        {
+          asmtGrpId,
+          examClassId,
+          examClassTitle,
+          examClassLngNames: examClassTitle,
+          examClassGrpId: '',
+          examClassMpCtgryAcademicYears: academicYear,
+          examClassMpCtgryId: '1',
+          examClassMpCtgryTitle: 'Semester I',
+          examScheduledSchoolId: schoolId,
+          examScheduledSchoolTitle: schoolTitle,
+          examScheduledSyear: academicYear,
+          examScheduledMpId: '1',
+          examScheduledMpTitle: 'Odd Sem (1,3,5,7)',
+          examAttemptTypeId: '1',
+          examAttemptTypeTitle: 'Regular',
+          isRegularExamConducted: 'Y',
+          examAsmtCtgryId: '1',
+          examAsmtCtgryTitle: 'Semester I',
+          examAsmtTypeId: '1,2,3,4,5,6,7,8,9,990',
+          examAsmtTypeTitle: commonAsmtTypeTitles,
+          examCpMpId: '1',
+          loggedInUsrId,
+          showResultOnMobile: 'Y'
+        }
+      ];
 
-        // Ensure initial loader is gone and click Annual toggle, retrying if card API not triggered
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (annualwiseCardDetailsJson) break;
-          if (await annualToggle.isVisible().catch(() => false)) {
-            await annualToggle.click({ force: true }).catch(() => {});
-          } else {
-            await page.evaluate(() => {
-              const el = Array.from(document.querySelectorAll('p-togglebutton, button, span')).find(e => (e.innerText || '').trim() === 'Annual');
-              if (el) el.click();
-            }).catch(() => {});
+      const examParamsPayload = JSON.stringify({
+        examParams: {
+          action_type: 'getAssessmentDataToShowOnMobileWithAnnual',
+          action_data: actionData
+        }
+      });
+
+      const annualCardParamsPayload = JSON.stringify({
+        examParamDataObj: {
+          actionType: 'studentAnnualWiseExamDashboard',
+          actionData: {
+            usrAsmtGrpId: asmtGrpId,
+            usrEnrolledInstId: schoolId,
+            usrType: 'STUDENTS',
+            usrId: loggedInUsrId,
+            loggedInUsrType: 'STUDENTS',
+            loggedInUsrId: loggedInUsrId
           }
-
-          // Wait up to 2s for Annual cards API or card to render
-          const cardOrApi = await Promise.race([
-            page.waitForResponse(r => r.url().includes('ManageStudentExamAnnualwiseDashboardCardDetails'), { timeout: 2000 }).then(() => true).catch(() => false),
-            page.locator('section, article, div.rounded-xl, div.border').filter({ hasText: /Year\s*1/i }).first().waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)
-          ]);
-          if (cardOrApi || annualwiseCardDetailsJson) break;
-          await page.waitForTimeout(300);
         }
+      });
 
-        // Wait for loader to disappear if triggered by tab switch or card population
-        await page.waitForSelector('de-loader', { state: 'detached', timeout: 6000 }).catch(() => {});
+      const examInfoUrl = `https://edunova.abes.ac.in/sims-services/digitalsims/?r=api/v1/Assessment/ManageExamInfo&data=${encodeURIComponent(examParamsPayload)}`;
+      const annualCardUrl = `https://edunova.abes.ac.in/sims-services/digitalsims/?r=api/v1/Exam/ManageStudentExamAnnualwiseDashboardCardDetails&data=${encodeURIComponent(annualCardParamsPayload)}`;
 
-        // Strictly target Year 1 / Published Annual examination card (avoiding ongoing unpublished Year 2)
-        const year1Card = page.locator('section, article, div.rounded-xl, div.border').filter({
-          hasText: /Year\s*1/i
-        }).first();
+      // Stage 6: Retrieve genuine examination marksheet
+      this.sessionManager.updateProgress(sessionId, 6, 'Retrieving genuine examination marksheet...', 90);
+      log('Stage 6: Querying ManageExamInfo and annual card details in parallel...');
 
-        const isYear1Visible = await year1Card.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
-        const actionBtn = isYear1Visible
-          ? year1Card.locator('button[aria-label*="card actions" i], button[aria-label="Annual card actions"]').first()
-          : page.locator('button[aria-label="Annual card actions"], button[aria-label*="card actions" i]').first();
-
-        const isActionVisible = await actionBtn.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
-        if (!isActionVisible) {
-          throw new Error('Annual card action button not visible on dashboard');
-        }
-
-        log('Annual card action button visible. Clicking...');
-        await actionBtn.click({ force: true });
-
-        const viewResultItem = page.locator('.p-popover li, li').filter({ hasText: 'View Exam Result' }).first();
-        const isViewVisible = await viewResultItem.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
-        if (!isViewVisible) {
-          throw new Error('View Exam Result action item not visible in popover menu');
-        }
-
-        log('Clicking View Exam Result...');
-        await viewResultItem.click({ force: true });
-        await page.waitForFunction(() => window.location.hash.includes('semester-examination-result'), null, { timeout: 15000 });
-        log('Navigated to Annual Result page via official workflow!');
-        return true;
-      };
-
-      let navigatedViaCard = false;
-      try {
-        navigatedViaCard = await openAnnualResultViaDashboard();
-      } catch (cardNavErr) {
-        log(`Card navigation notice: ${cardNavErr.message}. Retrying once...`);
-        this.metrics.retries++;
-        try {
-          await page.waitForTimeout(1000);
-          navigatedViaCard = await openAnnualResultViaDashboard();
-        } catch (retryErr) {
-          log(`Retry card navigation failed: ${retryErr.message}. Falling back to direct URL.`);
-        }
-      }
-
-      const portalResultsUrl = (config.portalResultsUrl && config.portalResultsUrl.includes('semester-examination-result'))
-        ? config.portalResultsUrl
-        : 'https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-examination-result?examMpId=2&resultView=annual';
-
-      if (!navigatedViaCard && !page.url().includes('semester-examination-result')) {
-        log(`Navigating directly to portalResultsUrl: ${portalResultsUrl}`);
-        await page.goto(portalResultsUrl, { waitUntil: 'commit', timeout: 15000 }).catch(() => {});
-      }
-
-      // Stage 6: Retrieve and prepare genuine result data
-      this.sessionManager.updateProgress(sessionId, 6, 'Retrieving genuine examination marksheet...', 85);
-
-      // Helper to poll for assessment API payload
-      const waitForAssessment = async (timeoutMs = 6000) => {
-        const start = Date.now();
-        while (Date.now() - start < timeoutMs) {
-          if (assessmentDataJson) return true;
-          await new Promise(r => setTimeout(r, 100));
-        }
-        return Boolean(assessmentDataJson);
-      };
-
-      // Concurrently wait for assessment data payload or rendered marksheet DOM
-      await Promise.race([
-        waitForAssessment(6000),
-        page.waitForFunction(() => {
-          const text = document.body.innerText || '';
-          const hasTable = Boolean(document.querySelector('.annual-sem-table, table, .annual-sem-summary-card, #annual-result-print-section'));
-          const hasStudentInfo = Boolean(document.querySelector('.student-result-info-card, [class*="student-info"]'));
-          const isNotLoading = !document.querySelector('de-loader');
-          return (hasTable && hasStudentInfo && isNotLoading) ||
-            text.includes('Result is Not Published Yet') ||
-            text.includes('PENDING VERIFICATION');
-        }, { timeout: config.resultLoadingTimeoutMs }).catch(() => {})
+      const [examInfoJson, annualCardsJson] = await Promise.all([
+        withTimeout(
+          fetchPortalJson(examInfoUrl, { hash: 'trr36pdthb9xbhcppyqkgbpkq' }, config.resultLoadingTimeoutMs || 20000),
+          (config.resultLoadingTimeoutMs || 20000) + 2000,
+          'ManageExamInfo Retrieval',
+          'TIMEOUT_EXAM_INFO'
+        ),
+        fetchPortalJson(annualCardUrl, { hash: 'trr36pdthb9xbhcppyqkgbpkq' }, config.resultLoadingTimeoutMs || 20000).catch(() => null)
       ]);
 
-      // Safe recovery: if the portal ever shows "Result is Not Published Yet", recover via dashboard Year 1 card
-      const checkUnpublished = await page.evaluate(() => {
-        return (document.body.innerText || '').includes('Result is Not Published Yet');
-      }).catch(() => false);
-
-      if (checkUnpublished) {
-        log('Detected "Result is Not Published Yet" state. Initiating automatic recovery via dashboard Year 1 card...');
-        this.metrics.retries++;
-        try {
-          await openAnnualResultViaDashboard();
-          await waitForAssessment(6000);
-          await page.waitForTimeout(2000);
-        } catch (recErr) {
-          log(`Recovery navigation failed: ${recErr.message}`);
-        }
-      }
-
-      // Extract high-fidelity rendered HTML from the portal
-      const renderedHtml = await page.evaluate(() => {
-        const examEl = document.querySelector('app-semester-examination-result');
-        const printSec = document.querySelector('#annual-result-print-section');
-        const layoutEl = printSec || examEl || document.querySelector('app-layout') || document.body;
-        return examEl ? examEl.outerHTML : layoutEl.innerHTML;
-      }).catch(() => null);
-
-      session.renderedHtml = renderedHtml;
-
-      // Normalize genuine result data
-      if (assessmentDataJson || annualwiseCardDetailsJson) {
-        try {
-          const normalized = normalizeResultData({
-            annualwiseCardDetails: annualwiseCardDetailsJson,
-            manageExamInfoDetails: assessmentDataJson,
-            semesterwiseCardDetails: semesterwiseCardDetailsJson,
-            expectedStudentNumber: validNumber,
-            authenticatedUserData: authenticatedUserData
-          });
-
-          if (normalized) {
-            // Strict identity verification on normalized student object
-            if (normalized.student.studentNumber && normalized.student.studentNumber !== validNumber) {
-              const mismatchErr = new Error(`Identity mismatch in normalized result: ${normalized.student.studentNumber} !== ${validNumber}`);
-              mismatchErr.code = 'STUDENT_IDENTITY_MISMATCH';
-              throw mismatchErr;
-            }
-            session.resultData = normalized;
-            log(`Successfully normalized genuine result data for ${normalized.student.name} (Year: ${normalized.student.academicYear}, YGPA: ${normalized.student.ygpa})`);
-          }
-        } catch (normErr) {
-          log(`Normalization warning: ${normErr.message}`);
-          if (normErr.code === 'STUDENT_IDENTITY_MISMATCH') {
-            throw normErr;
-          }
-        }
-      }
-
-      // Stage 7: Preparing verified marksheet PDF document
-      this.sessionManager.updateProgress(sessionId, 7, 'Preparing examination result PDF...', 95);
-
-      let pdfBuffer = null;
-      let pdfFilename = `${session.resultData?.student?.name || 'Annual-Examination-Result'}-${validNumber}.pdf`;
-
-      // Check if portal native Annual PDF button is active and ready
-      const downloadButton = page.locator('button:has-text("Annual PDF"), button[label*="Annual PDF"], button:has-text("Download PDF")').first();
-      const isNativeReady = await downloadButton.isVisible().catch(() => false) && !(await downloadButton.isDisabled().catch(() => true));
-
-      if (isNativeReady) {
-        try {
-          log('Portal native Annual PDF button active. Initiating official client-side PDF generation...');
-          const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 15000 }),
-            downloadButton.click({ force: true })
-          ]);
-
-          const dlName = download.suggestedFilename() || pdfFilename;
-          const sanitizedFilename = dlName.replace(/[^a-zA-Z0-9_\-\. ]/g, '_');
-          const dlPath = path.join(session.tempDir, sanitizedFilename);
-          await download.saveAs(dlPath);
-
-          if (fs.existsSync(dlPath)) {
-            const stat = fs.statSync(dlPath);
-            if (stat.size > 0) {
-              const fileBuf = fs.readFileSync(dlPath);
-              if (fileBuf.slice(0, 4).toString('utf8') === '%PDF') {
-                pdfBuffer = fileBuf;
-                pdfFilename = sanitizedFilename;
-                log(`Captured genuine native portal PDF: ${sanitizedFilename} (${stat.size} bytes)`);
-              }
-            }
-          }
-        } catch (dlErr) {
-          log(`Native download notice: ${dlErr.message}`);
-        }
-      }
-
-      // High-fidelity fallback: generate marksheet PDF via Chrome print engine
-      if (!pdfBuffer) {
-        try {
-          log('Generating marksheet PDF via browser print engine...');
-          pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
-          });
-        } catch (printErr) {
-          log(`Browser PDF generation fallback notice: ${printErr.message}`);
-        }
-      }
-
-      // Validate & save verified PDF buffer in session
-      if (pdfBuffer && pdfBuffer.length > 0 && pdfBuffer.slice(0, 4).toString('utf8') === '%PDF') {
-        const sanitizedFilename = pdfFilename.replace(/[^a-zA-Z0-9_\-\. ]/g, '_');
-        const pdfFilePath = path.join(session.tempDir, sanitizedFilename);
-        try {
-          fs.writeFileSync(pdfFilePath, pdfBuffer);
-        } catch (writeErr) {}
-
-        session.downloadedFile = {
-          ready: true,
-          filePath: pdfFilePath,
-          fileName: sanitizedFilename,
-          size: pdfBuffer.length,
-          mimeType: 'application/pdf',
-          downloadedAt: Date.now(),
-          base64: pdfBuffer.toString('base64')
-        };
-        log(`Verified marksheet PDF ready (${pdfBuffer.length} bytes, file: ${sanitizedFilename})`);
-      }
-
-      session.examSummary = {
-        title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
-        isPending: session.resultData ? session.resultData.annualSummary.status === 'PENDING' : false,
-        isPdfButtonDisabled: !session.downloadedFile?.ready,
-        hasTable: Boolean(session.resultData?.semesters?.length),
-        portalUrl: config.portalResultsUrl
-      };
-
-      // Ensure that we actually retrieved valid examination data before declaring readiness
-      if (!session.resultData && !session.renderedHtml) {
+      const pubDetails = examInfoJson?.collection?.response?.examInfo?.publishingDetails;
+      if (!pubDetails || !Array.isArray(pubDetails.data) || pubDetails.data.length === 0) {
         const fetchErr = new Error('Examination result could not be retrieved from the portal.');
         fetchErr.code = 'RESULT_EXTRACTION_FAILED';
         throw fetchErr;
       }
 
-      // Stage 7: Complete and ready
-      this.sessionManager.updateProgress(sessionId, 7, 'Ready to download examination result.', 100, {
-        status: 'ready'
+      // Stage 7: Normalize clean result JSON
+      const normalized = normalizeResultData({
+        annualwiseCardDetails: annualCardsJson,
+        manageExamInfoDetails: examInfoJson,
+        expectedStudentNumber: validNumber,
+        authenticatedUserData: userData
       });
-      log('Workflow completed successfully.');
+
+      if (!normalized) {
+        const normErr = new Error('Failed to normalize examination result data.');
+        normErr.code = 'NORMALIZATION_FAILED';
+        throw normErr;
+      }
+
+      // Final identity verification assertion on normalized object
+      if (normalized.student.studentNumber && normalized.student.studentNumber !== validNumber) {
+        const mismatchErr = new Error(`Identity mismatch in normalized result: ${normalized.student.studentNumber} !== ${validNumber}`);
+        mismatchErr.code = 'STUDENT_IDENTITY_MISMATCH';
+        throw mismatchErr;
+      }
+
+      session.resultData = normalized;
+      session.examSummary = {
+        title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
+        isPending: session.resultData.annualSummary.status === 'PENDING',
+        hasTable: Boolean(session.resultData?.semesters?.length),
+        portalUrl: config.portalResultsUrl
+      };
+
+      this.sessionManager.updateProgress(sessionId, 7, 'Examination result loaded successfully.', 100, {
+        status: 'ready',
+        resultData: normalized
+      });
+      log(`Workflow completed successfully for student: ${normalized.student.name} (YGPA: ${normalized.overallYgpa}, Status: ${normalized.overallRemarks})`);
 
     } catch (err) {
       log(`Workflow error: ${err.message}`);
@@ -964,135 +592,9 @@ class AutomationService {
       session.resultData = null;
       session.renderedHtml = null;
       session.downloadedFile = null;
-      session.pdfBase64 = null;
-      session.pdfBuffer = null;
       session.examSummary = null;
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
       throw err;
-    } finally {
-      if (lease) {
-        await lease.release().catch(err => {
-          console.warn(`[Session ${sessionId}] Error releasing browser lease:`, err.message);
-        });
-      } else if (context) {
-        try {
-          await context.close().catch(() => {});
-        } catch (_) {}
-      }
-      session.browserContext = null;
-      session.page = null;
-    }
-  }
-
-  /**
-   * Triggers the educational portal's PDF download and captures the resulting PDF
-   * @param {string} sessionId
-   * @param {string} sessionToken
-   */
-  async triggerPortalDownload(sessionId, sessionToken) {
-    const session = this.sessionManager.getSession(sessionId, sessionToken);
-    if (!session) {
-      const err = new Error('Automation session not found or has expired. Please fetch results again.');
-      err.statusCode = 404;
-      err.code = 'SESSION_NOT_FOUND';
-      throw err;
-    }
-
-    // Fast-path: if verified marksheet PDF is already ready in session, return immediately
-    if (session.downloadedFile && session.downloadedFile.ready) {
-      return {
-        success: true,
-        fileName: session.downloadedFile.fileName,
-        size: session.downloadedFile.size,
-        downloadUrl: `/api/automation/${sessionId}/file?token=${sessionToken}`,
-        base64: session.downloadedFile.base64
-      };
-    }
-
-    if (session.status !== 'ready' && session.status !== 'download_ready') {
-      const err = new Error(`Examination results page is not ready for download (current status: ${session.status}).`);
-      err.statusCode = 400;
-      err.code = 'NOT_READY';
-      throw err;
-    }
-
-    const page = session.page;
-    if (!page || page.isClosed()) {
-      const err = new Error('Browser session for this request is no longer active. Please fetch results again.');
-      err.statusCode = 410;
-      err.code = 'SESSION_EXPIRED';
-      throw err;
-    }
-
-    this.sessionManager.updateProgress(sessionId, 7, 'Generating and downloading marksheet PDF...', 95, {
-      status: 'downloading'
-    });
-
-    try {
-      const downloadButton = page.locator('button:has-text("Annual PDF"), button[label*="Annual PDF"], button:has-text("Download PDF")').first();
-      const count = await downloadButton.count();
-
-      if (count === 0) {
-        throw new Error('Could not locate the Annual PDF download control on the examination portal.');
-      }
-
-      const isDisabled = await downloadButton.isDisabled();
-      if (isDisabled) {
-        throw new Error('The portal download control is currently disabled. The examination result may be incomplete or pending approval.');
-      }
-
-      const [download] = await Promise.all([
-        page.waitForEvent('download', { timeout: 35000 }),
-        downloadButton.click()
-      ]);
-
-      const originalFilename = download.suggestedFilename() || `${session.resultData?.student?.name || 'Annual-Result'}.pdf`;
-      const sanitizedFilename = originalFilename.replace(/[^a-zA-Z0-9_\-\. ]/g, '_');
-      const targetFilePath = path.join(session.tempDir, sanitizedFilename);
-
-      await download.saveAs(targetFilePath);
-
-      if (!fs.existsSync(targetFilePath)) {
-        throw new Error('Downloaded file could not be verified on the server.');
-      }
-
-      const stats = fs.statSync(targetFilePath);
-      if (stats.size === 0) {
-        fs.unlinkSync(targetFilePath);
-        throw new Error('Retrieved PDF file was empty.');
-      }
-
-      const buffer = fs.readFileSync(targetFilePath);
-      if (!buffer.slice(0, 4).toString('utf8').startsWith('%PDF')) {
-        fs.unlinkSync(targetFilePath);
-        throw new Error('Retrieved file is not a valid PDF document.');
-      }
-
-      session.downloadedFile = {
-        ready: true,
-        filePath: targetFilePath,
-        fileName: sanitizedFilename,
-        size: stats.size,
-        mimeType: 'application/pdf',
-        downloadedAt: Date.now(),
-        base64: buffer.toString('base64')
-      };
-
-      this.sessionManager.updateProgress(sessionId, 7, 'PDF marksheet downloaded and verified successfully.', 100, {
-        status: 'download_ready'
-      });
-
-      return {
-        success: true,
-        fileName: sanitizedFilename,
-        size: stats.size,
-        downloadUrl: `/api/automation/${sessionId}/file?token=${sessionToken}`,
-        base64: session.downloadedFile.base64
-      };
-
-    } catch (err) {
-      session.status = 'ready';
-      throw new Error(`Portal PDF download failed: ${err.message}`);
     }
   }
 
@@ -1120,7 +622,7 @@ class AutomationService {
         heapUsed: parseFloat((mem.heapUsed / 1024 / 1024).toFixed(1)),
         heapTotal: parseFloat((mem.heapTotal / 1024 / 1024).toFixed(1))
       },
-      browserPool: this.browserPool ? this.browserPool.getStats() : null,
+      browserPool: null,
       uptimeSec: Math.floor(process.uptime())
     };
   }

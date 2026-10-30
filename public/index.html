@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Automated Examination Result Retrieval & Official PDF Download</title>
+  <title>Automated Examination Result Retrieval & Annual Marksheet Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lato:wght@400;700&display=swap" rel="stylesheet">
@@ -37,15 +37,6 @@
           </svg>
           New Search
         </button>
-
-        <button id="headerDownloadBtn" class="btn btn-primary btn-sm">
-          <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="7 10 12 15 17 10"></polyline>
-            <line x1="12" y1="15" x2="12" y2="3"></line>
-          </svg>
-          <span class="btn-text">Annual PDF</span>
-        </button>
       </div>
     </div>
   </header>
@@ -61,7 +52,7 @@
           <p class="main-description">
             Streamline educational administrative workflows by eliminating manual repetitive portal logins.
             Enter an authorized student identifier to securely resolve credentials, authenticate with the official AI Edunova portal,
-            and view the authentic annual examination marksheet ready for official PDF download.
+            and view the authentic annual examination marksheet with comprehensive performance metrics.
           </p>
         </div>
 
@@ -157,7 +148,7 @@
           </div>
           <div class="step-item" data-step="7">
             <div class="step-circle">7</div>
-            <div class="step-label">Ready to download</div>
+            <div class="step-label">Marksheet ready</div>
           </div>
         </div>
       </div>
@@ -201,35 +192,14 @@
         </div>
 
         <div class="toolbar-actions">
-          <button id="actionDownloadBtn" class="btn btn-primary">
-            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span class="btn-text">Annual PDF</span>
-            <span class="btn-spinner hidden"></span>
-          </button>
-          
           <button id="closeSessionBtn" class="btn btn-secondary" title="End Session">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
             New Search
           </button>
         </div>
-      </div>
-
-      <!-- Download Success / Notice Alert -->
-      <div id="downloadAlert" class="alert alert-success hidden">
-        <div class="alert-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-          </svg>
-        </div>
-        <div class="alert-content">
-          <strong id="downloadAlertTitle">Official PDF Download Complete</strong>
-          <p id="downloadAlertMessage">Your verified marksheet PDF was retrieved directly from the portal and downloaded.</p>
-        </div>
-        <button id="closeAlertBtn" class="alert-close">×</button>
       </div>
 
       <!-- Information Alert for Pending/Unpublished Results -->
@@ -245,7 +215,7 @@
           <strong>Result Currently Under Verification</strong>
           <p>
             The educational portal reports that this examination result is under verification.
-            The marksheet data is displayed below, and the official PDF will be downloadable once approved.
+            The marksheet data is displayed below for institutional review.
           </p>
         </div>
       </div>
@@ -287,79 +257,191 @@
           </div>
         </div>
 
-        <!-- Official Header: Title + Annual PDF Button -->
+        <!-- Official Header: Title & Institution Details -->
         <div class="portal-result-header">
-          <h1 class="portal-main-heading">ABES Engineering College : Annual Result</h1>
-          <button id="marksheetAnnualPdfBtn" class="portal-annual-pdf-btn" title="Download Official Annual PDF">
-            <svg class="pdf-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-            <span>Annual PDF</span>
-          </button>
+          <div class="portal-header-brand">
+            <h1 class="portal-main-heading" id="marksheetCollegeTitle">ABES Engineering College : Annual Result</h1>
+            <p class="portal-sub-heading" id="marksheetSubtitle">Autonomous College • NAAC Accredited • Affiliated to AKTU, Lucknow</p>
+          </div>
+          <div class="portal-header-tag">
+            <span class="badge-status-pill">OFFICIAL EXAMINATION RECORD</span>
+          </div>
         </div>
 
-        <!-- Student Biographical Information Card (Exact 14-field Grid) -->
-        <div class="student-info-grid-card">
-          <div class="info-cell">
-            <span class="info-label">STUDENT NAME</span>
-            <span id="studName" class="info-val">—</span>
-          </div>
-          <div class="info-cell">
-            <span class="info-label">REGN NO</span>
-            <span id="studRegnNo" class="info-val">—</span>
-          </div>
-          <div class="info-cell">
-            <span class="info-label">SEAT NO.</span>
-            <span id="studSeatNo" class="info-val">—</span>
-          </div>
-          <div class="info-cell">
-            <span class="info-label">CLASS</span>
-            <span id="studClass" class="info-val">—</span>
-          </div>
-          <div class="info-cell">
-            <span class="info-label">ACADEMIC YEAR</span>
-            <span id="studAcadYear" class="info-val">—</span>
-          </div>
-          <div class="info-cell">
-            <span class="info-label">PUBLISHED ON</span>
-            <span id="studPublishedOn" class="info-val">—</span>
+        <!-- Student Biographical Information Card -->
+        <div class="student-info-card">
+          <div class="student-card-header">
+            <div class="student-profile-summary">
+              <div class="student-avatar-badge">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <div class="student-title-wrap">
+                <div class="student-name-row">
+                  <h2 class="student-name-text" id="studName">—</h2>
+                  <span class="badge-verified">Verified</span>
+                </div>
+                <p class="student-program-text" id="studClass">—</p>
+              </div>
+            </div>
+            <div class="student-session-info">
+              <span class="session-label">ACADEMIC SESSION</span>
+              <span class="session-value" id="studSession">—</span>
+            </div>
           </div>
 
-          <div class="info-cell">
-            <span class="info-label">SESSION</span>
-            <span id="studSession" class="info-val">—</span>
+          <div class="student-info-grid">
+            <div class="info-cell">
+              <span class="info-label">ROLL NO</span>
+              <span id="studRollNo" class="info-val highlight-primary">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">SEAT NO.</span>
+              <span id="studSeatNo" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">PNR NO.</span>
+              <span id="studPnrNo" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">ACADEMIC YEAR</span>
+              <span id="studAcadYear" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">REGN NO</span>
+              <span id="studRegnNo" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">ABC ID</span>
+              <span id="studAbcId" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">PUBLISHED ON</span>
+              <span id="studPublishedOn" class="info-val">—</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label">SEMESTERS</span>
+              <span id="studSemesters" class="info-val">—</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">ABC ID</span>
-            <span id="studAbcId" class="info-val">—</span>
+        </div>
+
+        <!-- Annual Performance KPI Cards -->
+        <div class="annual-kpi-container">
+          <!-- Semester I SGPA -->
+          <div class="kpi-card" data-kpi="sem1">
+            <div class="kpi-icon kpi-sem1-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-label">SEMESTER I SGPA</span>
+              <div class="kpi-val-row">
+                <span class="kpi-value" id="kpiSem1Sgpa">—</span>
+              </div>
+              <span class="kpi-subtext" id="kpiSem1Sub">Sem I Assessment</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">SEMESTERS</span>
-            <span id="studSemesters" class="info-val">—</span>
+
+          <!-- Semester II SGPA -->
+          <div class="kpi-card" data-kpi="sem2">
+            <div class="kpi-icon kpi-sem2-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-label">SEMESTER II SGPA</span>
+              <div class="kpi-val-row">
+                <span class="kpi-value" id="kpiSem2Sgpa">—</span>
+              </div>
+              <span class="kpi-subtext" id="kpiSem2Sub">Sem II Assessment</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">STATUS</span>
-            <span id="studStatus" class="info-val">—</span>
+
+          <!-- Overall YGPA -->
+          <div class="kpi-card kpi-card-featured" data-kpi="ygpa">
+            <div class="kpi-icon kpi-ygpa-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-label">OVERALL YGPA</span>
+              <div class="kpi-val-row">
+                <span class="kpi-value highlight-ygpa" id="kpiYgpa">—</span>
+                <span class="kpi-unit">/ 10</span>
+              </div>
+              <span class="kpi-subtext">Year Grade Point Average</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">YGPA</span>
-            <span id="studYgpa" class="info-val highlight-val">—</span>
+
+          <!-- Total Credits Earned -->
+          <div class="kpi-card" data-kpi="credits">
+            <div class="kpi-icon kpi-credits-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-label">TOTAL CREDITS EARNED</span>
+              <div class="kpi-val-row">
+                <span class="kpi-value" id="kpiCreditsEarned">—</span>
+                <span class="kpi-total" id="kpiTotalCredits">/ —</span>
+              </div>
+              <span class="kpi-subtext" id="kpiCreditsPercent">Credits Completed</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">CREDITS EARNED</span>
-            <span id="studCredits" class="info-val">—</span>
+
+          <!-- Overall Status / Remarks -->
+          <div class="kpi-card" data-kpi="status">
+            <div class="kpi-icon kpi-status-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <div class="kpi-details">
+              <span class="kpi-label">OVERALL RESULT</span>
+              <div class="kpi-val-row">
+                <span class="kpi-status-pill" id="kpiOverallStatus">—</span>
+              </div>
+              <span class="kpi-subtext" id="kpiCopStatus">COP: None</span>
+            </div>
           </div>
-          <div class="info-cell">
-            <span class="info-label">MARKS</span>
-            <span id="studMarks" class="info-val">—</span>
+        </div>
+
+        <!-- Semester Navigation Tabs -->
+        <div class="semester-tabs-container">
+          <div class="tabs-nav-bar" role="tablist">
+            <button type="button" class="tab-btn active" data-tab="all" role="tab" id="tabBtnAll" aria-selected="true">
+              <span class="tab-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </span>
+              <span class="tab-title">All Semesters</span>
+              <span class="tab-badge" id="tabBadgeAll">Annual</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="1" role="tab" id="tabBtnSem1" aria-selected="false">
+              <span class="tab-title">Semester I</span>
+              <span class="tab-badge" id="tabBadgeSem1">—</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="2" role="tab" id="tabBtnSem2" aria-selected="false">
+              <span class="tab-title">Semester II</span>
+              <span class="tab-badge" id="tabBadgeSem2">—</span>
+            </button>
           </div>
-          <div class="info-cell">
-            <span class="info-label">COP</span>
-            <span id="studCop" class="info-val">—</span>
+          <div class="tab-status-summary" id="tabStatusSummary">
+            <span>Showing comprehensive annual performance records</span>
           </div>
         </div>
 

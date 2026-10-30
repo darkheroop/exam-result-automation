@@ -6,11 +6,10 @@ const { defaultSessionManager } = require('./src/services/sessionManager');
 
 const server = app.listen(config.port, () => {
   console.log(`================================================================`);
-  console.log(`Examination Result Retrieval & PDF Automation Platform`);
+  console.log(`Examination Result Retrieval Platform`);
   console.log(`Server running on: http://127.0.0.1:${config.port}`);
   console.log(`Environment: ${config.nodeEnv}`);
-  console.log(`Portal Login URL: ${config.portalLoginUrl}`);
-  console.log(`Browser: ${config.chromePath ? 'System Chrome/Edge' : 'Playwright bundled'}`);
+  console.log(`Engine: High-Performance Direct Portal API Client`);
   console.log(`================================================================`);
 });
 

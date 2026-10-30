@@ -599,15 +599,15 @@ body {
 }
 
 /* ==============================================================================
-   OFFICIAL AI EDUNOVA ANNUAL RESULT RECREATION (Pixel-Perfect Spec)
+   OFFICIAL AI EDUNOVA ANNUAL MARKSHEET & PORTAL SPECIFICATION
    ============================================================================== */
 
 .portal-marksheet-canvas {
   width: 100%;
-  background-color: #f8fafc;
+  background-color: #ffffff;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1rem 1.5rem 2rem 1.5rem;
+  padding: 1.25rem 1.5rem 2.5rem 1.5rem;
   box-shadow: var(--shadow-sm);
 }
 
@@ -616,8 +616,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .breadcrumb-left {
@@ -652,7 +653,7 @@ body {
 }
 
 .portal-chip-btn {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 9999px;
   padding: 3px 12px;
@@ -665,80 +666,175 @@ body {
   cursor: default;
 }
 
-/* Header with Title & Annual PDF Button */
+/* Official Header: Title & Subtitle */
 .portal-result-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 1rem;
+}
+
+.portal-header-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .portal-main-heading {
   font-family: 'Lato', var(--font-family);
-  font-size: 1.35rem;
+  font-size: 1.4rem;
   font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.portal-sub-heading {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.portal-header-tag {
+  flex-shrink: 0;
+}
+
+.badge-status-pill {
+  display: inline-block;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ==============================================================================
+   STUDENT BIOGRAPHICAL INFORMATION CARD
+   ============================================================================== */
+
+.student-info-card {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.student-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 1rem;
+}
+
+.student-profile-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.student-avatar-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfdbfe;
+  flex-shrink: 0;
+}
+
+.student-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.student-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.student-name-text {
+  font-size: 1.15rem;
+  font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.01em;
 }
 
-.portal-annual-pdf-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 0.45rem 1rem;
-  font-size: 0.825rem;
-  font-weight: 600;
-  color: #334155;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: all 0.15s ease;
+.badge-verified {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #059669;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  text-transform: uppercase;
 }
 
-.portal-annual-pdf-btn:hover {
-  background-color: #f8fafc;
-  border-color: #94a3b8;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+.student-program-text {
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 500;
 }
 
-.portal-annual-pdf-btn:active {
-  transform: translateY(0);
+.student-session-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
 }
 
-/* Student Information Card (14-field Grid) */
-.student-info-grid-card {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 1.15rem 1.25rem;
-  margin-bottom: 1.75rem;
+.session-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+.session-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.student-info-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  row-gap: 1rem;
-  column-gap: 0.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem 1.25rem;
 }
 
 .info-cell {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  min-width: 0;
 }
 
 .info-label {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: #64748b;
   text-transform: uppercase;
 }
 
 .info-val {
-  font-size: 0.825rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: #0f172a;
   white-space: nowrap;
@@ -746,11 +842,262 @@ body {
   text-overflow: ellipsis;
 }
 
-.highlight-val {
+.highlight-primary {
   color: #2563eb;
 }
 
-/* Semesters Container */
+/* ==============================================================================
+   ANNUAL PERFORMANCE KPI SUMMARY CARDS
+   ============================================================================== */
+
+.annual-kpi-container {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: #cbd5e1;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: #cbd5e1;
+}
+
+.kpi-card[data-kpi="sem1"]::before {
+  background-color: #2563eb;
+}
+
+.kpi-card[data-kpi="sem2"]::before {
+  background-color: #6366f1;
+}
+
+.kpi-card[data-kpi="ygpa"]::before {
+  background: linear-gradient(90deg, #7c3aed, #4f46e5);
+  height: 4px;
+}
+
+.kpi-card[data-kpi="credits"]::before {
+  background-color: #10b981;
+}
+
+.kpi-card[data-kpi="status"]::before {
+  background-color: #f59e0b;
+}
+
+.kpi-card-featured {
+  background: linear-gradient(180deg, #ffffff 0%, #faf5ff 100%);
+  border-color: #ddd6fe;
+}
+
+.kpi-card-featured:hover {
+  border-color: #c4b5fd;
+}
+
+.kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.kpi-sem1-icon {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.kpi-sem2-icon {
+  background-color: #eef2ff;
+  color: #4f46e5;
+}
+
+.kpi-ygpa-icon {
+  background-color: #f5f3ff;
+  color: #7c3aed;
+}
+
+.kpi-credits-icon {
+  background-color: #ecfdf5;
+  color: #059669;
+}
+
+.kpi-status-icon {
+  background-color: #fffbeb;
+  color: #d97706;
+}
+
+.kpi-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.kpi-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.kpi-value {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.highlight-ygpa {
+  color: #6d28d9;
+}
+
+.kpi-unit, .kpi-total {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.kpi-subtext {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-subtext.has-cop {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.kpi-status-pill {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.5px;
+}
+
+/* ==============================================================================
+   SEMESTER TAB CONTROLLER
+   ============================================================================== */
+
+.semester-tabs-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem;
+  background-color: #f1f5f9;
+  border-radius: var(--radius-md);
+  border: 1px solid #e2e8f0;
+  gap: 1rem;
+}
+
+.tabs-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  background-color: transparent;
+  color: #475569;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tab-btn:hover:not(:disabled) {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.tab-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tab-btn.active {
+  background-color: #ffffff;
+  color: #2563eb;
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tab-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: #e2e8f0;
+  color: #475569;
+}
+
+.tab-btn.active .tab-badge {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.tab-status-summary {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+  padding-right: 0.5rem;
+}
+
+/* ==============================================================================
+   SEMESTER ASSESSMENT SECTION & TABLES
+   ============================================================================== */
+
 .semesters-container {
   display: flex;
   flex-direction: column;
@@ -760,173 +1107,178 @@ body {
 .semester-section {
   display: flex;
   flex-direction: column;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.semester-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 1rem;
+}
+
+.sem-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sem-num-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #ffffff;
+  background-color: #1e293b;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.sem-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
 .semester-title {
   font-size: 1.15rem;
   font-weight: 700;
   color: #0f172a;
-  margin-bottom: 0.85rem;
 }
 
-/* Summary Metric Cards */
-.sem-summary-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.15rem;
+.sem-subtitle {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
-.summary-metric-card {
+.sem-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sem-badge-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 0.85rem 1.15rem;
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.metric-icon-circle {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.blue-circle {
+.sgpa-badge {
+  border-color: #bfdbfe;
   background-color: #eff6ff;
-  border: 1px solid #dbeafe;
+  color: #1d4ed8;
 }
 
-.orange-circle {
-  background-color: #fff7ed;
-  border: 1px solid #ffedd5;
-}
-
-.green-circle {
+.credits-badge {
+  border-color: #bbf7d0;
   background-color: #f0fdf4;
-  border: 1px solid #dcfce7;
+  color: #15803d;
 }
 
-.metric-body {
-  flex: 1;
-}
-
-.metric-val-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-
-.metric-large-val {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: #0f172a;
-  line-height: 1.1;
-}
-
-.metric-unit {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #64748b;
-}
-
-.metric-sub-val {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #94a3b8;
-}
-
-.metric-label {
-  font-size: 0.725rem;
-  font-weight: 500;
-  color: #64748b;
-  margin-top: 0.15rem;
-}
-
-.metric-progress-line {
-  height: 3px;
-  border-radius: 2px;
-  margin-top: 0.45rem;
-  width: 85%;
-}
-
-.blue-line {
-  background-color: #2563eb;
-}
-
-.orange-line {
-  background-color: #f59e0b;
-}
-
-.green-line {
-  background-color: #10b981;
+.badge-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  opacity: 0.8;
+  letter-spacing: 0.3px;
 }
 
 /* Marksheet Table */
 .marksheet-table-wrapper {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  width: 100%;
   overflow-x: auto;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  -webkit-overflow-scrolling: touch;
 }
 
 .marksheet-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  min-width: 960px;
 }
 
 .marksheet-table thead th {
-  background-color: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.75rem 0.65rem;
+  background-color: #f8fafc;
+  border-bottom: 1.5px solid #e2e8f0;
+  padding: 0.8rem 0.65rem;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.4px;
   color: #475569;
   text-align: center;
-  vertical-align: top;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
-.marksheet-table th.col-subject {
+.marksheet-table th.col-code {
   text-align: left;
-  padding-left: 1.15rem;
-  min-width: 240px;
+  padding-left: 1.25rem;
+  width: 120px;
+}
+
+.marksheet-table th.col-name {
+  text-align: left;
+  min-width: 220px;
+}
+
+.marksheet-table th.col-type {
+  width: 80px;
 }
 
 .marksheet-table th.col-asmt {
-  min-width: 90px;
+  min-width: 85px;
 }
 
-.marksheet-table th.col-total {
-  color: #4f46e5;
-  min-width: 100px;
+.marksheet-table th.col-total-obt {
+  color: #4338ca;
+  min-width: 85px;
+  background-color: #f5f3ff;
 }
 
-.marksheet-table th.col-stat {
-  min-width: 65px;
+.marksheet-table th.col-max {
+  width: 70px;
 }
 
-.asmt-sub {
+.marksheet-table th.col-gp {
+  width: 60px;
+}
+
+.marksheet-table th.col-grade {
+  width: 75px;
+}
+
+.marksheet-table th.col-credits {
+  width: 75px;
+}
+
+.marksheet-table th.col-result {
+  width: 80px;
+}
+
+.th-sub {
   display: block;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 500;
   color: #94a3b8;
-  margin-top: 0.2rem;
+  margin-top: 0.15rem;
   letter-spacing: 0.2px;
 }
 
 .marksheet-table tbody tr {
   border-bottom: 1px solid #f1f5f9;
-  transition: background-color 0.1s;
+  transition: background-color 0.12s ease;
 }
 
 .marksheet-table tbody tr:hover {
@@ -934,79 +1286,106 @@ body {
 }
 
 .marksheet-table td {
-  padding: 0.65rem 0.65rem;
+  padding: 0.75rem 0.65rem;
   text-align: center;
   vertical-align: middle;
 }
 
-.marksheet-table td.cell-subject {
+.marksheet-table td.col-code {
   text-align: left;
-  padding-left: 1.15rem;
+  padding-left: 1.25rem;
 }
 
-.subject-name {
+.subject-code-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
   font-weight: 700;
-  font-size: 0.78rem;
-  color: #0f172a;
-  line-height: 1.3;
+  color: #334155;
+  background-color: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
 }
 
-.subject-meta {
+.marksheet-table td.col-name {
+  text-align: left;
+}
+
+.subject-title-wrap {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.25rem;
+  flex-direction: column;
 }
 
-.subject-code {
-  font-size: 0.7rem;
-  color: #64748b;
-  font-family: monospace;
+.subject-title-text {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #0f172a;
+  line-height: 1.35;
 }
 
 .badge-theory {
-  background-color: #f97316;
-  color: #ffffff;
+  display: inline-block;
+  background-color: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
   font-size: 0.62rem;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   letter-spacing: 0.3px;
 }
 
 .badge-lab {
-  background-color: #0284c7;
-  color: #ffffff;
+  display: inline-block;
+  background-color: #f0f9ff;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
   font-size: 0.62rem;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   letter-spacing: 0.3px;
 }
 
+.asmt-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
 .cell-obt {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #0f172a;
 }
 
 .cell-sub {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: #94a3b8;
-  margin-top: 0.1rem;
+  font-weight: 500;
 }
 
-.cell-total-obt {
-  font-size: 0.875rem;
+.cell-dash {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.marksheet-table td.col-total-obt {
+  background-color: #faf5ff;
+}
+
+.total-bold {
+  font-size: 0.9rem;
   font-weight: 800;
   color: #4338ca;
 }
 
 .cell-grade {
   display: inline-block;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 0.75rem;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 4px;
 }
 
@@ -1014,6 +1393,12 @@ body {
   background-color: #f5f3ff;
   color: #7c3aed;
   border: 1px solid #ddd6fe;
+}
+
+.grade-blue {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
 }
 
 .grade-green {
@@ -1046,9 +1431,10 @@ body {
   color: #15803d;
   border: 1px solid #bbf7d0;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 2px 8px;
   border-radius: 9999px;
+  letter-spacing: 0.3px;
 }
 
 .pill-pwg {
@@ -1057,9 +1443,10 @@ body {
   color: #a16207;
   border: 1px solid #fef08a;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 2px 8px;
   border-radius: 9999px;
+  letter-spacing: 0.3px;
 }
 
 .pill-fail {
@@ -1068,33 +1455,69 @@ body {
   color: #b91c1c;
   border: 1px solid #fecaca;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 2px 8px;
   border-radius: 9999px;
+  letter-spacing: 0.3px;
 }
 
-/* Table Summary Bar */
+/* Table Footer Summary Bar */
 .table-summary-bar {
   background-color: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-  padding: 0.75rem 1.15rem;
+  border-top: 1.5px solid #e2e8f0;
+  padding: 0.85rem 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 
-.sem-summary-tag {
+.summary-bar-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 800;
   color: #334155;
   letter-spacing: 0.5px;
 }
 
-.sem-summary-items {
+.summary-bar-metrics {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.75rem;
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   color: #475569;
+}
+
+.metric-k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.metric-v {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.metric-v.highlight {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.empty-marksheet-notice {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  color: #64748b;
+  font-size: 0.9rem;
 }
 
 /* Badges */
@@ -1150,22 +1573,68 @@ body {
   display: none !important;
 }
 
-/* Responsive */
+/* ==============================================================================
+   RESPONSIVE DESIGN & ADAPTIVITY
+   ============================================================================== */
+
 @media (max-width: 1200px) {
-  .student-info-grid-card {
-    grid-template-columns: repeat(4, 1fr);
+  .annual-kpi-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .student-info-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
-@media (max-width: 768px) {
-  .student-info-grid-card {
+@media (max-width: 860px) {
+  .annual-kpi-container {
     grid-template-columns: repeat(2, 1fr);
   }
-  .sem-summary-cards {
+  .student-info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .semester-tabs-container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .tab-status-summary {
+    display: none;
+  }
+  .table-summary-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .summary-bar-metrics {
+    flex-wrap: wrap;
+    gap: 0.85rem 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .annual-kpi-container {
     grid-template-columns: 1fr;
   }
-  .workflow-steps {
-    grid-template-columns: repeat(4, 1fr);
+  .student-info-grid {
+    grid-template-columns: 1fr;
+  }
+  .student-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .student-session-info {
+    align-items: flex-start;
+  }
+  .portal-result-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .semester-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .sem-header-badges {
+    flex-wrap: wrap;
   }
   .result-toolbar {
     flex-direction: column;
@@ -1175,5 +1644,26 @@ body {
   .toolbar-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+}
+
+/* Print Optimization */
+@media print {
+  .app-header,
+  .result-toolbar,
+  .semester-tabs-container,
+  .portal-breadcrumb-bar,
+  .app-footer {
+    display: none !important;
+  }
+  body, .app-main, .portal-marksheet-canvas {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .marksheet-table-wrapper {
+    overflow: visible !important;
   }
 }

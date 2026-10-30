@@ -1,19 +1,16 @@
 'use strict';
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const http = require('http');
 const https = require('https');
 const config = require('../config');
 const { validateStudentNumber } = require('../services/credentialService');
 const { defaultSessionManager } = require('../services/sessionManager');
 const { defaultAutomationService } = require('../services/automationService');
-const { defaultBrowserPool } = require('../services/browserPool');
 
 const router = express.Router();
 
-// Keep-alive agent for proxying to persistent worker
+// Keep-alive agents for proxying to persistent worker
 const proxyHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
 const proxyHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 
@@ -75,7 +72,7 @@ function getSessionToken(req) {
 
 /**
  * POST /api/automation/start
- * Starts the examination result retrieval workflow
+ * Starts the examination result retrieval workflow via direct portal API
  */
 router.post('/start', async (req, res, next) => {
   try {
@@ -117,7 +114,7 @@ router.post('/start', async (req, res, next) => {
     // Create a new session
     const session = defaultSessionManager.createSession(validatedNumber);
 
-    // Start workflow within worker pool
+    // Start workflow asynchronously
     const workflowPromise = defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber).catch((workflowErr) => {
       console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
     });
@@ -136,14 +133,13 @@ router.post('/start', async (req, res, next) => {
       });
     }
 
-    // In serverless environments (e.g. Vercel), hold connection open long enough for the workflow to complete
-    // so the serverless container CPU is not frozen before Playwright finishes.
+    // Direct API calls finish fast (typically 1-3s). Wait up to waitWindowMs so the response can return completed if ready.
     const isServerless = Boolean(
       process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_VERSION ||
       process.env.LAMBDA_TASK_ROOT
     );
-    const waitWindowMs = isServerless ? 45000 : 3000;
+    const waitWindowMs = isServerless ? (config.overallRequestTimeoutMs || 25000) : 3000;
 
     let timeoutId;
     const initialWaitPromise = new Promise((resolve) => {
@@ -174,7 +170,7 @@ router.post('/start', async (req, res, next) => {
 
 /**
  * GET /api/automation/status/:sessionId and GET /api/automation/:sessionId/status
- * Returns the current workflow progress for a specific session
+ * Returns the current workflow progress and result data for a specific session
  */
 const statusHandler = async (req, res, next) => {
   try {
@@ -218,7 +214,7 @@ router.get('/:sessionId/status', statusHandler);
 
 /**
  * GET /api/automation/view/:sessionId
- * Serves the rendered examination result view with the top navigation bar hidden
+ * Serves the rendered examination result view
  */
 router.get('/view/:sessionId', async (req, res, next) => {
   try {
@@ -243,109 +239,85 @@ router.get('/view/:sessionId', async (req, res, next) => {
       return res.status(404).send('<h3>Session expired or not found.</h3>');
     }
 
-    if (!session.renderedHtml) {
+    if (!session.resultData && !session.renderedHtml) {
       return res.status(409).send('<h3>Examination results interface is still preparing. Please wait...</h3>');
     }
 
-    // Build standalone HTML frame incorporating PrimeNG and portal styles
+    let innerContent = session.renderedHtml || '';
+    if (!innerContent && session.resultData) {
+      const student = session.resultData.student || {};
+      const semHtml = (session.resultData.semesters || []).map(sem => `
+        <div style="margin-bottom: 2rem;">
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem;">${sem.title || sem.name} (SGPA: ${sem.sgpa || '—'}, Credits: ${sem.creditsEarned || '—'})</h2>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.875rem;">
+            <thead>
+              <tr style="background: #f1f5f9; text-align: left;">
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Code</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Subject Name</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1;">Type</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">Credits</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">Marks</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">Grade</th>
+                <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(sem.subjects || []).map(sub => `
+                <tr>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1; font-weight: 600;">${sub.acadSubjectCode || sub.code || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1;">${sub.acadSubjectLngTitle || sub.name || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1;">${sub.subjectType || sub.type || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">${sub.creditEarnedToPrint !== undefined ? sub.creditEarnedToPrint : sub.credits}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">${sub.obtResolutionGracesMarksToPrint !== undefined ? sub.obtResolutionGracesMarksToPrint : sub.total?.obt}/${sub.maxPointsToPrint !== undefined ? sub.maxPointsToPrint : sub.total?.max}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold;">${sub.gradeLetterToPrint || sub.grade || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center; color: ${sub.result === 'FAIL' ? '#dc2626' : '#16a34a'}; font-weight: bold;">${sub.result || 'PASS'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `).join('');
+
+      innerContent = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 2rem; color: #1e293b;">
+          <div style="text-align: center; margin-bottom: 2rem; border-bottom: 2px solid #3b82f6; padding-bottom: 1rem;">
+            <h1 style="font-size: 1.5rem; font-weight: 800; color: #0f172a; margin: 0;">ABES ENGINEERING COLLEGE</h1>
+            <p style="margin: 0.25rem 0; font-size: 0.95rem; color: #64748b;">Annual Examination Result (Year 1)</p>
+          </div>
+          <div style="background: #f8fafc; border-radius: 8px; padding: 1.25rem; margin-bottom: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.9rem;">
+            <div><strong>Student Name:</strong> ${student.name || '—'}</div>
+            <div><strong>Student ID / Roll No:</strong> ${student.studentNumber || student.rollNo || '—'}</div>
+            <div><strong>Registration No:</strong> ${student.regnNo || student.seatNo || '—'}</div>
+            <div><strong>Class / Branch:</strong> ${student.className || '—'}</div>
+            <div><strong>Academic Year:</strong> ${student.academicYear || '—'}</div>
+            <div><strong>Overall Status:</strong> <span style="font-weight: bold; color: ${student.status === 'FAIL' ? '#dc2626' : '#16a34a'};">${student.status || 'PASS'}</span></div>
+            <div><strong>Overall YGPA:</strong> <span style="font-weight: bold; font-size: 1.05rem; color: #1d4ed8;">${student.ygpa || session.resultData.overallYgpa || '—'}</span></div>
+            <div><strong>Total Credits Earned:</strong> ${student.creditsEarned || session.resultData.overallCreditsEarned || '—'}</div>
+          </div>
+          ${semHtml}
+        </div>
+      `;
+    }
+
     const viewHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Examination Result - Insync</title>
-  <base href="https://ai-edunova.abes.ac.in/">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.cdnfonts.com/css/lato" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/primeicons/7.0.0/primeicons.min.css">
-  <link rel="stylesheet" href="https://ai-edunova.abes.ac.in/styles-2NQPLNDH.css">
+  <title>Examination Result</title>
   <style>
-    top-navbar,
-    .top-navbar,
-    app-topbar,
-    .layout-topbar,
-    .layout-menu-button,
-    nav.p-breadcrumb,
-    .p-breadcrumb,
-    app-floating-configurator,
-    app-configurator,
-    app-sidebar,
-    .sidebar-base,
-    de-loader,
-    [class*="backdrop-blur"],
-    div[class*="maskbg"],
-    div[class*="animate-fadeIn"],
-    div.fixed.inset-0,
-    div.skiptranslate,
-    iframe[id*="container"],
-    .p-toast {
-      display: none !important;
-    }
-    img[alt*="Watermark"],
-    .watermark,
-    div:has(> img[alt*="Watermark"]),
-    div:has(> img[src*="ABES.png"]),
-    div:has(> img[src*="abes.png"]) {
-      display: none !important;
-    }
-    .hidden {
-      display: none !important;
-    }
-    .h-screen {
-      height: auto !important;
-      min-height: 100% !important;
-    }
-    .overflow-hidden {
-      overflow: visible !important;
-    }
     html, body {
-      font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-      background-color: #ffffff !important;
-      color: #1e293b !important;
-      margin: 0 !important;
-      padding: 0.75rem 1.25rem !important;
-      overflow: auto !important;
-      height: auto !important;
-      min-height: 100% !important;
-    }
-    .layout-main-container, .layout-content-wrapper, .layout-main {
-      padding-top: 0 !important;
-      margin: 0 auto !important;
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-    .semester-result-print-section {
-      background: #ffffff !important;
-      padding-top: 0 !important;
-      margin-top: 0 !important;
-      min-height: auto !important;
-    }
-    .result-print-page-header {
-      margin-top: 0 !important;
-      padding-top: 0.25rem !important;
-      margin-bottom: 0.85rem !important;
-    }
-    .result-print-page-header h1 {
-      display: flex !important;
-      align-items: center !important;
-      flex-wrap: wrap !important;
-      gap: 0.35rem !important;
-    }
-    .result-print-page-header h1 span {
-      display: inline-block !important;
-    }
-    .result-print-page-header h1 span:nth-child(2) {
-      margin: 0 0.35rem !important;
-    }
-    .result-print-page-header button {
-      display: none !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
+      color: #1e293b;
+      margin: 0;
+      padding: 1rem;
     }
   </style>
 </head>
 <body>
   <div class="result-embed-container">
-    ${session.renderedHtml}
+    ${innerContent}
   </div>
 </body>
 </html>`;
@@ -359,103 +331,8 @@ router.get('/view/:sessionId', async (req, res, next) => {
 });
 
 /**
- * POST /api/automation/:sessionId/download
- * Triggers the educational portal's PDF download and verifies the document
- */
-router.post('/:sessionId/download', async (req, res, next) => {
-  try {
-    const { sessionId } = req.params;
-    const token = getSessionToken(req);
-
-    if (config.workerServiceUrl) {
-      const fwdHeaders = {};
-      if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
-      if (token) fwdHeaders['x-session-token'] = token;
-      const fwdRes = await forwardRequest(
-        `${config.workerServiceUrl}/api/automation/${sessionId}/download`,
-        'POST',
-        fwdHeaders,
-        req.body
-      );
-      return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
-    }
-
-    const result = await defaultAutomationService.triggerPortalDownload(sessionId, token);
-
-    res.json({
-      success: true,
-      message: 'Examination result PDF downloaded and verified successfully.',
-      fileName: result.fileName,
-      size: result.size,
-      downloadUrl: result.downloadUrl,
-      base64: result.base64 || null
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * GET /api/automation/:sessionId/file
- * Securely delivers the verified downloaded PDF
- */
-router.get('/:sessionId/file', (req, res, next) => {
-  try {
-    const { sessionId } = req.params;
-    const token = getSessionToken(req);
-
-    if (config.workerServiceUrl) {
-      const redirectUrl = `${config.workerServiceUrl}/api/automation/${sessionId}/file${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-      return res.redirect(redirectUrl);
-    }
-
-    const session = defaultSessionManager.getSession(sessionId, token);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Session not found or expired.', code: 'SESSION_NOT_FOUND' }
-      });
-    }
-
-    if (!session.downloadedFile || !session.downloadedFile.ready) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'PDF document has not yet been downloaded.', code: 'FILE_NOT_READY' }
-      });
-    }
-
-    const fileName = session.downloadedFile.fileName || 'Examination_Result.pdf';
-    const filePath = session.downloadedFile.filePath;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-
-    // Deliver from disk if file is available
-    if (filePath && fs.existsSync(filePath)) {
-      res.setHeader('Content-Length', session.downloadedFile.size);
-      const fileStream = fs.createReadStream(filePath);
-      return fileStream.pipe(res);
-    }
-
-    // Fall back to in-memory base64 buffer for serverless multi-container resilience
-    if (session.downloadedFile.base64) {
-      const buf = Buffer.from(session.downloadedFile.base64, 'base64');
-      res.setHeader('Content-Length', buf.length);
-      return res.end(buf);
-    }
-
-    return res.status(404).json({
-      success: false,
-      error: { message: 'Downloaded file is no longer available.', code: 'FILE_EXPIRED' }
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
  * POST /api/automation/:sessionId/close
- * Closes the browser context and cleans up temporary files
+ * Cleans up session records
  */
 router.post('/:sessionId/close', async (req, res, next) => {
   try {

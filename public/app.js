@@ -1,19 +1,25 @@
 /**
- * Educational Examination Result Retrieval & Official Portal Recreation Client
+ * Educational Examination Result Retrieval & Annual Marksheet Portal Client
+ * Modern Institutional Client Application (No PDF triggers)
  */
 
 (() => {
   'use strict';
 
-  // State
+  // ============================================================================
+  // Application State
+  // ============================================================================
   let currentSession = null;
   let statusPollTimer = null;
   let isSubmitting = false;
-  let isDownloading = false;
   let activeRequestId = 0;
   let activeFetchController = null;
+  let currentTab = 'all';
+  let cachedSemesters = [];
 
+  // ============================================================================
   // DOM Elements - Search & Form
+  // ============================================================================
   const fetchForm = document.getElementById('fetchForm');
   const studentNumberInput = document.getElementById('studentNumberInput');
   const inputClearBtn = document.getElementById('inputClearBtn');
@@ -25,7 +31,7 @@
   const resultSection = document.getElementById('resultSection');
   const headerActions = document.getElementById('headerActions');
   const headerNewSearchBtn = document.getElementById('headerNewSearchBtn');
-  const headerDownloadBtn = document.getElementById('headerDownloadBtn');
+  const closeSessionBtn = document.getElementById('closeSessionBtn');
 
   // Progress Tracking
   const progressCard = document.getElementById('progressCard');
@@ -39,33 +45,48 @@
   const errorMessage = document.getElementById('errorMessage');
   const errorRetryBtn = document.getElementById('errorRetryBtn');
 
-  // Results View Elements
+  // Results View Meta
   const resultStudentId = document.getElementById('resultStudentId');
   const resultSemesterTitle = document.getElementById('resultSemesterTitle');
-  const actionDownloadBtn = document.getElementById('actionDownloadBtn');
-  const closeSessionBtn = document.getElementById('closeSessionBtn');
-  const marksheetAnnualPdfBtn = document.getElementById('marksheetAnnualPdfBtn');
-  const downloadAlert = document.getElementById('downloadAlert');
-  const downloadAlertTitle = document.getElementById('downloadAlertTitle');
-  const downloadAlertMessage = document.getElementById('downloadAlertMessage');
-  const closeAlertBtn = document.getElementById('closeAlertBtn');
   const pendingResultAlert = document.getElementById('pendingResultAlert');
+  const marksheetCollegeTitle = document.getElementById('marksheetCollegeTitle');
+  const marksheetSubtitle = document.getElementById('marksheetSubtitle');
 
-  // Recreated Marksheet Elements
+  // Student Biographical Info Elements
   const studName = document.getElementById('studName');
-  const studRegnNo = document.getElementById('studRegnNo');
+  const studRollNo = document.getElementById('studRollNo');
   const studSeatNo = document.getElementById('studSeatNo');
-  const studClass = document.getElementById('studClass');
+  const studPnrNo = document.getElementById('studPnrNo');
   const studAcadYear = document.getElementById('studAcadYear');
-  const studPublishedOn = document.getElementById('studPublishedOn');
-  const studSession = document.getElementById('studSession');
+  const studRegnNo = document.getElementById('studRegnNo');
   const studAbcId = document.getElementById('studAbcId');
+  const studPublishedOn = document.getElementById('studPublishedOn');
   const studSemesters = document.getElementById('studSemesters');
-  const studStatus = document.getElementById('studStatus');
-  const studYgpa = document.getElementById('studYgpa');
-  const studCredits = document.getElementById('studCredits');
-  const studMarks = document.getElementById('studMarks');
-  const studCop = document.getElementById('studCop');
+  const studClass = document.getElementById('studClass');
+  const studSession = document.getElementById('studSession');
+
+  // Annual Performance KPI Cards
+  const kpiSem1Sgpa = document.getElementById('kpiSem1Sgpa');
+  const kpiSem2Sgpa = document.getElementById('kpiSem2Sgpa');
+  const kpiSem1Sub = document.getElementById('kpiSem1Sub');
+  const kpiSem2Sub = document.getElementById('kpiSem2Sub');
+  const kpiYgpa = document.getElementById('kpiYgpa');
+  const kpiCreditsEarned = document.getElementById('kpiCreditsEarned');
+  const kpiTotalCredits = document.getElementById('kpiTotalCredits');
+  const kpiCreditsPercent = document.getElementById('kpiCreditsPercent');
+  const kpiOverallStatus = document.getElementById('kpiOverallStatus');
+  const kpiCopStatus = document.getElementById('kpiCopStatus');
+
+  // Semester Tab Switcher
+  const tabBtnAll = document.getElementById('tabBtnAll');
+  const tabBtnSem1 = document.getElementById('tabBtnSem1');
+  const tabBtnSem2 = document.getElementById('tabBtnSem2');
+  const tabBadgeAll = document.getElementById('tabBadgeAll');
+  const tabBadgeSem1 = document.getElementById('tabBadgeSem1');
+  const tabBadgeSem2 = document.getElementById('tabBadgeSem2');
+  const tabStatusSummary = document.getElementById('tabStatusSummary');
+
+  // Container Elements
   const semestersContainer = document.getElementById('semestersContainer');
   const iframeContainer = document.getElementById('iframeContainer');
   const portalViewFrame = document.getElementById('portalViewFrame');
@@ -104,28 +125,66 @@
     }
   }
 
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function clearResultView() {
     resultStudentId.textContent = '—';
     resultSemesterTitle.textContent = 'Annual Result';
-    studName.textContent = '—';
-    studRegnNo.textContent = '—';
-    studSeatNo.textContent = '—';
-    studClass.textContent = '—';
-    studAcadYear.textContent = '—';
-    studPublishedOn.textContent = '—';
-    studSession.textContent = '—';
-    studAbcId.textContent = '—';
-    studSemesters.textContent = '—';
-    studStatus.textContent = '—';
-    studYgpa.textContent = '—';
-    studCredits.textContent = '—';
-    studMarks.textContent = '—';
-    studCop.textContent = '—';
-    semestersContainer.innerHTML = '';
-    portalViewFrame.srcdoc = '';
-    iframeContainer.classList.add('hidden');
-    pendingResultAlert.classList.add('hidden');
-    downloadAlert.classList.add('hidden');
+
+    // Reset student info
+    if (studName) studName.textContent = '—';
+    if (studRollNo) studRollNo.textContent = '—';
+    if (studSeatNo) studSeatNo.textContent = '—';
+    if (studPnrNo) studPnrNo.textContent = '—';
+    if (studAcadYear) studAcadYear.textContent = '—';
+    if (studRegnNo) studRegnNo.textContent = '—';
+    if (studAbcId) studAbcId.textContent = '—';
+    if (studPublishedOn) studPublishedOn.textContent = '—';
+    if (studSemesters) studSemesters.textContent = '—';
+    if (studClass) studClass.textContent = '—';
+    if (studSession) studSession.textContent = '—';
+
+    // Reset KPI cards
+    if (kpiSem1Sgpa) kpiSem1Sgpa.textContent = '—';
+    if (kpiSem2Sgpa) kpiSem2Sgpa.textContent = '—';
+    if (kpiSem1Sub) kpiSem1Sub.textContent = 'Sem I Assessment';
+    if (kpiSem2Sub) kpiSem2Sub.textContent = 'Sem II Assessment';
+    if (kpiYgpa) kpiYgpa.textContent = '—';
+    if (kpiCreditsEarned) kpiCreditsEarned.textContent = '—';
+    if (kpiTotalCredits) kpiTotalCredits.textContent = '/ —';
+    if (kpiCreditsPercent) kpiCreditsPercent.textContent = 'Credits Completed';
+    if (kpiOverallStatus) {
+      kpiOverallStatus.textContent = '—';
+      kpiOverallStatus.className = 'kpi-status-pill';
+    }
+    if (kpiCopStatus) kpiCopStatus.textContent = 'COP: None';
+
+    // Reset Tabs
+    currentTab = 'all';
+    cachedSemesters = [];
+    setActiveTabButton('all');
+    if (tabBadgeAll) tabBadgeAll.textContent = 'Annual';
+    if (tabBadgeSem1) tabBadgeSem1.textContent = '—';
+    if (tabBadgeSem2) tabBadgeSem2.textContent = '—';
+    if (tabBtnSem1) tabBtnSem1.disabled = false;
+    if (tabBtnSem2) tabBtnSem2.disabled = false;
+    if (tabStatusSummary) {
+      tabStatusSummary.textContent = 'Showing comprehensive annual performance records';
+    }
+
+    // Reset Container
+    if (semestersContainer) semestersContainer.innerHTML = '';
+    if (portalViewFrame) portalViewFrame.srcdoc = '';
+    if (iframeContainer) iframeContainer.classList.add('hidden');
+    if (pendingResultAlert) pendingResultAlert.classList.add('hidden');
   }
 
   // ============================================================================
@@ -288,40 +347,46 @@
     resultStudentId.textContent = expectedStudent || '—';
     resultSemesterTitle.textContent = sessionData.examSummary?.title || 'Annual Result';
 
-    if (currentSession) {
-      // Cache PDF base64 if provided
-      if (sessionData.pdfBase64) {
-        currentSession.pdfBase64 = sessionData.pdfBase64;
-      }
-      if (sessionData.downloadFileName) {
-        currentSession.downloadFileName = sessionData.downloadFileName;
-      }
-    }
-
     const result = sessionData.resultData;
 
     if (result && result.student) {
-      // 1. Populate Student Metadata
-      studName.textContent = result.student.name || result.student.fullName || '—';
-      studRegnNo.textContent = result.student.regnNo || '—';
-      studSeatNo.textContent = result.student.seatNo || '—';
-      studClass.textContent = result.student.className || '—';
-      studAcadYear.textContent = result.student.academicYear || '—';
-      studPublishedOn.textContent = result.student.publishedOn || '—';
-      studSession.textContent = result.student.session || '—';
-      studAbcId.textContent = result.student.abcId || '—';
-      studSemesters.textContent = result.student.semesters || '—';
-      studStatus.textContent = result.student.status || '—';
-      studYgpa.textContent = result.student.ygpa || '—';
-      studCredits.textContent = result.student.creditsEarned !== undefined ? result.student.creditsEarned : '—';
-      studMarks.textContent = result.student.marks || '—';
-      studCop.textContent = result.student.cop || '—';
+      const s = result.student;
 
-      // 2. Render Semesters (Semester I & Semester II)
-      renderSemesters(result.semesters || []);
+      // 1. Institution Metadata
+      if (result.institution) {
+        if (marksheetCollegeTitle) {
+          marksheetCollegeTitle.textContent = result.institution.headerTitle || result.institution.name || 'ABES Engineering College : Annual Result';
+        }
+        if (marksheetSubtitle) {
+          marksheetSubtitle.textContent = `${result.institution.subTitle || '(Autonomous College)'} • ${result.institution.accreditation || 'NAAC Accredited'}`;
+        }
+      }
+
+      // 2. Populate Student Biographical Information
+      if (studName) studName.textContent = s.fullName || s.name || 'STUDENT';
+      if (studRollNo) studRollNo.textContent = s.rollNo || s.regnNo || s.seatNo || '—';
+      if (studSeatNo) studSeatNo.textContent = s.seatNo || '—';
+      if (studPnrNo) studPnrNo.textContent = s.pnrNo || s.abcId || '—';
+      if (studAcadYear) studAcadYear.textContent = s.academicYear || '—';
+      if (studRegnNo) studRegnNo.textContent = s.regnNo || s.seatNo || '—';
+      if (studAbcId) studAbcId.textContent = s.abcId || '—';
+      if (studPublishedOn) studPublishedOn.textContent = s.publishedOn || '—';
+      if (studSemesters) studSemesters.textContent = s.semesters || '1, 2';
+      if (studClass) studClass.textContent = s.course || s.className || 'Bachelor of Technology';
+      if (studSession) studSession.textContent = s.session || `${s.academicYear || '2025'} (REGULAR)`;
+
+      // 3. Process Semesters & KPI Cards
+      const rawSemesters = Array.isArray(result.semesters) ? result.semesters : [];
+      cachedSemesters = rawSemesters;
+
+      populateKpiCards(result, rawSemesters);
+      setupSemesterTabs(rawSemesters);
+
+      // Render marksheet tables based on active tab
+      renderMarksheetTables(rawSemesters, currentTab);
       iframeContainer.classList.add('hidden');
 
-      if (result.annualSummary?.status === 'PENDING' || result.student.status === 'PENDING') {
+      if (result.annualSummary?.status === 'PENDING' || s.status === 'PENDING') {
         pendingResultAlert.classList.remove('hidden');
       } else {
         pendingResultAlert.classList.add('hidden');
@@ -349,71 +414,197 @@
     }
   }
 
-  function renderSemesters(semesters) {
+  /**
+   * Defensive KPI Card Population:
+   * Displays Semester I SGPA, Semester II SGPA, Overall YGPA, Total Credits Earned, Overall Result/Remarks
+   */
+  function populateKpiCards(result, semesters) {
+    const s = result.student || {};
+    const summary = result.annualSummary || {};
+
+    // Find Sem 1 and Sem 2 objects defensively
+    const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || x.semesterTitle || '').toUpperCase().includes('SEMESTER I')) || (semesters.length > 0 ? semesters[0] : null);
+    const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || x.semesterTitle || '').toUpperCase().includes('SEMESTER II')) || (semesters.length > 1 ? semesters[1] : null);
+
+    // Sem I SGPA
+    if (kpiSem1Sgpa) {
+      kpiSem1Sgpa.textContent = (sem1 && sem1.sgpa !== undefined && sem1.sgpa !== '') ? sem1.sgpa : '—';
+    }
+    if (kpiSem1Sub) {
+      if (sem1) {
+        const earned = sem1.creditsEarned !== undefined ? sem1.creditsEarned : sem1.credits;
+        kpiSem1Sub.textContent = `Earned ${earned || '—'} / ${sem1.credits || '—'} Credits`;
+      } else {
+        kpiSem1Sub.textContent = 'Not Assessed';
+      }
+    }
+
+    // Sem II SGPA
+    if (kpiSem2Sgpa) {
+      kpiSem2Sgpa.textContent = (sem2 && sem2.sgpa !== undefined && sem2.sgpa !== '') ? sem2.sgpa : '—';
+    }
+    if (kpiSem2Sub) {
+      if (sem2) {
+        const earned = sem2.creditsEarned !== undefined ? sem2.creditsEarned : sem2.credits;
+        kpiSem2Sub.textContent = `Earned ${earned || '—'} / ${sem2.credits || '—'} Credits`;
+      } else {
+        kpiSem2Sub.textContent = 'Not Assessed';
+      }
+    }
+
+    // Overall YGPA
+    if (kpiYgpa) {
+      let ygpaVal = summary.ygpa || s.ygpa;
+      if (!ygpaVal && sem1 && sem2 && sem1.sgpa && sem2.sgpa) {
+        const avg = ((parseFloat(sem1.sgpa) + parseFloat(sem2.sgpa)) / 2).toFixed(2);
+        ygpaVal = isNaN(avg) ? '—' : avg;
+      }
+      kpiYgpa.textContent = ygpaVal || sem1?.sgpa || '—';
+    }
+
+    // Total Credits Earned
+    const totalEarnedCredits = summary.creditsEarned !== undefined ? summary.creditsEarned : (s.creditsEarned !== undefined ? s.creditsEarned : semesters.reduce((acc, sem) => acc + (sem.creditsEarned !== undefined ? Number(sem.creditsEarned) : (sem.credits ? Number(sem.credits) : 0)), 0));
+    const totalMaxCredits = summary.totalCredits !== undefined ? summary.totalCredits : (s.totalCredits !== undefined ? s.totalCredits : semesters.reduce((acc, sem) => acc + (sem.credits ? Number(sem.credits) : 0), 0));
+
+    if (kpiCreditsEarned) {
+      kpiCreditsEarned.textContent = totalEarnedCredits !== undefined && totalEarnedCredits !== '' ? totalEarnedCredits : '—';
+    }
+    if (kpiTotalCredits) {
+      kpiTotalCredits.textContent = totalMaxCredits ? `/ ${totalMaxCredits}` : '';
+    }
+    if (kpiCreditsPercent) {
+      if (totalMaxCredits && totalEarnedCredits) {
+        const pct = Math.min(100, Math.round((Number(totalEarnedCredits) / Number(totalMaxCredits)) * 100));
+        kpiCreditsPercent.textContent = `${pct}% Requirements Satisfied`;
+      } else {
+        kpiCreditsPercent.textContent = 'Credits Completed';
+      }
+    }
+
+    // Overall Status / Remarks
+    const rawStatus = (summary.status || s.status || 'PASS').toUpperCase();
+    if (kpiOverallStatus) {
+      kpiOverallStatus.textContent = rawStatus;
+      kpiOverallStatus.className = 'kpi-status-pill ' + (rawStatus === 'PASS' ? 'pill-pass' : (rawStatus === 'PWG' ? 'pill-pwg' : 'pill-fail'));
+    }
+
+    const cop = summary.cop || s.cop;
+    if (kpiCopStatus) {
+      if (cop && cop !== '—' && cop !== 'None' && String(cop).trim().length > 0) {
+        kpiCopStatus.textContent = `COP / Backlogs: ${cop}`;
+        kpiCopStatus.classList.add('has-cop');
+      } else {
+        kpiCopStatus.textContent = 'Clear • No Active Backlogs';
+        kpiCopStatus.classList.remove('has-cop');
+      }
+    }
+  }
+
+  /**
+   * Set up tab switcher controls based on available semesters
+   */
+  function setupSemesterTabs(semesters) {
+    const semCount = semesters.length;
+    if (tabBadgeAll) {
+      tabBadgeAll.textContent = semCount > 1 ? `${semCount} Semesters` : (semCount === 1 ? '1 Semester' : 'Annual');
+    }
+
+    const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || '').toUpperCase().includes('SEMESTER I')) || (semCount > 0 ? semesters[0] : null);
+    const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || '').toUpperCase().includes('SEMESTER II')) || (semCount > 1 ? semesters[1] : null);
+
+    if (tabBadgeSem1) {
+      tabBadgeSem1.textContent = sem1 ? (sem1.sgpa ? `SGPA ${sem1.sgpa}` : `${(sem1.subjects || []).length} Subjects`) : 'N/A';
+    }
+    if (tabBadgeSem2) {
+      tabBadgeSem2.textContent = sem2 ? (sem2.sgpa ? `SGPA ${sem2.sgpa}` : `${(sem2.subjects || []).length} Subjects`) : 'N/A';
+    }
+
+    if (tabBtnSem1) tabBtnSem1.disabled = !sem1;
+    if (tabBtnSem2) tabBtnSem2.disabled = !sem2;
+  }
+
+  function setActiveTabButton(tabKey) {
+    currentTab = tabKey;
+    [tabBtnAll, tabBtnSem1, tabBtnSem2].forEach(btn => {
+      if (!btn) return;
+      const isMatch = btn.getAttribute('data-tab') === tabKey;
+      btn.classList.toggle('active', isMatch);
+      btn.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+    });
+
+    if (tabStatusSummary) {
+      if (tabKey === 'all') {
+        tabStatusSummary.textContent = 'Showing comprehensive annual performance records (Semester I & II)';
+      } else if (tabKey === '1') {
+        tabStatusSummary.textContent = 'Showing Semester I curriculum & examination assessment records';
+      } else if (tabKey === '2') {
+        tabStatusSummary.textContent = 'Showing Semester II curriculum & examination assessment records';
+      }
+    }
+  }
+
+  // ============================================================================
+  // Marksheet Table Rendering
+  // ============================================================================
+
+  function renderMarksheetTables(semesters, activeTab = 'all') {
     semestersContainer.innerHTML = '';
 
     if (!semesters || semesters.length === 0) {
-      semestersContainer.innerHTML = '<p class="form-hint" style="text-align:center; padding: 2rem;">No semester assessment records found.</p>';
+      semestersContainer.innerHTML = `
+        <div class="empty-marksheet-notice">
+          <p>No verified semester assessment records were found in the official response.</p>
+        </div>
+      `;
       return;
     }
 
-    semesters.forEach(sem => {
+    // Filter semesters based on active tab
+    const filteredSemesters = semesters.filter((sem, idx) => {
+      if (activeTab === 'all') return true;
+      const semNum = sem.semesterNumber || (idx + 1);
+      return String(semNum) === String(activeTab);
+    });
+
+    if (filteredSemesters.length === 0) {
+      semestersContainer.innerHTML = `
+        <div class="empty-marksheet-notice">
+          <p>No records found for the selected semester.</p>
+        </div>
+      `;
+      return;
+    }
+
+    filteredSemesters.forEach((sem, sIdx) => {
+      const semNum = sem.semesterNumber || (sIdx + 1);
       const semSec = document.createElement('div');
       semSec.className = 'semester-section';
+      semSec.setAttribute('data-semester-id', `sem-${semNum}`);
 
-      // Build Summary Cards HTML
-      const summaryCardsHtml = `
-        <div class="sem-summary-cards">
-          <!-- SGPA Card -->
-          <div class="summary-metric-card">
-            <div class="metric-icon-circle blue-circle">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-              </svg>
-            </div>
-            <div class="metric-body">
-              <div class="metric-val-row">
-                <span class="metric-large-val">${sem.sgpa || '—'}</span>
-                <span class="metric-unit">SGPA</span>
-              </div>
-              <div class="metric-progress-line blue-line"></div>
+      // Semester Section Header
+      const semStatus = (sem.status || sem.generalRemark || 'PASS').toUpperCase();
+      const statusPillClass = semStatus === 'PASS' ? 'pill-pass' : (semStatus === 'PWG' ? 'pill-pwg' : 'pill-fail');
+
+      const semHeaderHtml = `
+        <div class="semester-section-header">
+          <div class="sem-header-left">
+            <div class="sem-num-badge">SEM ${semNum}</div>
+            <div class="sem-title-wrap">
+              <h2 class="semester-title">${escapeHtml(sem.title || sem.semesterTitle || `Semester ${semNum}`)}</h2>
+              <span class="sem-subtitle">Verified Institutional Assessment Record</span>
             </div>
           </div>
-
-          <!-- Total Marks Card -->
-          <div class="summary-metric-card">
-            <div class="metric-icon-circle orange-circle">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2">
-                <line x1="18" y1="20" x2="18" y2="10"></line>
-                <line x1="12" y1="20" x2="12" y2="4"></line>
-                <line x1="6" y1="20" x2="6" y2="14"></line>
-              </svg>
+          <div class="sem-header-badges">
+            <div class="sem-badge-item sgpa-badge">
+              <span class="badge-label">SGPA</span>
+              <span class="badge-value">${sem.sgpa || '—'}</span>
             </div>
-            <div class="metric-body">
-              <div class="metric-val-row">
-                <span class="metric-large-val">${sem.obtainedMarks !== undefined ? sem.obtainedMarks : '—'}</span>
-                <span class="metric-sub-val">/ ${sem.totalMarks || '—'}</span>
-              </div>
-              <div class="metric-label">Total Marks</div>
-              <div class="metric-progress-line orange-line"></div>
+            <div class="sem-badge-item credits-badge">
+              <span class="badge-label">CREDITS</span>
+              <span class="badge-value">${sem.creditsEarned !== undefined ? sem.creditsEarned : (sem.credits || '—')} / ${sem.credits || '—'}</span>
             </div>
-          </div>
-
-          <!-- Credits Earned Card -->
-          <div class="summary-metric-card">
-            <div class="metric-icon-circle green-circle">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <div class="metric-body">
-              <div class="metric-val-row">
-                <span class="metric-large-val">${sem.creditsEarned !== undefined ? sem.creditsEarned : '—'}</span>
-                <span class="metric-sub-val">/ ${sem.credits || '—'}</span>
-              </div>
-              <div class="metric-label">Credits Earned</div>
-              <div class="metric-progress-line green-line"></div>
+            <div class="sem-badge-item status-badge">
+              <span class="${statusPillClass}">${escapeHtml(semStatus)}</span>
             </div>
           </div>
         </div>
@@ -421,106 +612,135 @@
 
       // Build Table Rows
       let rowsHtml = '';
-      (sem.subjects || []).forEach(sub => {
-        const isTheory = sub.type === 'THEORY';
-        const typeBadge = isTheory ? '<span class="badge-theory">THEORY</span>' : '<span class="badge-lab">LAB</span>';
+      const subjects = Array.isArray(sem.subjects) ? sem.subjects : [];
 
-        const mt1Cell = isTheory && sub.midTerm1
-          ? `<div><div class="cell-obt">${sub.midTerm1.obt}</div><div class="cell-sub">/ ${sub.midTerm1.min} / ${sub.midTerm1.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
+      subjects.forEach((sub, rowIdx) => {
+        const isTheory = (sub.type || '').toUpperCase() === 'THEORY';
+        const typeBadge = isTheory
+          ? '<span class="badge-theory">THEORY</span>'
+          : '<span class="badge-lab">LAB</span>';
 
-        const mt2Cell = isTheory && sub.midTerm2
-          ? `<div><div class="cell-obt">${sub.midTerm2.obt}</div><div class="cell-sub">/ ${sub.midTerm2.min} / ${sub.midTerm2.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
-
-        const endTermCell = isTheory && sub.endTerm
-          ? `<div><div class="cell-obt">${sub.endTerm.obt}</div><div class="cell-sub">/ ${sub.endTerm.min} / ${sub.endTerm.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
-
-        const extCell = sub.external
-          ? `<div><div class="cell-obt">${sub.external.obt}</div><div class="cell-sub">/ ${sub.external.min} / ${sub.external.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
-
+        // 1. Internal / CIA
         const intCell = sub.internal
-          ? `<div><div class="cell-obt">${sub.internal.obt}</div><div class="cell-sub">/ ${sub.internal.min} / ${sub.internal.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
+          ? `<div class="asmt-cell"><span class="cell-obt">${sub.internal.obt}</span><span class="cell-sub">/ ${sub.internal.max}</span></div>`
+          : '<span class="cell-dash">—</span>';
 
-        const totalCell = sub.total
-          ? `<div><div class="cell-total-obt">${sub.total.obt}</div><div class="cell-sub">${sub.total.min} / ${sub.total.max}</div></div>`
-          : '<span class="cell-sub">—</span>';
+        // 2. Mid Term 1
+        const mt1Cell = isTheory && sub.midTerm1
+          ? `<div class="asmt-cell"><span class="cell-obt">${sub.midTerm1.obt}</span><span class="cell-sub">/ ${sub.midTerm1.max}</span></div>`
+          : '<span class="cell-dash">—</span>';
 
-        // Grade Badge styling
+        // 3. Mid Term 2
+        const mt2Cell = isTheory && sub.midTerm2
+          ? `<div class="asmt-cell"><span class="cell-obt">${sub.midTerm2.obt}</span><span class="cell-sub">/ ${sub.midTerm2.max}</span></div>`
+          : '<span class="cell-dash">—</span>';
+
+        // 4. End Term
+        const endTermCell = isTheory && sub.endTerm
+          ? `<div class="asmt-cell"><span class="cell-obt">${sub.endTerm.obt}</span><span class="cell-sub">/ ${sub.endTerm.max}</span></div>`
+          : (sub.external
+              ? `<div class="asmt-cell"><span class="cell-obt">${sub.external.obt}</span><span class="cell-sub">/ ${sub.external.max}</span></div>`
+              : '<span class="cell-dash">—</span>');
+
+        // 5. Total Obtained & Max
+        const totalObt = sub.total ? sub.total.obt : (sub.obtainedMarks !== undefined ? sub.obtainedMarks : '—');
+        const totalMax = sub.total ? sub.total.max : (sub.maxMarks !== undefined ? sub.maxMarks : 100);
+
+        // Grade Badge Styling
+        const gradeStr = (sub.grade || '').toUpperCase();
         let gradeClass = 'grade-green';
-        const g = (sub.grade || '').toUpperCase();
-        if (g.includes('A')) gradeClass = 'grade-purple';
-        else if (g.includes('B')) gradeClass = 'grade-amber';
-        else if (g.includes('C')) gradeClass = 'grade-orange';
-        else if (g.includes('F') || g.includes('E#')) gradeClass = 'grade-red';
+        if (gradeStr.includes('A')) gradeClass = 'grade-purple';
+        else if (gradeStr.includes('B')) gradeClass = 'grade-blue';
+        else if (gradeStr.includes('C')) gradeClass = 'grade-amber';
+        else if (gradeStr.includes('D')) gradeClass = 'grade-orange';
+        else if (gradeStr.includes('F') || gradeStr.includes('E#')) gradeClass = 'grade-red';
 
-        const resultClass = sub.result === 'PASS' ? 'pill-pass' : (sub.result === 'PWG' ? 'pill-pwg' : 'pill-fail');
+        // Result Pill
+        const subResult = (sub.result || 'PASS').toUpperCase();
+        const subResultClass = subResult === 'PASS' ? 'pill-pass' : (subResult === 'PWG' ? 'pill-pwg' : 'pill-fail');
+
+        // Credits
+        const subCredits = sub.creditsEarned !== undefined ? sub.creditsEarned : (sub.credits !== undefined ? sub.credits : '—');
 
         rowsHtml += `
-          <tr>
-            <td class="cell-subject">
-              <div class="subject-name">${escapeHtml(sub.name || sub.title)}</div>
-              <div class="subject-meta">
-                <span class="subject-code">${escapeHtml(sub.code)}</span>
-                ${typeBadge}
+          <tr class="${rowIdx % 2 === 0 ? 'row-even' : 'row-odd'}">
+            <td class="col-code"><span class="subject-code-tag">${escapeHtml(sub.code || '—')}</span></td>
+            <td class="col-name">
+              <div class="subject-title-wrap">
+                <span class="subject-title-text">${escapeHtml(sub.name || sub.title || 'Course Subject')}</span>
               </div>
             </td>
-            <td>${mt1Cell}</td>
-            <td>${mt2Cell}</td>
-            <td>${endTermCell}</td>
-            <td>${extCell}</td>
-            <td>${intCell}</td>
-            <td>${totalCell}</td>
-            <td><strong>${sub.creditsEarned !== undefined ? sub.creditsEarned : sub.credits}</strong></td>
-            <td><span class="cell-grade ${gradeClass}">${escapeHtml(sub.grade || '—')}</span></td>
-            <td><strong>${sub.gradePoints !== undefined ? sub.gradePoints : '—'}</strong></td>
-            <td><strong>${sub.creditGrade !== undefined ? sub.creditGrade : '—'}</strong></td>
-            <td><span class="${resultClass}">${escapeHtml(sub.result || 'PASS')}</span></td>
+            <td class="col-type">${typeBadge}</td>
+            <td class="col-asmt">${intCell}</td>
+            <td class="col-asmt">${mt1Cell}</td>
+            <td class="col-asmt">${mt2Cell}</td>
+            <td class="col-asmt">${endTermCell}</td>
+            <td class="col-total-obt"><span class="total-bold">${escapeHtml(totalObt)}</span></td>
+            <td class="col-max">${escapeHtml(totalMax)}</td>
+            <td class="col-gp"><strong>${sub.gradePoints !== undefined ? sub.gradePoints : '—'}</strong></td>
+            <td class="col-grade"><span class="cell-grade ${gradeClass}">${escapeHtml(sub.grade || '—')}</span></td>
+            <td class="col-credits"><strong>${escapeHtml(subCredits)}</strong></td>
+            <td class="col-result"><span class="${subResultClass}">${escapeHtml(subResult)}</span></td>
           </tr>
         `;
       });
 
+      // Table Wrapper
       const tableHtml = `
         <div class="marksheet-table-wrapper">
-          <table class="marksheet-table">
+          <table class="marksheet-table" aria-label="Semester Examination Results">
             <thead>
               <tr>
-                <th class="col-subject">SUBJECT</th>
-                <th class="col-asmt">MID TERM 1<span class="asmt-sub">OBT | MIN | MAX</span></th>
-                <th class="col-asmt">MID TERM 2<span class="asmt-sub">OBT | MIN | MAX</span></th>
-                <th class="col-asmt">END TERM<span class="asmt-sub">OBT | MIN | MAX</span></th>
-                <th class="col-asmt">EXTERNAL<span class="asmt-sub">OBT | MIN | MAX</span></th>
-                <th class="col-asmt">INTERNAL<span class="asmt-sub">OBT | MIN | MAX</span></th>
-                <th class="col-asmt col-total">SUBJECT TOTAL<span class="asmt-sub">OBT / MIN / MAX</span></th>
-                <th class="col-stat">CREDITS EARNED</th>
-                <th class="col-stat">GRADE</th>
-                <th class="col-stat">GP</th>
-                <th class="col-stat">CG</th>
-                <th class="col-stat">RESULT</th>
+                <th class="col-code">SUBJECT CODE</th>
+                <th class="col-name">COURSE TITLE</th>
+                <th class="col-type">TYPE</th>
+                <th class="col-asmt">INTERNAL / CIA<span class="th-sub">OBT / MAX</span></th>
+                <th class="col-asmt">MID TERM 1<span class="th-sub">OBT / MAX</span></th>
+                <th class="col-asmt">MID TERM 2<span class="th-sub">OBT / MAX</span></th>
+                <th class="col-asmt">END TERM<span class="th-sub">OBT / MAX</span></th>
+                <th class="col-total-obt">TOTAL OBT</th>
+                <th class="col-max">MAX</th>
+                <th class="col-gp">GP</th>
+                <th class="col-grade">GRADE</th>
+                <th class="col-credits">CREDITS</th>
+                <th class="col-result">RESULT</th>
               </tr>
             </thead>
             <tbody>
               ${rowsHtml}
             </tbody>
           </table>
+          
+          <!-- Table Footer Summary Bar -->
           <div class="table-summary-bar">
-            <span class="sem-summary-tag">SUMMARY ${(sem.title || '').toUpperCase()}</span>
-            <div class="sem-summary-items">
-              <span><strong>SGPA:</strong> ${sem.sgpa || '—'}</span>
-              <span><strong>CREDITS:</strong> ${sem.creditsEarned !== undefined ? sem.creditsEarned : '—'} / ${sem.credits || '—'}</span>
-              <span><strong>TOTAL MARKS:</strong> ${sem.obtainedMarks !== undefined ? sem.obtainedMarks : '—'} / ${sem.totalMarks || '—'}</span>
-              <span class="${sem.status === 'PASS' ? 'pill-pass' : 'pill-pwg'}">${sem.status || 'PASS'}</span>
+            <div class="summary-bar-tag">
+              <span class="tag-icon">📊</span>
+              <span>SEMESTER ${semNum} SUMMARY</span>
+            </div>
+            <div class="summary-bar-metrics">
+              <div class="metric-item">
+                <span class="metric-k">SGPA:</span>
+                <span class="metric-v highlight">${sem.sgpa || '—'}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-k">MARKS:</span>
+                <span class="metric-v">${sem.obtainedMarks !== undefined ? sem.obtainedMarks : '—'} / ${sem.totalMarks || '—'}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-k">CREDITS:</span>
+                <span class="metric-v">${sem.creditsEarned !== undefined ? sem.creditsEarned : '—'} / ${sem.credits || '—'}</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-k">STATUS:</span>
+                <span class="${statusPillClass}">${escapeHtml(semStatus)}</span>
+              </div>
             </div>
           </div>
         </div>
       `;
 
       semSec.innerHTML = `
-        <h2 class="semester-title">${escapeHtml(sem.title)}</h2>
-        ${summaryCardsHtml}
+        ${semHeaderHtml}
         ${tableHtml}
       `;
 
@@ -528,13 +748,10 @@
     });
   }
 
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  function handleTabClick(tabKey) {
+    if (currentTab === tabKey) return;
+    setActiveTabButton(tabKey);
+    renderMarksheetTables(cachedSemesters, tabKey);
   }
 
   function returnToDashboard() {
@@ -557,7 +774,6 @@
 
     resultSection.classList.add('hidden');
     headerActions.classList.add('hidden');
-    downloadAlert.classList.add('hidden');
     progressCard.classList.add('hidden');
     errorCard.classList.add('hidden');
     dashboardSection.classList.remove('hidden');
@@ -565,117 +781,6 @@
     resetFetchButton();
     isSubmitting = false;
     studentNumberInput.focus();
-  }
-
-  // ============================================================================
-  // Official Annual PDF Download Handling
-  // ============================================================================
-
-  async function handleDownloadPdf() {
-    if (!currentSession || isDownloading) return;
-
-    isDownloading = true;
-    setDownloadButtonsLoading(true);
-    downloadAlert.classList.add('hidden');
-
-    const downloadBlob = (blob, fileName) => {
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName || `${currentSession.studentName || 'Annual-Result'}-${currentSession.studentNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-
-      const fileSizeKb = blob.size ? ` (${Math.round(blob.size / 1024)} KB)` : '';
-      downloadAlertTitle.textContent = 'Official Annual PDF Download Complete';
-      downloadAlertMessage.textContent = `Downloaded "${link.download}"${fileSizeKb} successfully from official portal.`;
-      downloadAlert.classList.remove('alert-warning', 'hidden');
-      downloadAlert.classList.add('alert-success');
-    };
-
-    try {
-      // 1. Fast-path: If PDF base64 is already cached in currentSession, download immediately
-      if (currentSession.pdfBase64) {
-        const byteCharacters = atob(currentSession.pdfBase64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        downloadBlob(blob, currentSession.downloadFileName);
-        return;
-      }
-
-      // 2. Request backend download endpoint
-      const res = await fetch(`/api/automation/${currentSession.sessionId}/download`, {
-        method: 'POST',
-        headers: {
-          'x-session-token': currentSession.sessionToken,
-          'Accept': 'application/json'
-        }
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok || !json.success) {
-        const errorMsg = json.error?.message || 'Could not download examination result PDF.';
-        downloadAlertTitle.textContent = 'PDF Download Notice';
-        downloadAlertMessage.textContent = errorMsg;
-        downloadAlert.classList.remove('alert-success', 'hidden');
-        downloadAlert.classList.add('alert-warning');
-        return;
-      }
-
-      // If backend returned base64 in response:
-      if (json.base64) {
-        currentSession.pdfBase64 = json.base64;
-        currentSession.downloadFileName = json.fileName;
-        const byteCharacters = atob(json.base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        downloadBlob(blob, json.fileName);
-        return;
-      }
-
-      // 3. Download via binary stream fetch
-      const fileRes = await fetch(json.downloadUrl);
-      if (!fileRes.ok) {
-        throw new Error('Failed to retrieve PDF document from server.');
-      }
-      const blob = await fileRes.blob();
-      downloadBlob(blob, json.fileName);
-
-    } catch (err) {
-      downloadAlertTitle.textContent = 'PDF Download Notice';
-      downloadAlertMessage.textContent = `Unable to complete PDF download: ${err.message}`;
-      downloadAlert.classList.remove('alert-success', 'hidden');
-      downloadAlert.classList.add('alert-warning');
-    } finally {
-      isDownloading = false;
-      setDownloadButtonsLoading(false);
-    }
-  }
-
-  function setDownloadButtonsLoading(loading) {
-    const btns = [actionDownloadBtn, headerDownloadBtn, marksheetAnnualPdfBtn];
-    btns.forEach(btn => {
-      if (!btn) return;
-      btn.disabled = loading;
-      const text = btn.querySelector('.btn-text, span');
-      const spinner = btn.querySelector('.btn-spinner');
-      if (text) text.textContent = loading ? 'Downloading...' : 'Annual PDF';
-      if (spinner) {
-        if (loading) spinner.classList.remove('hidden');
-        else spinner.classList.add('hidden');
-      }
-    });
   }
 
   // ============================================================================
@@ -780,22 +885,24 @@
     }
   });
 
-  actionDownloadBtn.addEventListener('click', handleDownloadPdf);
-  headerDownloadBtn.addEventListener('click', handleDownloadPdf);
-  if (marksheetAnnualPdfBtn) {
-    marksheetAnnualPdfBtn.addEventListener('click', handleDownloadPdf);
+  // Tab switcher listeners
+  if (tabBtnAll) {
+    tabBtnAll.addEventListener('click', () => handleTabClick('all'));
+  }
+  if (tabBtnSem1) {
+    tabBtnSem1.addEventListener('click', () => handleTabClick('1'));
+  }
+  if (tabBtnSem2) {
+    tabBtnSem2.addEventListener('click', () => handleTabClick('2'));
   }
 
+  // Navigation action buttons
   closeSessionBtn.addEventListener('click', returnToDashboard);
   headerNewSearchBtn.addEventListener('click', returnToDashboard);
 
   errorRetryBtn.addEventListener('click', () => {
     errorCard.classList.add('hidden');
     studentNumberInput.focus();
-  });
-
-  closeAlertBtn.addEventListener('click', () => {
-    downloadAlert.classList.add('hidden');
   });
 
   updateClearButton();
