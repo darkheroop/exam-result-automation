@@ -288,8 +288,8 @@
             </div>
           </div>
 
-          <!-- Section Breakdown Card -->
-          <div class="section-breakdown-card">
+          <!-- Section Breakdown Card (Hidden when sections not enabled) -->
+          <div class="section-breakdown-card" id="section-breakdown-card" style="display: none;">
             <div class="card-title-row">
               <div>
                 <h3>Enrollment by Section</h3>
@@ -314,9 +314,9 @@
                 <table class="mini-table">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Admission No</th>
-                      <th>Section</th>
+                      <th>Student Name</th>
+                      <th>Admission Number</th>
+                      <th>Phone Number</th>
                       <th>Date Added</th>
                     </tr>
                   </thead>
@@ -337,9 +337,9 @@
                 <table class="mini-table">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Admission No</th>
-                      <th>Section</th>
+                      <th>Student Name</th>
+                      <th>Admission Number</th>
+                      <th>Phone Number</th>
                       <th>Updated At</th>
                     </tr>
                   </thead>
@@ -497,7 +497,7 @@
                   <line x1="8" y1="11" x2="14" y2="11"/>
                 </svg>
                 <h4>No student records found</h4>
-                <p>No students matched the active search and section filters. Try adjusting your search query.</p>
+                <p>No students matched the active search query or filter criteria. Try adjusting your search query.</p>
                 <button type="button" id="btn-reset-filters" class="btn btn-secondary btn-sm">Clear All Filters</button>
               </div>
             </div>
@@ -874,7 +874,7 @@
       <div class="modal-header">
         <div class="modal-title-group">
           <h3 id="modal-edit-title">Edit Student Record</h3>
-          <p>Modify student credentials and section assignment.</p>
+          <p>Modify student directory details and portal credentials.</p>
         </div>
         <button type="button" class="btn-modal-close" id="btn-close-edit-modal" aria-label="Close dialog">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -984,7 +984,21 @@
 
             <div class="form-group full-width">
               <label for="add-student-password">Password</label>
-              <input type="text" id="add-student-password" class="form-control" placeholder="Portal password">
+              <div class="input-with-icon">
+                <span class="input-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </span>
+                <input type="password" id="add-student-password" class="form-control" style="padding-left: 2.5rem; padding-right: 2.5rem;" placeholder="Portal password (optional)">
+                <button type="button" id="btn-add-toggle-password" class="password-toggle-btn" aria-label="Toggle password visibility">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>

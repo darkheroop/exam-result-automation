@@ -500,24 +500,24 @@
       if (added.length === 0) {
         recentAddedTbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding: 1.5rem;">No recently added students.</td></tr>`;
       } else {
-        recentAddedTbody.innerHTML = added.map(s => `
-          <tr>
-            <td>
-              <div class="user-cell">
-                <div class="user-avatar-sm">${escapeHtml((s.name || 'S').slice(0, 2).toUpperCase())}</div>
-                <div>
-                  <div class="user-name">${escapeHtml(s.name || '—')}</div>
-                  <div class="user-sub">${escapeHtml(s.admission_number || s.admissionNumber || '—')}</div>
+        recentAddedTbody.innerHTML = added.map(s => {
+          const name = s.student_name || s.name || '—';
+          const adm = s.admission_number || s.admissionNumber || '—';
+          const phone = s.phone_number || s.phone || '—';
+          return `
+            <tr>
+              <td>
+                <div class="user-cell">
+                  <div class="user-avatar-sm">${escapeHtml(name.slice(0, 2).toUpperCase())}</div>
+                  <span class="font-semibold text-slate-900">${escapeHtml(name)}</span>
                 </div>
-              </div>
-            </td>
-            <td><span class="badge badge-section">${escapeHtml(s.section || 'Unassigned')}</span></td>
-            <td>
-              ${s.username ? `<span class="badge badge-success">Configured</span>` : `<span class="badge badge-muted">Pending</span>`}
-            </td>
-            <td class="text-muted" style="font-size: 0.8rem;">${formatDate(s.created_at || s.createdAt)}</td>
-          </tr>
-        `).join('');
+              </td>
+              <td><span class="font-mono text-slate-800">${escapeHtml(adm)}</span></td>
+              <td><span class="font-mono text-slate-600">${escapeHtml(phone)}</span></td>
+              <td class="text-muted" style="font-size: 0.8rem;">${formatDate(s.created_at || s.createdAt)}</td>
+            </tr>
+          `;
+        }).join('');
       }
     }
 
@@ -528,24 +528,24 @@
       if (updated.length === 0) {
         recentUpdatedTbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted" style="padding: 1.5rem;">No recently updated students.</td></tr>`;
       } else {
-        recentUpdatedTbody.innerHTML = updated.map(s => `
-          <tr>
-            <td>
-              <div class="user-cell">
-                <div class="user-avatar-sm">${escapeHtml((s.name || 'S').slice(0, 2).toUpperCase())}</div>
-                <div>
-                  <div class="user-name">${escapeHtml(s.name || '—')}</div>
-                  <div class="user-sub">${escapeHtml(s.admission_number || s.admissionNumber || '—')}</div>
+        recentUpdatedTbody.innerHTML = updated.map(s => {
+          const name = s.student_name || s.name || '—';
+          const adm = s.admission_number || s.admissionNumber || '—';
+          const phone = s.phone_number || s.phone || '—';
+          return `
+            <tr>
+              <td>
+                <div class="user-cell">
+                  <div class="user-avatar-sm">${escapeHtml(name.slice(0, 2).toUpperCase())}</div>
+                  <span class="font-semibold text-slate-900">${escapeHtml(name)}</span>
                 </div>
-              </div>
-            </td>
-            <td><span class="badge badge-section">${escapeHtml(s.section || 'Unassigned')}</span></td>
-            <td>
-              ${s.username && s.password ? `<span class="badge badge-success">Full</span>` : (s.username ? `<span class="badge badge-info">Username</span>` : `<span class="badge badge-muted">Pending</span>`)}
-            </td>
-            <td class="text-muted" style="font-size: 0.8rem;">${formatDate(s.updated_at || s.updatedAt)}</td>
-          </tr>
-        `).join('');
+              </td>
+              <td><span class="font-mono text-slate-800">${escapeHtml(adm)}</span></td>
+              <td><span class="font-mono text-slate-600">${escapeHtml(phone)}</span></td>
+              <td class="text-muted" style="font-size: 0.8rem;">${formatDate(s.updated_at || s.updatedAt)}</td>
+            </tr>
+          `;
+        }).join('');
       }
     }
   }
@@ -563,7 +563,7 @@
       search: search || '',
       section: section || '',
       credential: credential || '',
-      sort: sort || 'updated_desc'
+      sort: sort || 'name_asc'
     });
 
     const res = await apiFetch(`/api/admin/students?${queryParams.toString()}`);
@@ -913,6 +913,18 @@
     if (closeAddBtn) closeAddBtn.addEventListener('click', () => closeModal('modal-add-student'));
     const cancelAddBtn = document.getElementById('btn-cancel-add-modal');
     if (cancelAddBtn) cancelAddBtn.addEventListener('click', () => closeModal('modal-add-student'));
+
+    // Add Password Toggle
+    const addTogglePassBtn = document.getElementById('btn-add-toggle-password');
+    if (addTogglePassBtn) {
+      addTogglePassBtn.addEventListener('click', () => {
+        const pwdInput = document.getElementById('add-student-password');
+        if (pwdInput) {
+          const isPwd = pwdInput.type === 'password';
+          pwdInput.type = isPwd ? 'text' : 'password';
+        }
+      });
+    }
 
     // --- MODAL 3: DELETE STUDENT ---
     const deleteBtn = document.getElementById('btn-confirm-delete-student');
