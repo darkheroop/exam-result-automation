@@ -1707,8 +1707,12 @@
 
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          executeUniversalSearch(val);
-        }, 250);
+          if (val.length >= 4) {
+            submitUniversalSearch();
+          } else {
+            executeUniversalSearch(val);
+          }
+        }, 350);
       });
 
       searchInput.addEventListener('keydown', (e) => {
@@ -2160,8 +2164,11 @@
       }
       loadStudents();
       loadDashboardStats();
+      loadSearchLogs();
     } else {
       loadStudents();
+      loadDashboardStats();
+      loadSearchLogs();
     }
   }
 
@@ -2192,11 +2199,13 @@
       const data = res.data;
       if (data.updated) {
         showToast(`Portal credentials retrieved & saved for ${query}!`, 'success', 5000);
-        loadStudents();
-        loadDashboardStats();
       }
+      loadStudents();
+      loadDashboardStats();
+      loadSearchLogs();
       executeUniversalSearch(query);
     } else {
+      loadSearchLogs();
       executeUniversalSearch(query);
     }
   }
@@ -2269,8 +2278,12 @@
 
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          loadStudents();
-        }, 250);
+          if (val.length >= 4) {
+            submitStudentSearch();
+          } else {
+            loadStudents();
+          }
+        }, 350);
       });
 
       studentSearchInput.addEventListener('keydown', (e) => {
@@ -2505,6 +2518,7 @@
     if (isAuthenticated) {
       loadDashboardStats();
       loadStudents();
+      loadSearchLogs();
     }
   }
 

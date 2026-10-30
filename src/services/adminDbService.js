@@ -14,7 +14,12 @@ class AdminDbService {
       process.env.DATABASE_URL ||
       process.env.POSTGRES_URL ||
       process.env.POSTGRES_PRISMA_URL ||
-      null;
+      process.env.POSTGRES_URL_NON_POOLING ||
+      process.env.POSTGRES_URL_NO_SSL ||
+      process.env.NEON_DATABASE_URL ||
+      (process.env.POSTGRES_HOST && process.env.POSTGRES_USER && process.env.POSTGRES_PASSWORD && process.env.POSTGRES_DATABASE
+        ? `postgresql://${encodeURIComponent(process.env.POSTGRES_USER)}:${encodeURIComponent(process.env.POSTGRES_PASSWORD)}@${process.env.POSTGRES_HOST}/${process.env.POSTGRES_DATABASE}?sslmode=require`
+        : null);
 
     this.sql = null;
     this.schemaInitialized = false;
@@ -41,7 +46,7 @@ class AdminDbService {
   }
 
   /**
-   * Initializes managed_students and admin_sessions schemas in database.
+   * Initializes managed_students, admin_sessions, and search_logs schemas in database.
    */
   async ensureSchema() {
     if (!this.sql || this.schemaInitialized) return true;
@@ -49,68 +54,62 @@ class AdminDbService {
 
     this.schemaPromise = (async () => {
       try {
-        await this.sql`
-          CREATE TABLE IF NOT EXISTS managed_students (
-            id BIGSERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            admission_number VARCHAR(64) UNIQUE NOT NULL,
-            phone_number VARCHAR(32),
-            username VARCHAR(128) DEFAULT '',
-            password VARCHAR(255) DEFAULT '',
-            section VARCHAR(64) DEFAULT '',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-        `;
+        // 1. managed_students table & indexes
+        try {
+          await this.sql`
+            CREATE TABLE IF NOT EXISTS managed_students (
+              id BIGSERIAL PRIMARY KEY,
+              name VARCHAR(255) NOT NULL,
+              admission_number VARCHAR(64) UNIQUE NOT NULL,
+              phone_number VARCHAR(32),
+              username VARCHAR(128) DEFAULT '',
+              password VARCHAR(255) DEFAULT '',
+              section VARCHAR(64) DEFAULT '',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `;
+          await this.sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_user ON managed_students(username);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_sec ON managed_students(section);`;
+        } catch (tableErr) {
+          console.warn('[Admin DB] managed_students schema check notice:', tableErr.message);
+        }
 
-        await this.sql`
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_managed_students_user ON managed_students(username);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_managed_students_sec ON managed_students(section);
-        `;
+        // 2. admin_sessions table & indexes
+        try {
+          await this.sql`
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+              token VARCHAR(128) PRIMARY KEY,
+              username VARCHAR(128) NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '2 hours')
+            );
+          `;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at);`;
+        } catch (sessErr) {
+          console.warn('[Admin DB] admin_sessions schema check notice:', sessErr.message);
+        }
 
-        await this.sql`
-          CREATE TABLE IF NOT EXISTS admin_sessions (
-            token VARCHAR(128) PRIMARY KEY,
-            username VARCHAR(128) NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '2 hours')
-          );
-        `;
-
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at);
-        `;
-
-        await this.sql`
-          CREATE TABLE IF NOT EXISTS search_logs (
-            id BIGSERIAL PRIMARY KEY,
-            search_query TEXT NOT NULL,
-            search_type VARCHAR(64) NOT NULL,
-            result VARCHAR(64) NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-        `;
-
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);
-        `;
-        await this.sql`
-          CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);
-        `;
+        // 3. search_logs table & indexes
+        try {
+          await this.sql`
+            CREATE TABLE IF NOT EXISTS search_logs (
+              id BIGSERIAL PRIMARY KEY,
+              search_query TEXT NOT NULL,
+              search_type VARCHAR(64) NOT NULL,
+              result VARCHAR(64) NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);`;
+        } catch (logErr) {
+          console.warn('[Admin DB] search_logs schema check notice:', logErr.message);
+        }
 
         this.schemaInitialized = true;
         return true;
@@ -297,7 +296,10 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await this.sql`
-          SELECT * FROM managed_students WHERE admission_number = ${adm} LIMIT 1;
+          SELECT * FROM managed_students 
+          WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${adm}))
+             OR (phone_number IS NOT NULL AND phone_number <> '' AND TRIM(phone_number) = TRIM(${adm}))
+          LIMIT 1;
         `;
         if (rows && rows.length > 0) {
           return this._formatStudent(rows[0]);
@@ -308,8 +310,16 @@ class AdminDbService {
       }
     }
 
-    const mem = this.memoryStudents.get(adm);
-    return mem ? this._formatStudent(mem) : null;
+    const admLower = adm.toLowerCase();
+    for (const student of this.memoryStudents.values()) {
+      if (
+        (student.admission_number && student.admission_number.toLowerCase().trim() === admLower) ||
+        (student.phone_number && student.phone_number.trim() === adm)
+      ) {
+        return this._formatStudent(student);
+      }
+    }
+    return null;
   }
 
   /**
@@ -907,12 +917,13 @@ class AdminDbService {
           SET username = ${cleanUser},
               password = ${cleanPass},
               updated_at = NOW()
-          WHERE admission_number = ${cleanAdm}
+          WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}))
+             OR (phone_number IS NOT NULL AND phone_number <> '' AND TRIM(phone_number) = TRIM(${cleanAdm}))
           RETURNING *;
         `;
         if (rows && rows.length > 0) {
           const updated = this._formatStudent(rows[0]);
-          this.memoryStudents.set(cleanAdm, { ...updated });
+          this.memoryStudents.set(updated.admission_number, { ...updated });
           return updated;
         }
         return null;
@@ -922,7 +933,21 @@ class AdminDbService {
       }
     }
 
-    const existing = this.memoryStudents.get(cleanAdm);
+    // Memory store
+    const admLower = cleanAdm.toLowerCase();
+    let foundStudentKey = null;
+    let existing = null;
+    for (const [key, st] of this.memoryStudents.entries()) {
+      if (
+        (st.admission_number && st.admission_number.toLowerCase().trim() === admLower) ||
+        (st.phone_number && st.phone_number.trim() === cleanAdm)
+      ) {
+        foundStudentKey = key;
+        existing = st;
+        break;
+      }
+    }
+
     if (!existing) return null;
     const updated = {
       ...existing,
@@ -930,7 +955,7 @@ class AdminDbService {
       password: cleanPass,
       updated_at: new Date().toISOString()
     };
-    this.memoryStudents.set(cleanAdm, updated);
+    this.memoryStudents.set(foundStudentKey, updated);
     return this._formatStudent(updated);
   }
 
@@ -987,6 +1012,28 @@ class AdminDbService {
     if (this.sql) {
       try {
         await this.ensureSchema();
+
+        // High-performance direct path for default view (no filters applied)
+        if (!cleanSearch && !cleanResult && !cleanType && !cleanDate) {
+          const countRes = await this.sql`SELECT COUNT(*) AS total FROM search_logs;`;
+          const total = parseInt(countRes[0]?.total || 0, 10);
+
+          const rows = await this.sql`
+            SELECT id, search_query, search_type, result, created_at
+            FROM search_logs
+            ORDER BY created_at DESC, id DESC
+            LIMIT ${limitNum} OFFSET ${offset};
+          `;
+
+          return {
+            logs: rows.map(r => this._formatSearchLog(r)),
+            total,
+            page: pageNum,
+            totalPages: Math.ceil(total / limitNum) || 1,
+            limit: limitNum
+          };
+        }
+
         const conditions = [];
         const params = [];
         let pIdx = 1;

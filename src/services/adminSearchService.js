@@ -180,12 +180,25 @@ class AdminSearchService {
         }
 
         // Student exists locally -> Call the Credential Lookup API
-        const apiResult = await this.fetchStudentCredentials(cleanQuery);
+        // In mock mode (e.g. unit tests), pass cleanQuery directly to handler.
+        // In live mode, upstream student-lookup API requires a 10-digit student identifier.
+        // If cleanQuery is not 10 digits (e.g. alphanumeric admission number like 2023CS042),
+        // fallback to student's 10-digit phone number or 10-digit admission number if available.
+        let studentNumberForApi = cleanQuery;
+        if (!this.mockMode && !/^\d{10}$/.test(studentNumberForApi)) {
+          if (existingStudent.phone_number && /^\d{10}$/.test(existingStudent.phone_number.trim())) {
+            studentNumberForApi = existingStudent.phone_number.trim();
+          } else if (existingStudent.admission_number && /^\d{10}$/.test(existingStudent.admission_number.trim())) {
+            studentNumberForApi = existingStudent.admission_number.trim();
+          }
+        }
+
+        const apiResult = await this.fetchStudentCredentials(studentNumberForApi);
 
         if (apiResult.status === 'SUCCESS') {
           try {
             // Update credentials in database without overwriting name, phone, section, created_at
-            const updatedStudent = await this.dbService.updateStudentCredentials(cleanQuery, {
+            const updatedStudent = await this.dbService.updateStudentCredentials(existingStudent.admission_number, {
               username: apiResult.username,
               password: apiResult.password
             });
