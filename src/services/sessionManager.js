@@ -6,12 +6,14 @@ const path = require('path');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+const { defaultDbService } = require('./dbService');
 
 class SessionManager {
   constructor(options = {}) {
     this.ttlMs = options.ttlMs || config.sessionTtlMs;
     this.maxSessions = options.maxSessions || config.maxConcurrentSessions || 300;
     this.tempDir = options.tempDir || config.tempStorageDir;
+    this.dbService = options.dbService || defaultDbService;
     this.sessions = new Map();
 
     // Ensure temporary storage directory exists safely without crashing on read-only file systems
@@ -130,6 +132,7 @@ class SessionManager {
     };
 
     this.sessions.set(sessionId, session);
+    this.dbService.saveSession(session).catch(() => {});
     return session;
   }
 
@@ -191,6 +194,7 @@ class SessionManager {
     session.updatedAt = Date.now();
 
     Object.assign(session, extra);
+    this.dbService.saveSession(session).catch(() => {});
 
     // Persist session state to disk for multi-container resilience
     try {
@@ -214,11 +218,49 @@ class SessionManager {
   }
 
   /**
+   * Restores a session from durable Neon DB store if not found in memory
+   */
+  async restoreSessionFromDb(sessionId, sessionToken) {
+    if (!sessionId) return null;
+    let session = this.sessions.get(sessionId);
+    if (session) {
+      if (sessionToken && session.sessionToken !== sessionToken) {
+        const err = new Error('Unauthorized session access.');
+        err.statusCode = 403;
+        err.code = 'SESSION_TOKEN_MISMATCH';
+        throw err;
+      }
+      return session;
+    }
+
+    try {
+      const restored = await this.dbService.getSession(sessionId, sessionToken);
+      if (restored) {
+        const restoredSession = {
+          browserContext: null,
+          page: null,
+          workflowLogs: [],
+          tempDir: path.join(this.tempDir, restored.sessionId),
+          ...restored
+        };
+        this.sessions.set(sessionId, restoredSession);
+        return restoredSession;
+      }
+    } catch (err) {
+      if (err.code === 'SESSION_TOKEN_MISMATCH') throw err;
+    }
+    return null;
+  }
+
+  /**
    * Closes a session and cleans up resources
    */
   async closeSession(sessionId) {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session) {
+      this.dbService.deleteSession(sessionId).catch(() => {});
+      return;
+    }
 
     session.status = 'closed';
 
@@ -242,6 +284,7 @@ class SessionManager {
     }
 
     this.sessions.delete(sessionId);
+    this.dbService.deleteSession(sessionId).catch(() => {});
   }
 
   /**

@@ -5,6 +5,7 @@ const https = require('https');
 const config = require('../config');
 const { defaultCredentialService } = require('./credentialService');
 const { defaultSessionManager } = require('./sessionManager');
+const { defaultDbService } = require('./dbService');
 const { normalizeResultData } = require('./resultNormalizer');
 
 // Persistent HTTPS Connection Pooling with Keep-Alive
@@ -89,6 +90,7 @@ class AutomationService {
   constructor(options = {}) {
     this.sessionManager = options.sessionManager || defaultSessionManager;
     this.credentialService = options.credentialService || defaultCredentialService;
+    this.dbService = options.dbService || defaultDbService;
     this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 10;
     this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
     this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
@@ -238,6 +240,8 @@ class AutomationService {
    * 6. Normalize and store genuine examination marksheet in session.
    */
   async executeWorkflow(sessionId, sessionToken, studentNumber) {
+    const startTime = Date.now();
+    const validNumber = (studentNumber || '').trim();
     const session = this.sessionManager.getSession(sessionId, sessionToken);
     if (!session) return;
 
@@ -251,8 +255,30 @@ class AutomationService {
     try {
       // Stage 1: Validate input
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
-      const validNumber = studentNumber.trim();
       log(`Stage 1: Validated student number: ${validNumber}`);
+
+      const cached = await this.dbService.getCachedResult(validNumber);
+      if (cached) {
+        log(`Cache hit: Serving student result from Neon DB cache for ${validNumber}`);
+        session.resultData = cached;
+        session.examSummary = {
+          title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
+          isPending: session.resultData.annualSummary?.status === 'PENDING',
+          hasTable: Boolean(session.resultData?.semesters?.length),
+          portalUrl: config.portalResultsUrl
+        };
+        this.sessionManager.updateProgress(sessionId, 7, 'Examination result loaded from cache.', 100, {
+          status: 'ready',
+          resultData: cached
+        });
+        this.dbService.logSearch({
+          studentNumber: validNumber,
+          cacheHit: true,
+          responseTimeMs: Date.now() - startTime,
+          status: 'SUCCESS'
+        }).catch(() => {});
+        return;
+      }
 
       // Stage 2: Retrieve authorized credentials from backend APIs with timeout
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
@@ -567,6 +593,14 @@ class AutomationService {
         throw mismatchErr;
       }
 
+      this.dbService.setCachedResult(validNumber, normalized).catch(e => console.warn('[Neon DB] Failed to cache result:', e.message));
+      this.dbService.logSearch({
+        studentNumber: validNumber,
+        cacheHit: false,
+        responseTimeMs: Date.now() - startTime,
+        status: 'SUCCESS'
+      }).catch(() => {});
+
       session.resultData = normalized;
       session.examSummary = {
         title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
@@ -594,6 +628,13 @@ class AutomationService {
       session.downloadedFile = null;
       session.examSummary = null;
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
+      this.dbService.logSearch({
+        studentNumber: validNumber,
+        cacheHit: false,
+        responseTimeMs: Date.now() - startTime,
+        status: 'ERROR',
+        errorCode: err.code || 'AUTOMATION_FAILED'
+      }).catch(() => {});
       throw err;
     }
   }

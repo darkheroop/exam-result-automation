@@ -8,6 +8,7 @@ const config = require('./config');
 const { rateLimitMiddleware } = require('./middleware/rateLimiter');
 const { errorHandler } = require('./middleware/errorHandler');
 const automationRoutes = require('./routes/automationRoutes');
+const { defaultDbService } = require('./services/dbService');
 
 const app = express();
 
@@ -34,12 +35,14 @@ app.use(cors({
 app.use(express.json({ limit: '500kb' }));
 
 // Health & Root API Check
-app.get(['/api', '/api/health'], (req, res) => {
+app.get(['/api', '/api/health'], async (req, res) => {
+  const dbHealth = await defaultDbService.getHealth();
   res.json({
     status: 'ok',
     service: 'exam-result-automation',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    database: dbHealth
   });
 });
 
@@ -53,28 +56,6 @@ app.use('/api/automation', automationRoutes);
 app.post('/api/result', (req, res, next) => {
   req.url = '/start';
   return automationRoutes(req, res, next);
-});
-
-app.post('/api/download-pdf', async (req, res, next) => {
-  const { defaultAutomationService } = require('./services/automationService');
-  const sessionId = req.body?.sessionId || req.query?.sessionId;
-  const token = req.headers['x-session-token'] || req.body?.sessionToken || req.query?.token;
-  if (!sessionId) {
-    return res.status(400).json({ success: false, error: { message: 'Missing sessionId parameter.', code: 'MISSING_SESSION_ID' } });
-  }
-  try {
-    const result = await defaultAutomationService.triggerPortalDownload(sessionId, token);
-    res.json({
-      success: true,
-      message: 'Examination result PDF downloaded and verified successfully.',
-      fileName: result.fileName,
-      size: result.size,
-      downloadUrl: result.downloadUrl,
-      base64: result.base64 || null
-    });
-  } catch (err) {
-    next(err);
-  }
 });
 
 // Serve Frontend Static Assets

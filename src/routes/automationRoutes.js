@@ -189,7 +189,10 @@ const statusHandler = async (req, res, next) => {
       return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
     }
 
-    const session = defaultSessionManager.getSession(sessionId, token);
+    let session = defaultSessionManager.getSession(sessionId, token);
+    if (!session) {
+      session = await defaultSessionManager.restoreSessionFromDb(sessionId, token);
+    }
     if (!session) {
       return res.status(404).json({
         success: false,
@@ -234,7 +237,10 @@ router.get('/view/:sessionId', async (req, res, next) => {
       return res.status(fwdRes.statusCode || 200).send(fwdRes.raw);
     }
 
-    const session = defaultSessionManager.getSession(sessionId, token);
+    let session = defaultSessionManager.getSession(sessionId, token);
+    if (!session) {
+      session = await defaultSessionManager.restoreSessionFromDb(sessionId, token);
+    }
     if (!session) {
       return res.status(404).send('<h3>Session expired or not found.</h3>');
     }
