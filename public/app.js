@@ -899,158 +899,282 @@
     if (!officialReportCardPrintTemplate || !result) return;
 
     const student = result.student || {};
-    const semesters = Array.isArray(result.semesters)
-      ? [...result.semesters].sort((a, b) => (a.semesterNumber || 1) - (b.semesterNumber || 2))
-      : [];
     const annualSummary = result.annualSummary || {};
 
-    const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || '').toUpperCase().includes('SEMESTER I')) || (semesters.length > 0 ? semesters[0] : null);
-    const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || '').toUpperCase().includes('SEMESTER II')) || (semesters.length > 1 ? semesters[1] : null);
+    const studentName = student.fullName || student.name || '—';
+    const seatNo = student.seatNo || student.rollNo || '—';
+    const className = student.className || 'FY-B.Tech CSE';
+    const academicYear = student.academicYear || '2025';
+    const publishedOn = student.publishedOn || '—';
 
-    const sem1Sgpa = (sem1 && sem1.sgpa !== undefined && sem1.sgpa !== '') ? sem1.sgpa : '—';
-    const sem2Sgpa = (sem2 && sem2.sgpa !== undefined && sem2.sgpa !== '') ? sem2.sgpa : '—';
+    const session = student.session || '2025-26 (REGULAR)';
+    const abcId = student.abcId || '—';
+    const semestersStr = student.semesters || '1, 2';
+    const studentStatus = student.status || annualSummary.status || result.overallRemarks || 'PASS';
+    const ygpa = (student.ygpa != null && student.ygpa !== '') ? student.ygpa : (annualSummary.ygpa != null && annualSummary.ygpa !== '' ? annualSummary.ygpa : (result.overallYgpa != null ? result.overallYgpa : '—'));
+    const creditsEarned = (student.creditsEarned != null && student.creditsEarned !== '') ? student.creditsEarned : (annualSummary.creditsEarned != null && annualSummary.creditsEarned !== '' ? annualSummary.creditsEarned : (result.overallCreditsEarned != null ? result.overallCreditsEarned : '—'));
+    const marks = (student.marks != null && student.marks !== '') ? student.marks : (annualSummary.marks != null && annualSummary.marks !== '' ? annualSummary.marks : (annualSummary.earnedMarks != null && annualSummary.totalMarks != null ? `${annualSummary.earnedMarks}/${annualSummary.totalMarks}` : '—'));
+    const cop = (student.cop != null && student.cop !== '') ? student.cop : (annualSummary.cop != null && annualSummary.cop !== '' ? annualSummary.cop : '—');
 
-    let ygpa = annualSummary.ygpa || student.ygpa;
-    if (!ygpa && sem1 && sem2 && sem1.sgpa && sem2.sgpa) {
-      const avg = ((parseFloat(sem1.sgpa) + parseFloat(sem2.sgpa)) / 2).toFixed(2);
-      ygpa = isNaN(avg) ? '—' : avg;
-    }
-    ygpa = ygpa || sem1Sgpa || '—';
+    const studentStatusLower = String(studentStatus).toLowerCase();
+    const studentStatusBadge = studentStatusLower === 'pass' ? 'status-pass' : (studentStatusLower === 'pwg' ? 'status-pwg' : 'status-fail');
 
-    const earnedCredits = annualSummary.creditsEarned !== undefined
-      ? annualSummary.creditsEarned
-      : (student.creditsEarned !== undefined
-          ? student.creditsEarned
-          : semesters.reduce((acc, sem) => acc + (sem.creditsEarned !== undefined ? Number(sem.creditsEarned) : (sem.credits ? Number(sem.credits) : 0)), 0));
+    // Extract Semester 1 and Semester 2 from result.semesters
+    const semesters = Array.isArray(result.semesters) ? [...result.semesters] : [];
+    const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || x.name || '').toUpperCase().includes('SEMESTER I') || String(x.title || x.name || '').toUpperCase().includes('SEM 1')) || (semesters.length > 0 ? semesters[0] : { subjects: [] });
+    const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || x.name || '').toUpperCase().includes('SEMESTER II') || String(x.title || x.name || '').toUpperCase().includes('SEM 2')) || (semesters.length > 1 ? semesters[1] : { subjects: [] });
 
-    const totalCredits = annualSummary.totalCredits !== undefined
-      ? annualSummary.totalCredits
-      : (student.totalCredits !== undefined
-          ? student.totalCredits
-          : semesters.reduce((acc, sem) => acc + (sem.credits ? Number(sem.credits) : 0), 0));
+    const sem1Subjects = Array.isArray(sem1.subjects) ? sem1.subjects : [];
+    const sem2Subjects = Array.isArray(sem2.subjects) ? sem2.subjects : [];
+    const maxSubjects = Math.max(sem1Subjects.length, sem2Subjects.length);
 
-    const overallStatus = (annualSummary.status || student.status || 'PASS').toUpperCase();
-    const statusClass = overallStatus === 'PASS' ? 'pdf-pass' : (overallStatus === 'PWG' ? 'pdf-pwg' : 'pdf-fail');
+    function buildSemesterBlockHtml(sem, defaultHeading, semLabel) {
+      const heading = (sem.title || sem.name || defaultHeading).toUpperCase();
+      const semSgpa = (sem.sgpa != null && sem.sgpa !== '') ? sem.sgpa : '—';
 
-    // Build compact semester subject tables
-    let semestersHtml = '';
-    semesters.forEach((sem, sIdx) => {
-      const semNum = sem.semesterNumber || (sIdx + 1);
-      const semTitle = sem.title || sem.semesterTitle || `Semester ${semNum}`;
-      const semStatus = (sem.status || sem.generalRemark || 'PASS').toUpperCase();
-      const semCreditsEarned = sem.creditsEarned !== undefined ? sem.creditsEarned : (sem.credits || '—');
-      const semTotalCredits = sem.credits || '—';
+      // Total marks (obt / max)
+      let semMarks = '—';
+      if (sem.earnedMarks != null && sem.totalMarks != null) {
+        semMarks = `${sem.earnedMarks}/${sem.totalMarks}`;
+      } else if (sem.totalMarksObtained != null && sem.maxMarks != null) {
+        semMarks = `${sem.totalMarksObtained}/${sem.maxMarks}`;
+      } else if (sem.totalMarks != null) {
+        semMarks = `${sem.totalMarks}`;
+      }
 
-      let rowsHtml = '';
+      // Credits Earned (earned / total)
+      let semCredits = '—';
+      if (sem.creditsEarned != null && sem.totalCredits != null) {
+        semCredits = `${sem.creditsEarned}/${sem.totalCredits}`;
+      } else if (sem.creditsEarned != null) {
+        semCredits = `${sem.creditsEarned}`;
+      } else if (sem.credits != null) {
+        semCredits = `${sem.credits}/${sem.credits}`;
+      }
+
+      // Result Status
+      const semStatus = sem.status || sem.generalRemark || sem.result || 'PASS';
+      const semStatusLower = String(semStatus).toLowerCase();
+      const semStatusBadge = semStatusLower === 'pass' ? 'status-pass' : (semStatusLower === 'pwg' ? 'status-pwg' : 'status-fail');
+
       const subjects = Array.isArray(sem.subjects) ? sem.subjects : [];
+      let rowsHtml = '';
 
       subjects.forEach((sub) => {
-        const isTheory = (sub.type || '').toUpperCase() === 'THEORY';
-        const ciaMarks = sub.internal ? `${sub.internal.obt}` : '—';
-        const endTermMarks = isTheory && sub.endTerm
-          ? `${sub.endTerm.obt}`
-          : (sub.external ? `${sub.external.obt}` : '—');
-        const totalObt = sub.total ? `${sub.total.obt}` : (sub.obtainedMarks !== undefined ? `${sub.obtainedMarks}` : '—');
-        const totalMax = sub.total ? `${sub.total.max}` : (sub.maxMarks !== undefined ? `${sub.maxMarks}` : 100);
-        const gradeLetter = sub.grade || sub.gradeLetterToPrint || '—';
-        const gradePoints = sub.gradePoints !== undefined ? sub.gradePoints : (sub.gradePointsToPrint || '—');
-        const credits = sub.creditsEarned !== undefined ? sub.creditsEarned : (sub.credits !== undefined ? sub.credits : '—');
+        const subName = sub.name || sub.title || sub.acadSubjectLngTitle || '—';
+        const subCode = sub.code || sub.acadSubjectCode || '—';
+        const subType = sub.type || sub.subjectType || 'THEORY';
+        const isTheory = subType.toUpperCase().includes('THEORY');
+
+        // External: marks obtained (theory: mt1+mt2+endTerm or external.obt; lab: external.obt; fallback to sub.external?.obt || '—')
+        let extMarks = '—';
+        if (isTheory) {
+          if (sub.midTerm1?.obt != null && sub.midTerm2?.obt != null && sub.endTerm?.obt != null) {
+            const sum = Number(sub.midTerm1.obt) + Number(sub.midTerm2.obt) + Number(sub.endTerm.obt);
+            extMarks = !isNaN(sum) ? sum : (sub.external?.obt != null ? sub.external.obt : '—');
+          } else if (sub.external?.obt != null) {
+            extMarks = sub.external.obt;
+          } else if (sub.endTerm?.obt != null) {
+            extMarks = sub.endTerm.obt;
+          }
+        } else {
+          if (sub.external?.obt != null) {
+            extMarks = sub.external.obt;
+          }
+        }
+        if (extMarks === '—' && sub.external?.obt != null) {
+          extMarks = sub.external.obt;
+        }
+
+        // Internal: marks obtained (sub.internal?.obt || '—')
+        const intMarks = sub.internal?.obt != null ? sub.internal.obt : '—';
+
+        // Subject Total: marks obtained (sub.total?.obt || sub.obtainedMarks || '—')
+        const totalMarks = sub.total?.obt != null ? sub.total.obt : (sub.obtainedMarks != null ? sub.obtainedMarks : '—');
+
+        // Grade: letter grade (sub.grade || sub.gradeLetterToPrint || '—')
+        const grade = sub.grade || sub.gradeLetterToPrint || '—';
 
         rowsHtml += `
           <tr>
-            <td>${escapeHtml(sub.code || '—')}</td>
-            <td class="col-title-td">${escapeHtml(sub.name || sub.title || 'Course Subject')}</td>
-            <td>${escapeHtml(ciaMarks)}</td>
-            <td>${escapeHtml(endTermMarks)}</td>
-            <td><strong>${escapeHtml(totalObt)}</strong> / ${escapeHtml(totalMax)}</td>
-            <td class="grade-bold">${escapeHtml(gradeLetter)}</td>
-            <td>${escapeHtml(gradePoints)}</td>
-            <td>${escapeHtml(credits)}</td>
+            <td style="width:44%; text-align:left;">
+              <div class="pdf-subject-stack">
+                <div class="pdf-subject-name">${escapeHtml(subName)}</div>
+                <div class="pdf-subject-meta">
+                  <span class="pdf-subject-code">${escapeHtml(subCode)}</span>
+                  <span class="pdf-subject-chip ${escapeHtml(subType.toLowerCase())}">${escapeHtml(subType)}</span>
+                </div>
+              </div>
+            </td>
+            <td style="width:14%; text-align:center;" class="font-numeric">${escapeHtml(String(extMarks))}</td>
+            <td style="width:14%; text-align:center;" class="font-numeric">${escapeHtml(String(intMarks))}</td>
+            <td style="width:16%; text-align:center;" class="font-numeric font-semibold">${escapeHtml(String(totalMarks))}</td>
+            <td style="width:12%; text-align:center;" class="grade-bold">${escapeHtml(String(grade))}</td>
           </tr>
         `;
       });
 
-      semestersHtml += `
-        <div class="pdf-semester-block">
-          <div class="pdf-semester-header">
-            <span>${escapeHtml(semTitle)}</span>
-            <span class="pdf-sem-meta">SGPA: <strong>${escapeHtml(sem.sgpa || '—')}</strong> | Credits: <strong>${escapeHtml(semCreditsEarned)} / ${escapeHtml(semTotalCredits)}</strong> | Status: <strong>${escapeHtml(semStatus)}</strong></span>
+      // Padding rows if sem.subjects.length < maxSubjects
+      for (let p = subjects.length; p < maxSubjects; p++) {
+        rowsHtml += `
+          <tr class="annual-sem-table-pad-row">
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+          </tr>
+        `;
+      }
+
+      return `
+        <div class="annual-sem-block">
+          <div class="annual-sem-heading">${escapeHtml(heading)}</div>
+          <div class="annual-sem-summary-grid">
+            <div class="annual-sem-metric-card metric-sgpa">
+              <div class="metric-icon-wrap accent-blue"><i class="pi pi-pencil"></i></div>
+              <div class="metric-info">
+                <div class="metric-label">SGPA</div>
+                <div class="metric-value font-numeric">${escapeHtml(String(semSgpa))}</div>
+              </div>
+            </div>
+            <div class="annual-sem-metric-card metric-marks">
+              <div class="metric-icon-wrap accent-amber"><i class="pi pi-chart-bar"></i></div>
+              <div class="metric-info">
+                <div class="metric-label">Total Marks</div>
+                <div class="metric-value font-numeric">${escapeHtml(String(semMarks))}</div>
+              </div>
+            </div>
+            <div class="annual-sem-metric-card metric-credits">
+              <div class="metric-icon-wrap accent-green"><i class="pi pi-verified"></i></div>
+              <div class="metric-info">
+                <div class="metric-label">Credits Earned</div>
+                <div class="metric-value font-numeric">${escapeHtml(String(semCredits))}</div>
+              </div>
+            </div>
+            <div class="annual-sem-metric-card metric-status">
+              <div class="metric-icon-wrap accent-status"><i class="pi pi-check-circle"></i></div>
+              <div class="metric-info">
+                <div class="metric-label">Result Status</div>
+                <div class="metric-value status-badge ${semStatusBadge}">${escapeHtml(String(semStatus))}</div>
+              </div>
+            </div>
           </div>
-          <table class="pdf-marks-table">
-            <thead>
-              <tr>
-                <th style="width: 14%;">Course Code</th>
-                <th class="col-title-th" style="width: 38%;">Course Title</th>
-                <th style="width: 8%;">CIA</th>
-                <th style="width: 8%;">End Term</th>
-                <th style="width: 8%;">Total</th>
-                <th style="width: 8%;">Grade</th>
-                <th style="width: 8%;">GP</th>
-                <th style="width: 8%;">Credits</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
+          <div class="annual-sem-table-wrap">
+            <table class="annual-sem-table">
+              <thead>
+                <tr>
+                  <th style="width:44%; text-align:left;">Subject</th>
+                  <th style="width:14%; text-align:center;">External</th>
+                  <th style="width:14%; text-align:center;">Internal</th>
+                  <th style="width:16%; text-align:center;">Subject Total</th>
+                  <th style="width:12%; text-align:center;">Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+              <tfoot>
+                <tr class="annual-sem-table-summary-row">
+                  <td style="text-align:left;"><strong>${escapeHtml(semLabel)} Summary</strong></td>
+                  <td style="text-align:center;" class="font-numeric">SGPA: <strong>${escapeHtml(String(semSgpa))}</strong></td>
+                  <td style="text-align:center;" class="font-numeric">Credits: <strong>${escapeHtml(String(semCredits))}</strong></td>
+                  <td style="text-align:center;" class="font-numeric"><strong>${escapeHtml(String(semMarks))}</strong></td>
+                  <td style="text-align:center;"><strong class="status-badge ${semStatusBadge}">${escapeHtml(String(semStatus))}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       `;
-    });
+    }
+
+    const sem1Html = buildSemesterBlockHtml(sem1, 'SEMESTER I', 'Sem 1');
+    const sem2Html = buildSemesterBlockHtml(sem2, 'SEMESTER II', 'Sem 2');
 
     officialReportCardPrintTemplate.innerHTML = `
-      <img src="/assets/images/reportCardHeader_BG_1.jpeg" class="pdf-header-banner" alt="Institutional Header" crossorigin="anonymous" />
-      <div class="pdf-title-bar">Annual Grade Report & Marksheet — ${escapeHtml(student.academicYear || 'Academic Year')}</div>
-      <table class="pdf-student-info-table">
-        <tr>
-          <td class="pdf-info-label">Candidate Name</td>
-          <td class="pdf-info-val">${escapeHtml(student.fullName || student.name || '—')}</td>
-          <td class="pdf-info-label">Roll Number</td>
-          <td class="pdf-info-val">${escapeHtml(student.rollNo || '—')}</td>
-        </tr>
-        <tr>
-          <td class="pdf-info-label">Seat Number</td>
-          <td class="pdf-info-val">${escapeHtml(student.seatNo || '—')}</td>
-          <td class="pdf-info-label">PNR / Registration</td>
-          <td class="pdf-info-val">${escapeHtml(student.pnrNo || student.regnNo || student.abcId || '—')}</td>
-        </tr>
-        <tr>
-          <td class="pdf-info-label">Course / Program</td>
-          <td class="pdf-info-val">${escapeHtml(student.course || student.className || 'Bachelor of Technology')}</td>
-          <td class="pdf-info-label">Session / Year</td>
-          <td class="pdf-info-val">${escapeHtml(student.session || student.academicYear || '—')}</td>
-        </tr>
-      </table>
+      <div class="annual-result-print-section">
+        <div class="annual-pdf-watermark">
+          <img src="/assets/images/ABES.png" class="annual-pdf-watermark-img" alt="" />
+        </div>
+        <div class="annual-result-content">
+          <div class="result-pdf-header-banner">
+            <img src="/assets/images/reportCardHeader_BG_1.jpeg" alt="College Header" crossorigin="anonymous" />
+          </div>
 
-      ${semestersHtml}
+          <div class="student-result-info-card">
+            <div class="annual-info-grid-top">
+              <div class="annual-info-item">
+                <span class="annual-info-label">Student Name</span>
+                <span class="annual-info-val">${escapeHtml(studentName)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Seat No.</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(seatNo)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Class</span>
+                <span class="annual-info-val">${escapeHtml(className)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Academic Year</span>
+                <span class="annual-info-val">${escapeHtml(academicYear)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Published On</span>
+                <span class="annual-info-val">${escapeHtml(publishedOn)}</span>
+              </div>
+            </div>
+            <div class="annual-info-grid-bottom">
+              <div class="annual-info-item">
+                <span class="annual-info-label">Session</span>
+                <span class="annual-info-val">${escapeHtml(session)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">ABC ID</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(abcId)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Semesters</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(semestersStr)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Status</span>
+                <span class="annual-info-val status-badge ${studentStatusBadge}">${escapeHtml(studentStatus)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">YGPA</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(ygpa)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Credits Earned</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(creditsEarned)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">Marks</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(marks)}</span>
+              </div>
+              <div class="annual-info-item">
+                <span class="annual-info-label">COP</span>
+                <span class="annual-info-val font-numeric">${escapeHtml(cop)}</span>
+              </div>
+            </div>
+          </div>
 
-      <div class="pdf-summary-block">
-        <div class="pdf-summary-title">Annual Performance Summary</div>
-        <div class="pdf-summary-grid">
-          <div class="pdf-summary-item">
-            <span class="pdf-sum-k">Semester I SGPA</span>
-            <span class="pdf-sum-v">${escapeHtml(sem1Sgpa)}</span>
+          <div class="annual-semesters-grid">
+            ${sem1Html}
+            ${sem2Html}
           </div>
-          <div class="pdf-summary-item">
-            <span class="pdf-sum-k">Semester II SGPA</span>
-            <span class="pdf-sum-v">${escapeHtml(sem2Sgpa)}</span>
-          </div>
-          <div class="pdf-summary-item">
-            <span class="pdf-sum-k">Overall YGPA</span>
-            <span class="pdf-sum-v pdf-highlight">${escapeHtml(ygpa)}</span>
-          </div>
-          <div class="pdf-summary-item">
-            <span class="pdf-sum-k">Total Credits Earned</span>
-            <span class="pdf-sum-v">${escapeHtml(earnedCredits)}${totalCredits ? ` / ${escapeHtml(totalCredits)}` : ''}</span>
-          </div>
-          <div class="pdf-summary-item">
-            <span class="pdf-sum-k">Overall Result</span>
-            <span class="pdf-sum-v ${statusClass}">${escapeHtml(overallStatus)}</span>
+
+          <div class="result-pdf-disclaimer-block">
+            <div class="disclaimer-abbrev">
+              <strong>Abbreviations:</strong> SGPA – Semester Grade Point Average, GP – Grade Points, CG – Credit × Grade Points, PCP – Promoted with Carry Paper(s), Grade Scale printed on ledger
+            </div>
+            <div class="disclaimer-note">
+              The College shall not be held responsible for any inadvertent errors or omissions in this statement.
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="pdf-footer-note">
-        This is a computer generated official examination grade sheet published by the Office of Controller of Examinations.
       </div>
     `;
   }
@@ -1080,16 +1204,21 @@
         templateEl.style.position = 'fixed';
         templateEl.style.left = '-9999px';
         templateEl.style.top = '0';
-        templateEl.style.width = '790px';
+        templateEl.style.width = '794px';
 
-        // Wait briefly for image banner to load if needed
-        const bannerImg = templateEl.querySelector('.pdf-header-banner');
-        if (bannerImg && !bannerImg.complete) {
-          await new Promise((resolve) => {
-            bannerImg.onload = resolve;
-            bannerImg.onerror = resolve;
-            setTimeout(resolve, 1500);
-          });
+        // Wait for images (reportCardHeader_BG_1.jpeg and ABES.png) to finish loading or timed out
+        const imagesToLoad = templateEl.querySelectorAll('img');
+        if (imagesToLoad.length > 0) {
+          await Promise.all(
+            Array.from(imagesToLoad).map((img) => {
+              if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+              return new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 2000);
+              });
+            })
+          );
         }
 
         if (typeof window.html2pdf !== 'function') {
@@ -1097,14 +1226,19 @@
         }
 
         const student = currentResultData.student || {};
-        const studentNumber = student.rollNo || student.seatNo || student.studentNumber || currentSession?.studentNumber || 'Student';
 
         const opt = {
-          margin: [5, 5, 5, 5],
-          filename: `Annual_Result_${studentNumber || 'Student'}.pdf`,
+          margin: [4, 4, 4, 4],
+          filename: `${student.fullName || student.name || 'Student'} - Annual Result.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          html2canvas: {
+            scale: 1.5,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true }
         };
 
         await window.html2pdf().set(opt).from(templateEl).save();
