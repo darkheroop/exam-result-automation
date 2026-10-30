@@ -400,8 +400,8 @@
         <section id="view-students" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
-              <h1>Student Directory & Management</h1>
-              <p>Search, filter, update credentials, and manage institutional records.</p>
+              <h1>Student Management</h1>
+              <p>Unified directory with universal search, credential monitoring, and record management.</p>
             </div>
             <div class="view-header-actions">
               <button type="button" id="btn-open-add-student" class="btn btn-primary">
@@ -410,6 +410,14 @@
                   <line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
                 <span>Add Student</span>
+              </button>
+              <button type="button" id="btn-header-upload-excel" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload Excel</span>
               </button>
             </div>
           </div>
@@ -425,42 +433,41 @@
                 <input 
                   type="text" 
                   id="student-search-input" 
-                  placeholder="Filter by name, admission no, phone, or username..."
+                  placeholder="Universal search by name, admission no, phone, or username..."
                   autocomplete="off"
                 >
-                <button type="button" id="student-search-clear" class="search-clear-btn" aria-label="Clear search">
+                <button type="button" id="student-search-clear" class="search-clear-btn" aria-label="Clear search" style="display: none;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"/>
                     <line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
                 </button>
-                <button type="button" id="btn-student-search-submit" class="search-submit-btn" title="Search & Resolve Credentials" aria-label="Submit search">
+                <button type="button" id="btn-student-search-submit" class="search-submit-btn" title="Search" aria-label="Submit search">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </button>
               </div>
 
-              <!-- Section Filter Dropdown -->
-              <select id="student-section-filter" class="filter-select">
+              <!-- Compatibility hidden section filter -->
+              <select id="student-section-filter" class="filter-select" style="display: none;">
                 <option value="">All Sections</option>
               </select>
 
               <!-- Credentials Filter Dropdown -->
               <select id="student-credential-filter" class="filter-select">
-                <option value="">All Credential Statuses</option>
-                <option value="complete">Complete (Username & Password)</option>
-                <option value="missing_username">Missing Username</option>
-                <option value="missing_password">Missing Password</option>
+                <option value="">All Students</option>
+                <option value="with_credentials">With Credentials</option>
+                <option value="without_credentials">Without Credentials</option>
               </select>
             </div>
 
             <div class="filter-group-right">
               <select id="student-sort-filter" class="filter-select">
-                <option value="name_asc">Sort: Name (A-Z)</option>
-                <option value="name_desc">Sort: Name (Z-A)</option>
-                <option value="adm_asc">Sort: Admission No</option>
-                <option value="updated_desc">Sort: Recently Updated</option>
+                <option value="name_asc">Name (A–Z)</option>
+                <option value="name_desc">Name (Z–A)</option>
+                <option value="adm_asc">Admission No</option>
+                <option value="updated_desc">Recently Updated</option>
               </select>
 
               <button type="button" id="btn-refresh-students" class="btn btn-icon" title="Refresh Table Data">
@@ -477,13 +484,12 @@
               <table class="data-table" id="students-table">
                 <thead>
                   <tr>
-                    <th>1. Student Name</th>
-                    <th>2. Admission Number</th>
-                    <th>3. Phone Number</th>
-                    <th>4. Portal Username</th>
-                    <th>5. Portal Password</th>
-                    <th>6. Section</th>
-                    <th style="text-align: right;">7. Actions</th>
+                    <th>Student Name</th>
+                    <th>Admission Number</th>
+                    <th>Phone Number</th>
+                    <th>Username</th>
+                    <th>Password</th>
+                    <th style="text-align: right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="students-table-body">
@@ -655,7 +661,6 @@
                       <th>Phone Number</th>
                       <th>Username</th>
                       <th>Password</th>
-                      <th>Section</th>
                     </tr>
                   </thead>
                   <tbody id="preview-table-body">
@@ -768,7 +773,6 @@
                     <th>Phone Number</th>
                     <th>Username</th>
                     <th>Password</th>
-                    <th>Section</th>
                     <th style="text-align: right;">Actions</th>
                   </tr>
                 </thead>
@@ -991,17 +995,12 @@
             </div>
 
             <div class="form-group">
-              <label for="edit-student-section">Class Section</label>
-              <input type="text" id="edit-student-section" class="form-control" placeholder="e.g. CSE-A">
-            </div>
-
-            <div class="form-group">
-              <label for="edit-student-username">Portal Username</label>
+              <label for="edit-student-username">Username</label>
               <input type="text" id="edit-student-username" class="form-control" placeholder="e.g. ansh14">
             </div>
 
             <div class="form-group full-width">
-              <label for="edit-student-password">Portal Password</label>
+              <label for="edit-student-password">Password</label>
               <div class="input-with-icon">
                 <span class="input-icon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1009,7 +1008,7 @@
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
                 </span>
-                <input type="password" id="edit-student-password" class="form-control" style="padding-left: 2.5rem; padding-right: 2.5rem;" placeholder="Portal account password">
+                <input type="password" id="edit-student-password" class="form-control" style="padding-left: 2.5rem; padding-right: 2.5rem;" placeholder="Student password">
                 <button type="button" id="btn-edit-toggle-password" class="password-toggle-btn" aria-label="Toggle password visibility">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
@@ -1069,17 +1068,12 @@
             </div>
 
             <div class="form-group">
-              <label for="add-student-section">Class Section</label>
-              <input type="text" id="add-student-section" class="form-control" placeholder="e.g. CSE-A">
-            </div>
-
-            <div class="form-group">
-              <label for="add-student-username">Portal Username</label>
+              <label for="add-student-username">Username</label>
               <input type="text" id="add-student-username" class="form-control" placeholder="e.g. aryan42">
             </div>
 
             <div class="form-group full-width">
-              <label for="add-student-password">Portal Password</label>
+              <label for="add-student-password">Password</label>
               <input type="text" id="add-student-password" class="form-control" placeholder="Portal password">
             </div>
           </div>

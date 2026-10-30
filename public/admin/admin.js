@@ -668,9 +668,6 @@
               </div>
             ` : `<span class="text-muted italic" style="font-size: 0.85rem;">Not set</span>`}
           </td>
-          <td>
-            <span class="badge badge-section">${escapeHtml(section)}</span>
-          </td>
           <td style="text-align: right;">
             <div class="action-btn-group" style="justify-content: flex-end;">
               <button type="button" class="btn btn-secondary btn-sm btn-action-edit" data-id="${id}" title="Edit Student">
@@ -968,9 +965,8 @@
     setVal('edit-student-name', s.student_name || s.name);
     setVal('edit-student-adm', s.admission_number || s.admissionNumber);
     setVal('edit-student-phone', s.phone_number || s.phone);
-    setVal('edit-student-section', s.section);
-    setVal('edit-student-username', s.portal_username || s.username);
-    setVal('edit-student-password', s.portal_password || s.password);
+    setVal('edit-student-username', s.username || s.portal_username);
+    setVal('edit-student-password', s.password || s.portal_password);
   }
 
   async function handleSaveStudentEdit(e) {
@@ -979,7 +975,6 @@
     const name = document.getElementById('edit-student-name').value.trim();
     const admissionNumber = document.getElementById('edit-student-adm').value.trim();
     const phone = document.getElementById('edit-student-phone').value.trim();
-    const section = document.getElementById('edit-student-section').value.trim();
     const username = document.getElementById('edit-student-username').value.trim();
     const password = document.getElementById('edit-student-password').value.trim();
 
@@ -997,10 +992,10 @@
     if (saveText) saveText.textContent = 'Saving...';
 
     const payload = {
+      student_name: name,
       name,
       admission_number: admissionNumber,
       phone_number: phone,
-      section,
       username,
       password
     };
@@ -1037,7 +1032,6 @@
     const name = (document.getElementById('add-student-name')?.value || '').trim();
     const admissionNumber = (document.getElementById('add-student-adm')?.value || '').trim();
     const phone = (document.getElementById('add-student-phone')?.value || '').trim();
-    const section = (document.getElementById('add-student-section')?.value || '').trim();
     const username = (document.getElementById('add-student-username')?.value || '').trim();
     const password = (document.getElementById('add-student-password')?.value || '').trim();
 
@@ -1050,10 +1044,10 @@
     if (submitBtn) submitBtn.disabled = true;
 
     const payload = {
+      student_name: name,
       name,
       admission_number: admissionNumber,
       phone_number: phone,
-      section,
       username,
       password
     };
@@ -1552,12 +1546,11 @@
         tbody.innerHTML = rows.slice(0, 20).map((r, idx) => `
           <tr>
             <td>${idx + 1}</td>
-            <td class="font-semibold">${escapeHtml(r.name || '—')}</td>
+            <td class="font-semibold">${escapeHtml(r.student_name || r.name || '—')}</td>
             <td class="font-mono">${escapeHtml(r.admission_number || r.admissionNumber || '—')}</td>
             <td class="font-mono">${escapeHtml(r.phone_number || r.phone || '—')}</td>
             <td class="font-mono">${escapeHtml(r.username || '—')}</td>
             <td class="font-mono">${r.password ? '••••••••' : '—'}</td>
-            <td><span class="badge badge-section">${escapeHtml(r.section || '—')}</span></td>
           </tr>
         `).join('');
       }
@@ -1869,7 +1862,6 @@
               </div>
             ` : `<span class="text-muted italic" style="font-size: 0.85rem;">Not set</span>`}
           </td>
-          <td><span class="badge badge-section">${escapeHtml(section || '—')}</span></td>
           <td style="text-align: right;">
             <div class="action-btn-group" style="justify-content: flex-end;">
               <button type="button" class="btn btn-secondary btn-sm btn-search-edit" data-id="${id}" title="Edit Student">
@@ -2275,6 +2267,12 @@
     const overviewImportBtn = document.getElementById('btn-overview-import');
     if (overviewImportBtn) {
       overviewImportBtn.addEventListener('click', () => switchTab('upload'));
+    }
+
+    // Header Upload Excel Button in Student Management
+    const headerUploadExcelBtn = document.getElementById('btn-header-upload-excel');
+    if (headerUploadExcelBtn) {
+      headerUploadExcelBtn.addEventListener('click', () => switchTab('upload'));
     }
 
     // Student Search Input

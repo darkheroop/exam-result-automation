@@ -287,7 +287,7 @@ router.delete('/search-logs', requireAdminAuth, async (req, res, next) => {
  */
 router.get('/students', requireAdminAuth, async (req, res, next) => {
   try {
-    const { page, limit, search, section, credential, sortBy, sortOrder, sort } = req.query;
+    const { page, limit, search, section, credential, sortBy, sortOrder, sort, filter } = req.query;
 
     let effSortBy = sortBy;
     let effSortOrder = sortOrder;
@@ -299,12 +299,14 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
       else if (sort === 'updated_desc') { effSortBy = 'updated_at'; effSortOrder = 'DESC'; }
     }
 
+    const effCredential = credential || filter;
+
     const result = await defaultAdminDbService.listStudents({
       page,
       limit,
       search,
       section,
-      credential,
+      credential: effCredential,
       sortBy: effSortBy,
       sortOrder: effSortOrder
     });

@@ -341,12 +341,13 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
       }
 
       validRecords.push({
+        student_name: rawName || 'STUDENT',
         name: rawName || 'STUDENT',
         admission_number: rawAdm,
         phone_number: rawPhone,
         section: recordSection,
-        username: rawUser,
-        password: rawPass
+        username: null,
+        password: null
       });
     }
   }
