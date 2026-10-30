@@ -2,12 +2,14 @@
 
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const { rateLimitMiddleware } = require('./middleware/rateLimiter');
 const { errorHandler } = require('./middleware/errorHandler');
 const automationRoutes = require('./routes/automationRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { defaultDbService } = require('./services/dbService');
 
 const app = express();
@@ -33,6 +35,7 @@ app.use(cors({
 
 // Body Parser
 app.use(express.json({ limit: '500kb' }));
+app.use(cookieParser());
 
 // Health & Root API Check
 app.get(['/api', '/api/health'], async (req, res) => {
@@ -51,11 +54,29 @@ app.use('/api', rateLimitMiddleware);
 
 // API Routes
 app.use('/api/automation', automationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Direct API Aliases
 app.post('/api/result', (req, res, next) => {
   req.url = '/start';
   return automationRoutes(req, res, next);
+});
+
+// Admin Dashboard UI Routes
+app.get('/admin/login', (req, res) => {
+  const loginPath = path.resolve(__dirname, '../public/admin/login.html');
+  if (fs.existsSync(loginPath)) {
+    return res.sendFile(loginPath);
+  }
+  return res.sendFile(path.resolve(__dirname, '../public/index.html'));
+});
+
+app.get(['/admin', '/admin/*'], (req, res) => {
+  const adminIndexPath = path.resolve(__dirname, '../public/admin/index.html');
+  if (fs.existsSync(adminIndexPath)) {
+    return res.sendFile(adminIndexPath);
+  }
+  return res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
 
 // Serve Frontend Static Assets

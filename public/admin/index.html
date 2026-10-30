@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ABES Examination System - Administrator Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+  <!-- SheetJS for client-side Excel parsing & preview -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <div class="app-wrapper">
+    <!-- Sidebar Backdrop for Mobile -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <div class="sidebar-header">
+        <a href="#overview" class="sidebar-brand">
+          <div class="brand-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          </div>
+          <div class="brand-info">
+            <span class="brand-title">ABES Examination</span>
+            <span class="brand-subtitle">Administrator Portal</span>
+          </div>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-label">Management</span>
+
+        <a href="#overview" class="nav-link active" data-tab="overview" id="nav-tab-overview">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="7" height="9" x="3" y="3" rx="1"/>
+            <rect width="7" height="5" x="14" y="3" rx="1"/>
+            <rect width="7" height="9" x="14" y="12" rx="1"/>
+            <rect width="7" height="5" x="3" y="16" rx="1"/>
+          </svg>
+          <span>Dashboard Overview</span>
+        </a>
+
+        <a href="#students" class="nav-link" data-tab="students" id="nav-tab-students">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>Student Management</span>
+        </a>
+
+        <a href="#upload" class="nav-link" data-tab="upload" id="nav-tab-upload">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Excel Upload & Import</span>
+        </a>
+
+        <a href="#search" class="nav-link" data-tab="search" id="nav-tab-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Universal Search</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-status-card">
+          <div class="status-indicator">
+            <span class="pulse-dot"></span>
+            <span>Neon DB Connected</span>
+          </div>
+          <span style="font-size: 0.7rem; color: var(--slate-400);">v2.5</span>
+        </div>
+
+        <button type="button" id="btn-sidebar-logout" class="sidebar-logout-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="app-main">
+      <!-- Top Header Bar -->
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button type="button" id="btn-sidebar-toggle" class="btn-sidebar-toggle" aria-label="Toggle navigation menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <div class="topbar-breadcrumb">
+            <span>Admin</span>
+            <span>/</span>
+            <span id="breadcrumb-current-tab" class="current">Dashboard Overview</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="topbar-system-pill">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--emerald-500);"></span>
+            <span>PostgreSQL Active</span>
+          </div>
+
+          <div class="user-profile-pill">
+            <div class="user-avatar" id="admin-avatar">IT</div>
+            <div class="user-details">
+              <span class="user-name" id="admin-header-username">inexpert_trifler</span>
+              <span class="user-role">Super Administrator</span>
+            </div>
+          </div>
+
+          <button type="button" id="btn-quick-logout" class="btn-quick-logout" title="Sign Out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Page Content -->
+      <main class="page-content">
+
+        <!-- ============================================================
+             VIEW 1: Dashboard Overview
+             ============================================================ -->
+        <section id="view-overview" class="tab-view active">
+          <!-- Welcome Hero Banner -->
+          <div class="welcome-banner">
+            <div class="welcome-content">
+              <h2>Welcome back, <span id="overview-username">inexpert_trifler</span></h2>
+              <p>Real-time analytics and student directory status for ABES Examination Portal.</p>
+            </div>
+            <div class="view-header-actions">
+              <button type="button" id="btn-refresh-stats" class="btn btn-secondary btn-sm" title="Refresh Live Statistics">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Refresh Stats</span>
+              </button>
+              <button type="button" id="btn-overview-import" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload Excel</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 6 Metric Cards -->
+          <div class="metrics-grid">
+            <!-- 1. Total Students -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Total Students</span>
+                <div class="metric-icon-box metric-icon-indigo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-total-students">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Enrolled</span>
+                <span>Active directory records</span>
+              </div>
+            </div>
+
+            <!-- 2. Total Sections -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Total Sections</span>
+                <div class="metric-icon-box metric-icon-blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                    <polyline points="2 17 12 22 22 17"/>
+                    <polyline points="2 12 12 17 22 12"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-total-sections">0</div>
+              <div class="metric-footer">
+                <span>Across department cohorts</span>
+              </div>
+            </div>
+
+            <!-- 3. With Usernames -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">With Usernames</span>
+                <div class="metric-icon-box metric-icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <polyline points="16 11 18 13 22 9"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-with-usernames">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Ready</span>
+                <span>Portal logins mapped</span>
+              </div>
+            </div>
+
+            <!-- 4. Without Usernames -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Without Usernames</span>
+                <div class="metric-icon-box metric-icon-amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <line x1="17" y1="8" x2="22" y2="13"/>
+                    <line x1="22" y1="8" x2="17" y2="13"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-without-usernames">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-warning">Attention</span>
+                <span>Missing institutional ID</span>
+              </div>
+            </div>
+
+            <!-- 5. With Stored Passwords -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">With Passwords</span>
+                <div class="metric-icon-box metric-icon-teal">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-with-passwords">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Encrypted</span>
+                <span>Automation credentials active</span>
+              </div>
+            </div>
+
+            <!-- 6. Without Stored Passwords -->
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Without Passwords</span>
+                <div class="metric-icon-box metric-icon-rose">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-without-passwords">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-danger">Action Required</span>
+                <span>Cannot automate lookup</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section Breakdown Card -->
+          <div class="section-breakdown-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Enrollment by Section</h3>
+                <p style="font-size: 0.8rem; color: var(--slate-500);">Click on any section to instantly view and filter students.</p>
+              </div>
+              <span id="section-breakdown-count-badge" class="metric-badge metric-badge-success">0 Sections</span>
+            </div>
+            <div id="section-chips-container" class="chips-container">
+              <!-- Dynamically populated section chips -->
+            </div>
+          </div>
+
+          <!-- Activity Grid: Recently Added & Recently Updated -->
+          <div class="activity-grid">
+            <!-- Recently Added -->
+            <div class="activity-card">
+              <div class="card-title-row">
+                <h3>Recently Added Students</h3>
+                <a href="#students" class="btn btn-secondary btn-sm" id="link-view-all-added">View All</a>
+              </div>
+              <div class="activity-table-wrapper">
+                <table class="mini-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Admission No</th>
+                      <th>Section</th>
+                      <th>Date Added</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recently-added-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Recently Updated -->
+            <div class="activity-card">
+              <div class="card-title-row">
+                <h3>Recently Updated Students</h3>
+                <a href="#students" class="btn btn-secondary btn-sm" id="link-view-all-updated">View All</a>
+              </div>
+              <div class="activity-table-wrapper">
+                <table class="mini-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Admission No</th>
+                      <th>Section</th>
+                      <th>Updated At</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recently-updated-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 2: Student Management
+             ============================================================ -->
+        <section id="view-students" class="tab-view">
+          <div class="view-header">
+            <div class="view-header-content">
+              <h1>Student Directory & Management</h1>
+              <p>Search, filter, update credentials, and manage institutional records.</p>
+            </div>
+            <div class="view-header-actions">
+              <button type="button" id="btn-open-add-student" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <span>Add Student</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Search & Filter Bar -->
+          <div class="filter-toolbar">
+            <div class="filter-group-left">
+              <div class="search-input-wrapper">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input 
+                  type="text" 
+                  id="student-search-input" 
+                  placeholder="Filter by name, admission no, phone, or username..."
+                  autocomplete="off"
+                >
+                <button type="button" id="student-search-clear" class="search-clear-btn" aria-label="Clear search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Section Filter Dropdown -->
+              <select id="student-section-filter" class="filter-select">
+                <option value="">All Sections</option>
+              </select>
+
+              <!-- Credentials Filter Dropdown -->
+              <select id="student-credential-filter" class="filter-select">
+                <option value="">All Credential Statuses</option>
+                <option value="complete">Complete (Username & Password)</option>
+                <option value="missing_username">Missing Username</option>
+                <option value="missing_password">Missing Password</option>
+              </select>
+            </div>
+
+            <div class="filter-group-right">
+              <select id="student-sort-filter" class="filter-select">
+                <option value="name_asc">Sort: Name (A-Z)</option>
+                <option value="name_desc">Sort: Name (Z-A)</option>
+                <option value="adm_asc">Sort: Admission No</option>
+                <option value="updated_desc">Sort: Recently Updated</option>
+              </select>
+
+              <button type="button" id="btn-refresh-students" class="btn btn-icon" title="Refresh Table Data">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Responsive Data Table -->
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="students-table">
+                <thead>
+                  <tr>
+                    <th>1. Student Name</th>
+                    <th>2. Admission Number</th>
+                    <th>3. Phone Number</th>
+                    <th>4. Username</th>
+                    <th>5. Password</th>
+                    <th>6. Section</th>
+                    <th style="text-align: right;">7. Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="students-table-body">
+                  <!-- Populated via admin.js -->
+                </tbody>
+              </table>
+
+              <!-- Empty State -->
+              <div id="students-empty-state" class="table-empty-state" style="display: none;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+                <h4>No student records found</h4>
+                <p>No students matched the active search and section filters. Try adjusting your search query.</p>
+                <button type="button" id="btn-reset-filters" class="btn btn-secondary btn-sm">Clear All Filters</button>
+              </div>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar">
+              <div class="pagination-info" id="pagination-info">
+                Showing 0 to 0 of 0 students
+              </div>
+
+              <div class="pagination-controls">
+                <div class="limit-select-wrapper">
+                  <span>Show</span>
+                  <select id="pagination-limit-select" class="limit-select">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                  </select>
+                  <span>per page</span>
+                </div>
+
+                <div class="page-btn-group" id="pagination-buttons">
+                  <!-- Generated dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 3: Excel Upload & Import
+             ============================================================ -->
+        <section id="view-upload" class="tab-view">
+          <div class="view-header">
+            <div class="view-header-content">
+              <h1>Excel Batch Upload & Data Ingestion</h1>
+              <p>Upload student master sheets (.xlsx, .xls) to populate portal credentials and section rosters.</p>
+            </div>
+          </div>
+
+          <div class="upload-grid">
+            <!-- Dropzone Card -->
+            <div class="upload-card">
+              <div id="excel-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Dropzone to upload Excel file">
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls" style="display: none;">
+                <div class="dropzone-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                </div>
+                <h3>Drag &amp; drop Excel file here</h3>
+                <p>or click to browse from your computer</p>
+                <span class="file-type-badge">Supports .XLSX, .XLS up to 15 MB</span>
+
+                <div id="upload-progress-wrapper" class="upload-progress-wrapper">
+                  <div class="progress-bar-bg">
+                    <div id="upload-progress-fill" class="progress-bar-fill"></div>
+                  </div>
+                  <div class="progress-label">
+                    <span id="upload-progress-status">Parsing workbook structure...</span>
+                    <span id="upload-progress-percent">0%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column Guide Card -->
+            <div class="guide-card">
+              <h3>Supported Format &amp; Column Mapping</h3>
+              <p style="font-size: 0.85rem; color: var(--slate-600); margin-bottom: 1rem;">
+                The ingestion engine automatically recognizes the following column headers (case-insensitive):
+              </p>
+              <div class="columns-badge-list">
+                <span class="col-badge required">Name *</span>
+                <span class="col-badge required">Admission Number *</span>
+                <span class="col-badge">Phone / Mobile</span>
+                <span class="col-badge">Username</span>
+                <span class="col-badge">Password</span>
+                <span class="col-badge">Section</span>
+              </div>
+              <ul class="guide-notes">
+                <li><strong>Automatic Deduplication:</strong> Existing students matching Admission Number are updated rather than duplicated.</li>
+                <li><strong>Header Normalization:</strong> Supports variants such as <code>Adm_No</code>, <code>AdmissionNo</code>, <code>Student_Name</code>, <code>Mobile_No</code>.</li>
+                <li><strong>Data Integrity:</strong> Missing admission numbers will be flagged in the preview table prior to database commit.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Import Preview Box (Appears after file parse) -->
+          <div id="import-preview-box" class="import-preview-box">
+            <div class="preview-header-bar">
+              <div class="preview-title-group">
+                <h3>Parsed Excel Data Preview</h3>
+                <span id="preview-filename-badge" class="preview-file-tag">student_data.xlsx</span>
+              </div>
+              <div class="view-header-actions">
+                <button type="button" id="btn-cancel-import" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="btn-confirm-import" class="btn btn-success">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Confirm &amp; Save Import</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Preview Metrics Summary -->
+            <div class="preview-metrics-grid">
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Total Records</div>
+                <div class="preview-metric-val" id="preview-total-records">0</div>
+              </div>
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Valid Records</div>
+                <div class="preview-metric-val" id="preview-valid-records" style="color: var(--emerald-600);">0</div>
+              </div>
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Detected Sections</div>
+                <div class="preview-metric-val" id="preview-detected-sections" style="font-size: 1rem; line-height: 1.8;">None</div>
+              </div>
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Detected Columns</div>
+                <div class="preview-metric-val" id="preview-detected-columns" style="font-size: 1.1rem;">0 / 6</div>
+              </div>
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Missing Adm. No</div>
+                <div class="preview-metric-val" id="preview-missing-adm" style="color: var(--rose-600);">0</div>
+              </div>
+              <div class="preview-metric-pill">
+                <div class="preview-metric-label">Duplicate Rows</div>
+                <div class="preview-metric-val" id="preview-duplicate-records" style="color: var(--amber-600);">0</div>
+              </div>
+            </div>
+
+            <!-- Warnings Alert Box -->
+            <div id="preview-warnings-alert" class="preview-warning-alert">
+              <strong>Data Validation Warnings:</strong>
+              <div id="preview-warnings-list" style="margin-top: 0.35rem;"></div>
+            </div>
+
+            <!-- Sample Preview Table -->
+            <div class="table-card">
+              <div class="table-responsive" style="max-height: 380px;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Admission Number</th>
+                      <th>Phone Number</th>
+                      <th>Username</th>
+                      <th>Password</th>
+                      <th>Section</th>
+                    </tr>
+                  </thead>
+                  <tbody id="preview-table-body">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import Result Summary Card (Shown upon successful commit) -->
+          <div id="import-result-card" class="import-summary-card">
+            <div class="summary-hero-row">
+              <div class="summary-check-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <div>
+                <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--slate-900);">Batch Ingestion Committed Successfully</h3>
+                <p style="color: var(--slate-500); font-size: 0.875rem;">Student directory and authentication records have been updated in PostgreSQL store.</p>
+              </div>
+            </div>
+
+            <div class="summary-stats-grid">
+              <div class="summary-stat-box">
+                <div class="summary-stat-num" id="summary-stat-added" style="color: var(--emerald-600);">0</div>
+                <div class="summary-stat-label">Students Added</div>
+              </div>
+              <div class="summary-stat-box">
+                <div class="summary-stat-num" id="summary-stat-updated" style="color: var(--indigo-600);">0</div>
+                <div class="summary-stat-label">Students Updated</div>
+              </div>
+              <div class="summary-stat-box">
+                <div class="summary-stat-num" id="summary-stat-duplicates" style="color: var(--amber-600);">0</div>
+                <div class="summary-stat-label">Duplicates Merged</div>
+              </div>
+              <div class="summary-stat-box">
+                <div class="summary-stat-num" id="summary-stat-skipped" style="color: var(--slate-500);">0</div>
+                <div class="summary-stat-label">Invalid Rows Skipped</div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem;">
+              <a href="#students" class="btn btn-primary" id="btn-summary-to-students">View in Student Management</a>
+              <button type="button" id="btn-summary-upload-another" class="btn btn-secondary">Upload Another File</button>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 4: Universal Search
+             ============================================================ -->
+        <section id="view-search" class="tab-view">
+          <!-- Universal Search Hero Header -->
+          <div class="universal-search-hero">
+            <div class="universal-search-header">
+              <h2>Universal Student Intelligence Search</h2>
+              <p>Execute real-time queries across names, admission numbers, phone numbers, and portal credentials with instantaneous matching.</p>
+            </div>
+
+            <div class="universal-input-container">
+              <svg class="hero-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input 
+                type="text" 
+                id="universal-search-input" 
+                placeholder="Type name, admission no, phone, or username to search..." 
+                autocomplete="off"
+              >
+              <button type="button" id="universal-search-clear" class="universal-clear-btn" aria-label="Clear universal search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="filter-chips-row">
+              <button type="button" class="filter-chip-btn active" data-field="all">All Fields</button>
+              <button type="button" class="filter-chip-btn" data-field="name">Name Only</button>
+              <button type="button" class="filter-chip-btn" data-field="adm">Admission No Only</button>
+              <button type="button" class="filter-chip-btn" data-field="phone">Phone Only</button>
+              <button type="button" class="filter-chip-btn" data-field="username">Username Only</button>
+            </div>
+          </div>
+
+          <!-- Search Results Section -->
+          <div class="search-results-bar">
+            <span id="universal-results-count" style="font-size: 0.85rem; font-weight: 600; color: var(--slate-600);">
+              Enter search query to begin lookup
+            </span>
+          </div>
+
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Student Name</th>
+                    <th>Admission Number</th>
+                    <th>Phone Number</th>
+                    <th>Username</th>
+                    <th>Password</th>
+                    <th>Section</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="universal-results-tbody">
+                  <!-- Populated dynamically via JS -->
+                </tbody>
+              </table>
+
+              <div id="universal-empty-state" class="table-empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <h4>Instantaneous record lookup</h4>
+                <p>Begin typing in the search bar above to query students across all sections.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 1: Edit Student Modal
+       ============================================================ -->
+  <div id="modal-edit-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="modal-edit-title">Edit Student Record</h3>
+          <p>Modify student credentials and section assignment.</p>
+        </div>
+        <button type="button" class="btn-modal-close" id="btn-close-edit-modal" aria-label="Close dialog">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="form-edit-student">
+        <div class="modal-body">
+          <input type="hidden" id="edit-student-id">
+
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="edit-student-name">Full Student Name *</label>
+              <input type="text" id="edit-student-name" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+              <label for="edit-student-adm">Admission Number *</label>
+              <input type="text" id="edit-student-adm" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+              <label for="edit-student-phone">Phone Number</label>
+              <input type="tel" id="edit-student-phone" class="form-control" placeholder="10-digit mobile number">
+            </div>
+
+            <div class="form-group">
+              <label for="edit-student-section">Class Section</label>
+              <input type="text" id="edit-student-section" class="form-control" placeholder="e.g. CSE-A">
+            </div>
+
+            <div class="form-group">
+              <label for="edit-student-username">Portal Username</label>
+              <input type="text" id="edit-student-username" class="form-control" placeholder="e.g. ansh14">
+            </div>
+
+            <div class="form-group full-width">
+              <label for="edit-student-password">Portal Password</label>
+              <div class="input-with-icon">
+                <span class="input-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </span>
+                <input type="password" id="edit-student-password" class="form-control" style="padding-left: 2.5rem; padding-right: 2.5rem;" placeholder="Portal account password">
+                <button type="button" id="btn-edit-toggle-password" class="password-toggle-btn" aria-label="Toggle password visibility">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-edit-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-edit-student">
+            <span id="btn-save-edit-text">Save Changes</span>
+            <span id="btn-save-edit-spinner" class="spinner" style="display: none;" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 2: Add Student Modal
+       ============================================================ -->
+  <div id="modal-add-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="modal-add-title">Add New Student</h3>
+          <p>Register a student record and credentials manually.</p>
+        </div>
+        <button type="button" class="btn-modal-close" id="btn-close-add-modal" aria-label="Close dialog">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="form-add-student">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="add-student-name">Full Student Name *</label>
+              <input type="text" id="add-student-name" class="form-control" placeholder="e.g. Aryan Sharma" required>
+            </div>
+
+            <div class="form-group">
+              <label for="add-student-adm">Admission Number *</label>
+              <input type="text" id="add-student-adm" class="form-control" placeholder="e.g. 2023CS042" required>
+            </div>
+
+            <div class="form-group">
+              <label for="add-student-phone">Phone Number</label>
+              <input type="tel" id="add-student-phone" class="form-control" placeholder="10-digit mobile number">
+            </div>
+
+            <div class="form-group">
+              <label for="add-student-section">Class Section</label>
+              <input type="text" id="add-student-section" class="form-control" placeholder="e.g. CSE-A">
+            </div>
+
+            <div class="form-group">
+              <label for="add-student-username">Portal Username</label>
+              <input type="text" id="add-student-username" class="form-control" placeholder="e.g. aryan42">
+            </div>
+
+            <div class="form-group full-width">
+              <label for="add-student-password">Portal Password</label>
+              <input type="text" id="add-student-password" class="form-control" placeholder="Portal password">
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-add-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-add-student">Create Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 3: Delete Student Confirmation Modal
+       ============================================================ -->
+  <div id="modal-delete-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title">
+    <div class="modal-dialog delete-dialog">
+      <div class="modal-body">
+        <div class="delete-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            <line x1="10" y1="11" x2="10" y2="17"/>
+            <line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+        </div>
+        <div class="delete-content-text">
+          <h3 id="modal-delete-title">Confirm Record Deletion</h3>
+          <p>
+            Are you sure you want to permanently delete student record for 
+            <strong id="delete-student-name">Student Name</strong> 
+            (Admission No: <span id="delete-student-adm" style="font-family: var(--font-mono);"></span>)?
+          </p>
+          <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--rose-600); font-weight: 500;">
+            This action removes directory records and stored portal credentials permanently.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: center;">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-delete-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-student">
+          <span id="btn-delete-text">Permanently Delete</span>
+          <span id="btn-delete-spinner" class="spinner" style="display: none;" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Admin JavaScript Engine -->
+  <script src="admin.js"></script>
+</body>
+</html>
