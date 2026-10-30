@@ -16,6 +16,7 @@
   let activeFetchController = null;
   let currentTab = 'all';
   let cachedSemesters = [];
+  let currentResultData = null;
 
   // ============================================================================
   // DOM Elements - Search & Form
@@ -90,6 +91,8 @@
   const semestersContainer = document.getElementById('semestersContainer');
   const iframeContainer = document.getElementById('iframeContainer');
   const portalViewFrame = document.getElementById('portalViewFrame');
+  const downloadAnnualPdfBtn = document.getElementById('downloadAnnualPdfBtn');
+  const officialReportCardPrintTemplate = document.getElementById('officialReportCardPrintTemplate');
 
   // ============================================================================
   // Input Validation & Helpers
@@ -136,6 +139,8 @@
   }
 
   function clearResultView() {
+    currentResultData = null;
+    if (officialReportCardPrintTemplate) officialReportCardPrintTemplate.innerHTML = '';
     resultStudentId.textContent = '—';
     resultSemesterTitle.textContent = 'Annual Result';
 
@@ -348,6 +353,7 @@
     resultSemesterTitle.textContent = sessionData.examSummary?.title || 'Annual Result';
 
     const result = sessionData.resultData;
+    currentResultData = result || null;
 
     if (result && result.student) {
       const s = result.student;
@@ -884,6 +890,241 @@
       showWorkflowError(`Network connection error: ${err.message}`);
     }
   });
+
+  // ============================================================================
+  // Official Report Card Annual PDF Generation
+  // ============================================================================
+
+  function buildReportCardPdfTemplate(result) {
+    if (!officialReportCardPrintTemplate || !result) return;
+
+    const student = result.student || {};
+    const semesters = Array.isArray(result.semesters)
+      ? [...result.semesters].sort((a, b) => (a.semesterNumber || 1) - (b.semesterNumber || 2))
+      : [];
+    const annualSummary = result.annualSummary || {};
+
+    const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || '').toUpperCase().includes('SEMESTER I')) || (semesters.length > 0 ? semesters[0] : null);
+    const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || '').toUpperCase().includes('SEMESTER II')) || (semesters.length > 1 ? semesters[1] : null);
+
+    const sem1Sgpa = (sem1 && sem1.sgpa !== undefined && sem1.sgpa !== '') ? sem1.sgpa : '—';
+    const sem2Sgpa = (sem2 && sem2.sgpa !== undefined && sem2.sgpa !== '') ? sem2.sgpa : '—';
+
+    let ygpa = annualSummary.ygpa || student.ygpa;
+    if (!ygpa && sem1 && sem2 && sem1.sgpa && sem2.sgpa) {
+      const avg = ((parseFloat(sem1.sgpa) + parseFloat(sem2.sgpa)) / 2).toFixed(2);
+      ygpa = isNaN(avg) ? '—' : avg;
+    }
+    ygpa = ygpa || sem1Sgpa || '—';
+
+    const earnedCredits = annualSummary.creditsEarned !== undefined
+      ? annualSummary.creditsEarned
+      : (student.creditsEarned !== undefined
+          ? student.creditsEarned
+          : semesters.reduce((acc, sem) => acc + (sem.creditsEarned !== undefined ? Number(sem.creditsEarned) : (sem.credits ? Number(sem.credits) : 0)), 0));
+
+    const totalCredits = annualSummary.totalCredits !== undefined
+      ? annualSummary.totalCredits
+      : (student.totalCredits !== undefined
+          ? student.totalCredits
+          : semesters.reduce((acc, sem) => acc + (sem.credits ? Number(sem.credits) : 0), 0));
+
+    const overallStatus = (annualSummary.status || student.status || 'PASS').toUpperCase();
+    const statusClass = overallStatus === 'PASS' ? 'pdf-pass' : (overallStatus === 'PWG' ? 'pdf-pwg' : 'pdf-fail');
+
+    // Build compact semester subject tables
+    let semestersHtml = '';
+    semesters.forEach((sem, sIdx) => {
+      const semNum = sem.semesterNumber || (sIdx + 1);
+      const semTitle = sem.title || sem.semesterTitle || `Semester ${semNum}`;
+      const semStatus = (sem.status || sem.generalRemark || 'PASS').toUpperCase();
+      const semCreditsEarned = sem.creditsEarned !== undefined ? sem.creditsEarned : (sem.credits || '—');
+      const semTotalCredits = sem.credits || '—';
+
+      let rowsHtml = '';
+      const subjects = Array.isArray(sem.subjects) ? sem.subjects : [];
+
+      subjects.forEach((sub) => {
+        const isTheory = (sub.type || '').toUpperCase() === 'THEORY';
+        const ciaMarks = sub.internal ? `${sub.internal.obt}` : '—';
+        const endTermMarks = isTheory && sub.endTerm
+          ? `${sub.endTerm.obt}`
+          : (sub.external ? `${sub.external.obt}` : '—');
+        const totalObt = sub.total ? `${sub.total.obt}` : (sub.obtainedMarks !== undefined ? `${sub.obtainedMarks}` : '—');
+        const totalMax = sub.total ? `${sub.total.max}` : (sub.maxMarks !== undefined ? `${sub.maxMarks}` : 100);
+        const gradeLetter = sub.grade || sub.gradeLetterToPrint || '—';
+        const gradePoints = sub.gradePoints !== undefined ? sub.gradePoints : (sub.gradePointsToPrint || '—');
+        const credits = sub.creditsEarned !== undefined ? sub.creditsEarned : (sub.credits !== undefined ? sub.credits : '—');
+
+        rowsHtml += `
+          <tr>
+            <td>${escapeHtml(sub.code || '—')}</td>
+            <td class="col-title-td">${escapeHtml(sub.name || sub.title || 'Course Subject')}</td>
+            <td>${escapeHtml(ciaMarks)}</td>
+            <td>${escapeHtml(endTermMarks)}</td>
+            <td><strong>${escapeHtml(totalObt)}</strong> / ${escapeHtml(totalMax)}</td>
+            <td class="grade-bold">${escapeHtml(gradeLetter)}</td>
+            <td>${escapeHtml(gradePoints)}</td>
+            <td>${escapeHtml(credits)}</td>
+          </tr>
+        `;
+      });
+
+      semestersHtml += `
+        <div class="pdf-semester-block">
+          <div class="pdf-semester-header">
+            <span>${escapeHtml(semTitle)}</span>
+            <span class="pdf-sem-meta">SGPA: <strong>${escapeHtml(sem.sgpa || '—')}</strong> | Credits: <strong>${escapeHtml(semCreditsEarned)} / ${escapeHtml(semTotalCredits)}</strong> | Status: <strong>${escapeHtml(semStatus)}</strong></span>
+          </div>
+          <table class="pdf-marks-table">
+            <thead>
+              <tr>
+                <th style="width: 14%;">Course Code</th>
+                <th class="col-title-th" style="width: 38%;">Course Title</th>
+                <th style="width: 8%;">CIA</th>
+                <th style="width: 8%;">End Term</th>
+                <th style="width: 8%;">Total</th>
+                <th style="width: 8%;">Grade</th>
+                <th style="width: 8%;">GP</th>
+                <th style="width: 8%;">Credits</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+    officialReportCardPrintTemplate.innerHTML = `
+      <img src="/assets/images/reportCardHeader_BG_1.jpeg" class="pdf-header-banner" alt="Institutional Header" crossorigin="anonymous" />
+      <div class="pdf-title-bar">Annual Grade Report & Marksheet — ${escapeHtml(student.academicYear || 'Academic Year')}</div>
+      <table class="pdf-student-info-table">
+        <tr>
+          <td class="pdf-info-label">Candidate Name</td>
+          <td class="pdf-info-val">${escapeHtml(student.fullName || student.name || '—')}</td>
+          <td class="pdf-info-label">Roll Number</td>
+          <td class="pdf-info-val">${escapeHtml(student.rollNo || '—')}</td>
+        </tr>
+        <tr>
+          <td class="pdf-info-label">Seat Number</td>
+          <td class="pdf-info-val">${escapeHtml(student.seatNo || '—')}</td>
+          <td class="pdf-info-label">PNR / Registration</td>
+          <td class="pdf-info-val">${escapeHtml(student.pnrNo || student.regnNo || student.abcId || '—')}</td>
+        </tr>
+        <tr>
+          <td class="pdf-info-label">Course / Program</td>
+          <td class="pdf-info-val">${escapeHtml(student.course || student.className || 'Bachelor of Technology')}</td>
+          <td class="pdf-info-label">Session / Year</td>
+          <td class="pdf-info-val">${escapeHtml(student.session || student.academicYear || '—')}</td>
+        </tr>
+      </table>
+
+      ${semestersHtml}
+
+      <div class="pdf-summary-block">
+        <div class="pdf-summary-title">Annual Performance Summary</div>
+        <div class="pdf-summary-grid">
+          <div class="pdf-summary-item">
+            <span class="pdf-sum-k">Semester I SGPA</span>
+            <span class="pdf-sum-v">${escapeHtml(sem1Sgpa)}</span>
+          </div>
+          <div class="pdf-summary-item">
+            <span class="pdf-sum-k">Semester II SGPA</span>
+            <span class="pdf-sum-v">${escapeHtml(sem2Sgpa)}</span>
+          </div>
+          <div class="pdf-summary-item">
+            <span class="pdf-sum-k">Overall YGPA</span>
+            <span class="pdf-sum-v pdf-highlight">${escapeHtml(ygpa)}</span>
+          </div>
+          <div class="pdf-summary-item">
+            <span class="pdf-sum-k">Total Credits Earned</span>
+            <span class="pdf-sum-v">${escapeHtml(earnedCredits)}${totalCredits ? ` / ${escapeHtml(totalCredits)}` : ''}</span>
+          </div>
+          <div class="pdf-summary-item">
+            <span class="pdf-sum-k">Overall Result</span>
+            <span class="pdf-sum-v ${statusClass}">${escapeHtml(overallStatus)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pdf-footer-note">
+        This is a computer generated official examination grade sheet published by the Office of Controller of Examinations.
+      </div>
+    `;
+  }
+
+  if (downloadAnnualPdfBtn) {
+    downloadAnnualPdfBtn.addEventListener('click', async () => {
+      if (!currentResultData || !currentResultData.student) {
+        return;
+      }
+
+      if (downloadAnnualPdfBtn.disabled) return;
+
+      const btnText = downloadAnnualPdfBtn.querySelector('.btn-text');
+      const btnSpinner = downloadAnnualPdfBtn.querySelector('.btn-spinner');
+
+      downloadAnnualPdfBtn.disabled = true;
+      if (btnSpinner) btnSpinner.classList.remove('hidden');
+      if (btnText) btnText.textContent = 'Generating...';
+
+      const templateEl = officialReportCardPrintTemplate;
+
+      try {
+        buildReportCardPdfTemplate(currentResultData);
+
+        // Position off-screen and make display block so html2canvas can measure layout dimensions
+        templateEl.style.display = 'block';
+        templateEl.style.position = 'fixed';
+        templateEl.style.left = '-9999px';
+        templateEl.style.top = '0';
+        templateEl.style.width = '790px';
+
+        // Wait briefly for image banner to load if needed
+        const bannerImg = templateEl.querySelector('.pdf-header-banner');
+        if (bannerImg && !bannerImg.complete) {
+          await new Promise((resolve) => {
+            bannerImg.onload = resolve;
+            bannerImg.onerror = resolve;
+            setTimeout(resolve, 1500);
+          });
+        }
+
+        if (typeof window.html2pdf !== 'function') {
+          throw new Error('Client-side PDF generation library is not loaded.');
+        }
+
+        const student = currentResultData.student || {};
+        const studentNumber = student.rollNo || student.seatNo || student.studentNumber || currentSession?.studentNumber || 'Student';
+
+        const opt = {
+          margin: [5, 5, 5, 5],
+          filename: `Annual_Result_${studentNumber || 'Student'}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        await window.html2pdf().set(opt).from(templateEl).save();
+      } catch (err) {
+        console.error('Annual PDF generation error:', err);
+        alert('Unable to generate Annual PDF right now. You can also print the marksheet via your browser (Ctrl+P).');
+      } finally {
+        templateEl.style.display = 'none';
+        templateEl.style.position = '';
+        templateEl.style.left = '';
+        templateEl.style.top = '';
+        templateEl.style.width = '';
+        templateEl.innerHTML = '';
+
+        downloadAnnualPdfBtn.disabled = false;
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Annual PDF';
+      }
+    });
+  }
 
   // Tab switcher listeners
   if (tabBtnAll) {
