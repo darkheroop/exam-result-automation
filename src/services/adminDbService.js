@@ -70,33 +70,71 @@ class AdminDbService {
 
     this.schemaPromise = (async () => {
       try {
-        // 1. managed_students table & indexes
+        // 1. Dedicated students table & indexes
         try {
           await sql`
-            CREATE TABLE IF NOT EXISTS managed_students (
+            CREATE TABLE IF NOT EXISTS students (
               id BIGSERIAL PRIMARY KEY,
-              name VARCHAR(255) NOT NULL,
+              student_name VARCHAR(255) NOT NULL,
               admission_number VARCHAR(64) UNIQUE NOT NULL,
-              phone_number VARCHAR(32),
-              username VARCHAR(128) DEFAULT '',
-              password VARCHAR(255) DEFAULT '',
+              phone_number VARCHAR(32) DEFAULT '',
+              portal_username VARCHAR(128) DEFAULT NULL,
+              portal_password VARCHAR(255) DEFAULT NULL,
               section VARCHAR(64) DEFAULT '',
               created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
               updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
           `;
+          await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_students_admission_number ON students(admission_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_students_student_name ON students(student_name);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_students_phone_number ON students(phone_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_students_portal_username ON students(portal_username);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_students_section ON students(section);`;
+
+          // Migration from legacy managed_students table if it exists as a base table
           try {
-            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS username VARCHAR(128) DEFAULT '';`;
-            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS password VARCHAR(255) DEFAULT '';`;
-            await sql`ALTER TABLE managed_students ADD COLUMN IF NOT EXISTS section VARCHAR(64) DEFAULT '';`;
-          } catch (_) {}
-          await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);`;
-          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);`;
-          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);`;
-          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_user ON managed_students(username);`;
-          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_sec ON managed_students(section);`;
+            await sql`
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT FROM information_schema.tables 
+                  WHERE table_schema = 'public' AND table_name = 'managed_students'
+                  AND table_type = 'BASE TABLE'
+                ) THEN
+                  INSERT INTO students (id, student_name, admission_number, phone_number, portal_username, portal_password, section, created_at, updated_at)
+                  SELECT
+                    id,
+                    COALESCE(name, ''),
+                    admission_number,
+                    COALESCE(phone_number, ''),
+                    NULLIF(TRIM(username), ''),
+                    NULLIF(TRIM(password), ''),
+                    COALESCE(section, ''),
+                    created_at,
+                    updated_at
+                  FROM managed_students
+                  ON CONFLICT (admission_number) DO UPDATE SET
+                    student_name = EXCLUDED.student_name,
+                    phone_number = CASE WHEN EXCLUDED.phone_number <> '' THEN EXCLUDED.phone_number ELSE students.phone_number END,
+                    section = CASE WHEN EXCLUDED.section <> '' THEN EXCLUDED.section ELSE students.section END,
+                    portal_username = CASE WHEN EXCLUDED.portal_username IS NOT NULL THEN EXCLUDED.portal_username ELSE students.portal_username END,
+                    portal_password = CASE WHEN EXCLUDED.portal_password IS NOT NULL THEN EXCLUDED.portal_password ELSE students.portal_password END,
+                    updated_at = EXCLUDED.updated_at;
+
+                  PERFORM setval(pg_get_serial_sequence('students', 'id'), COALESCE((SELECT MAX(id) FROM students), 1));
+                  
+                  DROP TABLE IF EXISTS managed_students CASCADE;
+                  CREATE OR REPLACE VIEW managed_students AS
+                  SELECT id, student_name AS name, admission_number, phone_number, portal_username AS username, portal_password AS password, section, created_at, updated_at
+                  FROM students;
+                END IF;
+              END $$;
+            `;
+          } catch (migErr) {
+            console.warn('[Admin DB] Migration check notice:', migErr.message);
+          }
         } catch (tableErr) {
-          console.warn('[Admin DB] managed_students schema check notice:', tableErr.message);
+          console.warn('[Admin DB] students schema check notice:', tableErr.message);
         }
 
         // 2. admin_sessions table & indexes
@@ -161,8 +199,10 @@ class AdminDbService {
     const cleanSection = String(section || '').trim();
     const cleanCredential = String(credential || '').trim().toLowerCase();
 
-    const allowedSortFields = ['id', 'name', 'admission_number', 'phone_number', 'username', 'section', 'created_at', 'updated_at'];
+    const allowedSortFields = ['id', 'student_name', 'name', 'admission_number', 'phone_number', 'portal_username', 'username', 'section', 'created_at', 'updated_at'];
     let sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
+    if (sortBy === 'name') sortField = 'student_name';
+    if (sortBy === 'username') sortField = 'portal_username';
     if (sortBy === 'adm') sortField = 'admission_number';
     if (sortBy === 'updated') sortField = 'updated_at';
     const sortDirection = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
@@ -178,10 +218,10 @@ class AdminDbService {
 
         if (cleanSearch) {
           conditions.push(`(
-            name ILIKE $${pIndex} OR 
+            student_name ILIKE $${pIndex} OR 
             admission_number ILIKE $${pIndex} OR 
             phone_number ILIKE $${pIndex} OR 
-            username ILIKE $${pIndex}
+            portal_username ILIKE $${pIndex}
           )`);
           params.push(`%${cleanSearch}%`);
           pIndex++;
@@ -194,22 +234,22 @@ class AdminDbService {
         }
 
         if (cleanCredential === 'complete') {
-          conditions.push(`(username IS NOT NULL AND username <> '' AND password IS NOT NULL AND password <> '')`);
+          conditions.push(`(portal_username IS NOT NULL AND portal_username <> '' AND portal_password IS NOT NULL AND portal_password <> '')`);
         } else if (cleanCredential === 'missing_username') {
-          conditions.push(`(username IS NULL OR username = '')`);
+          conditions.push(`(portal_username IS NULL OR portal_username = '')`);
         } else if (cleanCredential === 'missing_password') {
-          conditions.push(`(password IS NULL OR password = '')`);
+          conditions.push(`(portal_password IS NULL OR portal_password = '')`);
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-        const countQuery = `SELECT COUNT(*) AS total FROM managed_students ${whereClause};`;
+        const countQuery = `SELECT COUNT(*) AS total FROM students ${whereClause};`;
         const countRows = await sql.query(countQuery, params);
         const total = parseInt(countRows[0]?.total || 0, 10);
 
         const listQuery = `
-          SELECT id, name, admission_number, phone_number, username, password, section, created_at, updated_at
-          FROM managed_students
+          SELECT id, student_name, admission_number, phone_number, portal_username, portal_password, section, created_at, updated_at
+          FROM students
           ${whereClause}
           ORDER BY ${sortField} ${sortDirection}, id DESC
           LIMIT $${pIndex} OFFSET $${pIndex + 1};
@@ -219,7 +259,7 @@ class AdminDbService {
         let sections = [];
         try {
           const secRows = await sql`
-            SELECT DISTINCT section FROM managed_students 
+            SELECT DISTINCT section FROM students 
             WHERE section IS NOT NULL AND section <> '' 
             ORDER BY section ASC;
           `;
@@ -243,12 +283,13 @@ class AdminDbService {
     let all = Array.from(this.memoryStudents.values());
 
     if (cleanSearch) {
-      all = all.filter(s =>
-        (s.name && s.name.toLowerCase().includes(cleanSearch)) ||
-        (s.admission_number && s.admission_number.toLowerCase().includes(cleanSearch)) ||
-        (s.phone_number && s.phone_number.toLowerCase().includes(cleanSearch)) ||
-        (s.username && s.username.toLowerCase().includes(cleanSearch))
-      );
+      all = all.filter(s => {
+        const sName = (s.student_name || s.name || '').toLowerCase();
+        const sAdm = (s.admission_number || '').toLowerCase();
+        const sPhone = (s.phone_number || '').toLowerCase();
+        const sUser = (s.portal_username || s.username || '').toLowerCase();
+        return sName.includes(cleanSearch) || sAdm.includes(cleanSearch) || sPhone.includes(cleanSearch) || sUser.includes(cleanSearch);
+      });
     }
 
     if (cleanSection) {
@@ -256,11 +297,11 @@ class AdminDbService {
     }
 
     if (cleanCredential === 'complete') {
-      all = all.filter(s => s.username && s.password);
+      all = all.filter(s => (s.portal_username || s.username) && (s.portal_password || s.password));
     } else if (cleanCredential === 'missing_username') {
-      all = all.filter(s => !s.username);
+      all = all.filter(s => !(s.portal_username || s.username));
     } else if (cleanCredential === 'missing_password') {
-      all = all.filter(s => !s.password);
+      all = all.filter(s => !(s.portal_password || s.password));
     }
 
     // Sort
@@ -307,7 +348,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await sql`
-          SELECT * FROM managed_students WHERE id = ${studentId} LIMIT 1;
+          SELECT * FROM students WHERE id = ${studentId} LIMIT 1;
         `;
         if (rows && rows.length > 0) {
           return this._formatStudent(rows[0]);
@@ -339,7 +380,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await sql`
-          SELECT * FROM managed_students 
+          SELECT * FROM students 
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${adm}))
           LIMIT 1;
         `;
@@ -362,18 +403,60 @@ class AdminDbService {
   }
 
   /**
+   * Retrieves a student by phone number.
+   * Strictly matches phone_number (never student name or admission number).
+   */
+  async getStudentByPhoneNumber(phoneNumber) {
+    const phone = String(phoneNumber || '').trim();
+    if (!phone) return null;
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+        const rows = await sql`
+          SELECT * FROM students 
+          WHERE TRIM(phone_number) = TRIM(${phone})
+          LIMIT 2;
+        `;
+        if (rows && rows.length > 0) {
+          return this._formatStudent(rows[0]);
+        }
+        return null;
+      } catch (err) {
+        console.warn(`[Admin DB] getStudentByPhoneNumber error for ${phone}:`, err.message);
+      }
+    }
+
+    for (const student of this.memoryStudents.values()) {
+      if (student.phone_number && String(student.phone_number).trim() === phone) {
+        return this._formatStudent(student);
+      }
+    }
+    return null;
+  }
+
+  /**
    * Upserts a single student record.
    * Duplicate protection: on conflict on admission_number:
    * updates name, phone_number, section.
    * NEVER overwrites existing non-empty username/password if incoming is empty/undefined.
    */
-  async upsertStudent({ name, admission_number, phone_number = '', username = '', password = '', section = '' }) {
-    const cleanName = String(name || '').trim();
-    const cleanAdm = String(admission_number || '').trim();
-    const cleanPhone = String(phone_number || '').trim();
-    const cleanUser = String(username || '').trim();
-    const cleanPass = String(password || '').trim();
-    const cleanSec = String(section || '').trim();
+  async upsertStudent(params = {}) {
+    const cleanName = String(params.student_name || params.name || '').trim();
+    const cleanAdm = String(params.admission_number || '').trim();
+    const cleanPhone = String(params.phone_number || '').trim();
+    const cleanUser = String(
+      (params.portal_username !== undefined && params.portal_username !== null && params.portal_username !== '')
+        ? params.portal_username
+        : (params.username || '')
+    ).trim();
+    const cleanPass = String(
+      (params.portal_password !== undefined && params.portal_password !== null && params.portal_password !== '')
+        ? params.portal_password
+        : (params.password || '')
+    ).trim();
+    const cleanSec = String(params.section || '').trim();
 
     if (!cleanAdm) {
       throw new Error('Admission number is required for student record');
@@ -391,27 +474,27 @@ class AdminDbService {
         await this.ensureSchema();
         // Check if student existed before this query
         const existingRows = await sql`
-          SELECT id, username, password FROM managed_students WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm})) LIMIT 1;
+          SELECT id, portal_username, portal_password FROM students WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm})) LIMIT 1;
         `;
         isUpdate = existingRows && existingRows.length > 0;
 
         const rows = await sql`
-          INSERT INTO managed_students (
-            name, admission_number, phone_number, username, password, section, created_at, updated_at
+          INSERT INTO students (
+            student_name, admission_number, phone_number, portal_username, portal_password, section, created_at, updated_at
           ) VALUES (
-            ${cleanName}, ${cleanAdm}, ${cleanPhone}, ${cleanUser}, ${cleanPass}, ${cleanSec}, NOW(), NOW()
+            ${cleanName}, ${cleanAdm}, ${cleanPhone}, ${cleanUser ? cleanUser : null}, ${cleanPass ? cleanPass : null}, ${cleanSec}, NOW(), NOW()
           )
           ON CONFLICT (admission_number) DO UPDATE SET
-            name = EXCLUDED.name,
+            student_name = EXCLUDED.student_name,
             phone_number = EXCLUDED.phone_number,
             section = EXCLUDED.section,
-            username = CASE
-              WHEN EXCLUDED.username IS NOT NULL AND EXCLUDED.username <> '' THEN EXCLUDED.username
-              ELSE managed_students.username
+            portal_username = CASE
+              WHEN EXCLUDED.portal_username IS NOT NULL AND EXCLUDED.portal_username <> '' THEN EXCLUDED.portal_username
+              ELSE students.portal_username
             END,
-            password = CASE
-              WHEN EXCLUDED.password IS NOT NULL AND EXCLUDED.password <> '' THEN EXCLUDED.password
-              ELSE managed_students.password
+            portal_password = CASE
+              WHEN EXCLUDED.portal_password IS NOT NULL AND EXCLUDED.portal_password <> '' THEN EXCLUDED.portal_password
+              ELSE students.portal_password
             END,
             updated_at = NOW()
           RETURNING *;
@@ -432,23 +515,31 @@ class AdminDbService {
     const existing = this.memoryStudents.get(cleanAdm);
     if (existing) {
       isUpdate = true;
+      const currentPortalUser = existing.portal_username !== undefined ? existing.portal_username : (existing.username || null);
+      const currentPortalPass = existing.portal_password !== undefined ? existing.portal_password : (existing.password || null);
       savedStudent = {
         ...existing,
-        name: cleanName || existing.name,
+        student_name: cleanName || existing.student_name || existing.name,
+        name: cleanName || existing.name || existing.student_name,
         phone_number: cleanPhone || existing.phone_number,
         section: cleanSec || existing.section,
-        username: cleanUser !== '' ? cleanUser : existing.username,
-        password: cleanPass !== '' ? cleanPass : existing.password,
+        portal_username: cleanUser !== '' ? cleanUser : currentPortalUser,
+        username: cleanUser !== '' ? cleanUser : (currentPortalUser || ''),
+        portal_password: cleanPass !== '' ? cleanPass : currentPortalPass,
+        password: cleanPass !== '' ? cleanPass : (currentPortalPass || ''),
         updated_at: new Date().toISOString()
       };
     } else {
       isUpdate = false;
       savedStudent = {
         id: this.nextStudentId++,
+        student_name: cleanName,
         name: cleanName,
         admission_number: cleanAdm,
         phone_number: cleanPhone,
+        portal_username: cleanUser !== '' ? cleanUser : null,
         username: cleanUser,
+        portal_password: cleanPass !== '' ? cleanPass : null,
         password: cleanPass,
         section: cleanSec,
         created_at: new Date().toISOString(),
@@ -488,19 +579,25 @@ class AdminDbService {
       throw err;
     }
 
-    const cleanName = fields.name !== undefined ? String(fields.name).trim() : currentStudent.name;
+    const cleanName = (fields.student_name !== undefined ? fields.student_name : fields.name) !== undefined
+      ? String(fields.student_name || fields.name).trim()
+      : (currentStudent.student_name || currentStudent.name);
     const cleanPhone = fields.phone_number !== undefined ? String(fields.phone_number).trim() : currentStudent.phone_number;
     const cleanSec = fields.section !== undefined ? String(fields.section).trim() : currentStudent.section;
 
     // Credentials preservation: if not provided or empty, retain existing!
-    let newUsername = currentStudent.username;
-    if (fields.username !== undefined && fields.username !== null && fields.username !== '') {
-      newUsername = String(fields.username).trim();
+    let newPortalUsername = currentStudent.portal_username || currentStudent.username;
+    if (fields.portal_username !== undefined && fields.portal_username !== null && fields.portal_username !== '') {
+      newPortalUsername = String(fields.portal_username).trim();
+    } else if (fields.username !== undefined && fields.username !== null && fields.username !== '') {
+      newPortalUsername = String(fields.username).trim();
     }
 
-    let newPassword = currentStudent.password;
-    if (fields.password !== undefined && fields.password !== null && fields.password !== '') {
-      newPassword = String(fields.password).trim();
+    let newPortalPassword = currentStudent.portal_password || currentStudent.password;
+    if (fields.portal_password !== undefined && fields.portal_password !== null && fields.portal_password !== '') {
+      newPortalPassword = String(fields.portal_password).trim();
+    } else if (fields.password !== undefined && fields.password !== null && fields.password !== '') {
+      newPortalPassword = String(fields.password).trim();
     }
 
     const sql = this.getSql();
@@ -508,13 +605,13 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await sql`
-          UPDATE managed_students
+          UPDATE students
           SET
-            name = ${cleanName},
+            student_name = ${cleanName},
             admission_number = ${cleanAdm},
             phone_number = ${cleanPhone},
-            username = ${newUsername},
-            password = ${newPassword},
+            portal_username = ${newPortalUsername ? newPortalUsername : null},
+            portal_password = ${newPortalPassword ? newPortalPassword : null},
             section = ${cleanSec},
             updated_at = NOW()
           WHERE id = ${studentId}
@@ -541,11 +638,14 @@ class AdminDbService {
 
     const updatedMem = {
       ...currentStudent,
+      student_name: cleanName,
       name: cleanName,
       admission_number: cleanAdm,
       phone_number: cleanPhone,
-      username: newUsername,
-      password: newPassword,
+      portal_username: newPortalUsername ? newPortalUsername : null,
+      username: newPortalUsername || '',
+      portal_password: newPortalPassword ? newPortalPassword : null,
+      password: newPortalPassword || '',
       section: cleanSec,
       updated_at: new Date().toISOString()
     };
@@ -569,7 +669,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await sql`
-          DELETE FROM managed_students WHERE id = ${studentId} RETURNING id;
+          DELETE FROM students WHERE id = ${studentId} RETURNING id;
         `;
         deleted = rows && rows.length > 0;
       } catch (err) {
@@ -604,14 +704,20 @@ class AdminDbService {
         summary.skipped++;
         continue;
       }
+      const stName = String(item.student_name || item.name || 'STUDENT').trim();
+      const rawUser = item.portal_username !== undefined ? item.portal_username : item.username;
+      const rawPass = item.portal_password !== undefined ? item.portal_password : item.password;
       validItems.push({
         index: i,
-        name: String(item.name || 'STUDENT').trim(),
+        student_name: stName,
+        name: stName,
         admission_number: String(item.admission_number).trim(),
         phone_number: String(item.phone_number || '').trim(),
         section: String(item.section || '').trim(),
-        username: String(item.username || '').trim(),
-        password: String(item.password || '').trim()
+        portal_username: rawUser ? String(rawUser).trim() : null,
+        username: rawUser ? String(rawUser).trim() : '',
+        portal_password: rawPass ? String(rawPass).trim() : null,
+        password: rawPass ? String(rawPass).trim() : ''
       });
     }
 
@@ -628,20 +734,20 @@ class AdminDbService {
           let pIdx = 1;
 
           for (const s of chunk) {
-            valueClauses.push(`($${pIdx}, $${pIdx + 1}, $${pIdx + 2}, $${pIdx + 3}, $${pIdx + 4}, $${pIdx + 5}, NOW())`);
-            params.push(s.name, s.admission_number, s.phone_number, s.section, s.username, s.password);
+            valueClauses.push(`($${pIdx}, $${pIdx + 1}, $${pIdx + 2}, $${pIdx + 3}, $${pIdx + 4}, $${pIdx + 5}, NOW(), NOW())`);
+            params.push(s.student_name, s.admission_number, s.phone_number, s.section, s.portal_username, s.portal_password);
             pIdx += 6;
           }
 
           const query = `
-            INSERT INTO managed_students (name, admission_number, phone_number, section, username, password, updated_at)
+            INSERT INTO students (student_name, admission_number, phone_number, section, portal_username, portal_password, created_at, updated_at)
             VALUES ${valueClauses.join(', ')}
             ON CONFLICT (admission_number) DO UPDATE SET
-              name = EXCLUDED.name,
-              phone_number = CASE WHEN EXCLUDED.phone_number <> '' THEN EXCLUDED.phone_number ELSE managed_students.phone_number END,
-              section = CASE WHEN EXCLUDED.section <> '' THEN EXCLUDED.section ELSE managed_students.section END,
-              username = CASE WHEN EXCLUDED.username <> '' THEN EXCLUDED.username ELSE managed_students.username END,
-              password = CASE WHEN EXCLUDED.password <> '' THEN EXCLUDED.password ELSE managed_students.password END,
+              student_name = EXCLUDED.student_name,
+              phone_number = CASE WHEN EXCLUDED.phone_number <> '' THEN EXCLUDED.phone_number ELSE students.phone_number END,
+              section = CASE WHEN EXCLUDED.section <> '' THEN EXCLUDED.section ELSE students.section END,
+              portal_username = CASE WHEN EXCLUDED.portal_username IS NOT NULL AND EXCLUDED.portal_username <> '' THEN EXCLUDED.portal_username ELSE students.portal_username END,
+              portal_password = CASE WHEN EXCLUDED.portal_password IS NOT NULL AND EXCLUDED.portal_password <> '' THEN EXCLUDED.portal_password ELSE students.portal_password END,
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted, admission_number;
           `;
@@ -720,23 +826,23 @@ class AdminDbService {
           SELECT
             COUNT(*)::int AS total_students,
             COUNT(DISTINCT section) FILTER (WHERE section IS NOT NULL AND section <> '')::int AS total_sections,
-            COUNT(*) FILTER (WHERE username IS NOT NULL AND username <> '')::int AS students_with_username,
-            COUNT(*) FILTER (WHERE username IS NULL OR username = '')::int AS students_without_username,
-            COUNT(*) FILTER (WHERE password IS NOT NULL AND password <> '')::int AS students_with_password,
-            COUNT(*) FILTER (WHERE password IS NULL OR password = '')::int AS students_without_password
-          FROM managed_students;
+            COUNT(*) FILTER (WHERE portal_username IS NOT NULL AND portal_username <> '')::int AS students_with_username,
+            COUNT(*) FILTER (WHERE portal_username IS NULL OR portal_username = '')::int AS students_without_username,
+            COUNT(*) FILTER (WHERE portal_password IS NOT NULL AND portal_password <> '')::int AS students_with_password,
+            COUNT(*) FILTER (WHERE portal_password IS NULL OR portal_password = '')::int AS students_without_password
+          FROM students;
         `;
 
         const recentAdded = await sql`
-          SELECT id, name, admission_number, phone_number, section, created_at
-          FROM managed_students
+          SELECT id, student_name, admission_number, phone_number, section, created_at
+          FROM students
           ORDER BY id DESC
           LIMIT 5;
         `;
 
         const recentUpdated = await sql`
-          SELECT id, name, admission_number, phone_number, section, updated_at
-          FROM managed_students
+          SELECT id, student_name, admission_number, phone_number, section, updated_at
+          FROM students
           ORDER BY updated_at DESC
           LIMIT 5;
         `;
@@ -745,7 +851,7 @@ class AdminDbService {
           SELECT
             CASE WHEN section IS NULL OR section = '' THEN 'Unassigned' ELSE section END AS section,
             COUNT(*)::int AS count
-          FROM managed_students
+          FROM students
           GROUP BY section
           ORDER BY count DESC;
         `;
@@ -785,13 +891,16 @@ class AdminDbService {
       }
       sectionCounts[sec] = (sectionCounts[sec] || 0) + 1;
 
-      if (s.username && s.username.trim() !== '') {
+      const user = s.portal_username || s.username;
+      const pass = s.portal_password || s.password;
+
+      if (user && String(user).trim() !== '') {
         studentsWithUsername++;
       } else {
         studentsWithoutUsername++;
       }
 
-      if (s.password && s.password.trim() !== '') {
+      if (pass && String(pass).trim() !== '') {
         studentsWithPassword++;
       } else {
         studentsWithoutPassword++;
@@ -948,15 +1057,17 @@ class AdminDbService {
   }
 
   /**
-   * Updates only username and password for a verified student admission number.
+   * Updates only portal credentials for a verified student admission number.
    * Strictly matches admission_number (never student name or phone number).
    * Verifies exactly one record is updated and guards against duplicate corruption.
    */
-  async updateStudentCredentials(admissionNumber, { username = '', password = '' }) {
+  async updateStudentCredentials(admissionNumber, credentials = {}) {
     const cleanAdm = String(admissionNumber || '').trim();
     if (!cleanAdm) throw new Error('Admission number is required to update credentials');
-    const cleanUser = String(username || '').trim();
-    const cleanPass = String(password || '').trim();
+    const rawUser = credentials.portal_username !== undefined ? credentials.portal_username : credentials.username;
+    const cleanUser = String(rawUser || '').trim();
+    const rawPass = credentials.portal_password !== undefined ? credentials.portal_password : credentials.password;
+    const cleanPass = String(rawPass || '').trim();
 
     if (!cleanUser || !cleanPass) {
       throw new Error('Valid, non-empty username and password are required to update credentials');
@@ -969,7 +1080,7 @@ class AdminDbService {
 
         // 1. Verify existence and check for duplicates to ensure data integrity
         const checkRows = await sql`
-          SELECT id, admission_number FROM managed_students
+          SELECT id, admission_number FROM students
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}));
         `;
 
@@ -987,12 +1098,12 @@ class AdminDbService {
 
         // 2. Perform parameterized update matching ONLY admission_number
         const rows = await sql`
-          UPDATE managed_students
-          SET username = ${cleanUser},
-              password = ${cleanPass},
+          UPDATE students
+          SET portal_username = ${cleanUser},
+              portal_password = ${cleanPass},
               updated_at = NOW()
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}))
-          RETURNING id, name, admission_number, phone_number, username, password, section, created_at, updated_at;
+          RETURNING id, student_name, admission_number, phone_number, portal_username, portal_password, section, created_at, updated_at;
         `;
 
         if (rows && rows.length === 1) {
@@ -1040,7 +1151,116 @@ class AdminDbService {
     const { key, st: existing } = matching[0];
     const updated = {
       ...existing,
+      portal_username: cleanUser,
       username: cleanUser,
+      portal_password: cleanPass,
+      password: cleanPass,
+      updated_at: new Date().toISOString()
+    };
+    this.memoryStudents.set(key, updated);
+    const formatted = this._formatStudent(updated);
+    formatted.count = 1;
+    formatted.success = true;
+    return formatted;
+  }
+
+  /**
+   * Updates only portal credentials for a verified student phone number.
+   * Strictly matches phone_number (never student name or admission number).
+   * Verifies exactly one record is updated and guards against duplicate corruption.
+   */
+  async updateStudentCredentialsByPhone(phoneNumber, credentials = {}) {
+    const cleanPhone = String(phoneNumber || '').trim();
+    if (!cleanPhone) throw new Error('Phone number is required to update credentials');
+    const rawUser = credentials.portal_username !== undefined ? credentials.portal_username : credentials.username;
+    const cleanUser = String(rawUser || '').trim();
+    const rawPass = credentials.portal_password !== undefined ? credentials.portal_password : credentials.password;
+    const cleanPass = String(rawPass || '').trim();
+
+    if (!cleanUser || !cleanPass) {
+      throw new Error('Valid, non-empty username and password are required to update credentials');
+    }
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+
+        // 1. Verify existence and check for duplicates to ensure data integrity
+        const checkRows = await sql`
+          SELECT id, phone_number, admission_number FROM students
+          WHERE TRIM(phone_number) = TRIM(${cleanPhone});
+        `;
+
+        if (!checkRows || checkRows.length === 0) {
+          console.warn(`[Admin DB] No student record found matching phone number '${cleanPhone}' to update credentials.`);
+          return null;
+        }
+
+        if (checkRows.length > 1) {
+          const err = new Error(`Data integrity violation: ${checkRows.length} duplicate student records match phone number '${cleanPhone}'. Update aborted.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          console.error(`[Admin DB] ${err.message}`);
+          throw err;
+        }
+
+        // 2. Perform parameterized update matching ONLY phone_number
+        const rows = await sql`
+          UPDATE students
+          SET portal_username = ${cleanUser},
+              portal_password = ${cleanPass},
+              updated_at = NOW()
+          WHERE TRIM(phone_number) = TRIM(${cleanPhone})
+          RETURNING id, student_name, admission_number, phone_number, portal_username, portal_password, section, created_at, updated_at;
+        `;
+
+        if (rows && rows.length === 1) {
+          const updated = this._formatStudent(rows[0]);
+          updated.count = 1;
+          updated.success = true;
+          this.memoryStudents.set(updated.admission_number, { ...updated });
+          return updated;
+        }
+
+        if (rows && rows.length > 1) {
+          const err = new Error(`Data integrity violation: ${rows.length} rows updated for phone number '${cleanPhone}'.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          throw err;
+        }
+
+        return null;
+      } catch (err) {
+        console.error(`[Admin DB] updateStudentCredentialsByPhone SQL error for ${cleanPhone}:`, err.message);
+        throw err;
+      }
+    }
+
+    // Resilient memory store fallback
+    const matching = [];
+    for (const [key, st] of this.memoryStudents.entries()) {
+      if (st.phone_number && String(st.phone_number).trim() === cleanPhone) {
+        matching.push({ key, st });
+      }
+    }
+
+    if (matching.length === 0) {
+      console.warn(`[Admin DB] Memory store: No student record found matching phone number '${cleanPhone}'.`);
+      return null;
+    }
+
+    if (matching.length > 1) {
+      const err = new Error(`Data integrity violation: ${matching.length} duplicate student records match phone number '${cleanPhone}'. Update aborted.`);
+      err.code = 'MULTIPLE_RECORDS_MATCH';
+      console.error(`[Admin DB] ${err.message}`);
+      throw err;
+    }
+
+    const { key, st: existing } = matching[0];
+    const updated = {
+      ...existing,
+      portal_username: cleanUser,
+      username: cleanUser,
+      portal_password: cleanPass,
       password: cleanPass,
       updated_at: new Date().toISOString()
     };
@@ -1056,19 +1276,22 @@ class AdminDbService {
    */
   _seedMemoryStudents() {
     const seedStudents = [
-      { name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', username: 'ansh14', password: 'gaqhf' },
-      { name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', username: 'anuj2', password: 'ldkdl' },
-      { name: 'Demo Student', admission_number: '0012345678', phone_number: '0012345678', section: 'CSE-A', username: '', password: '' }
+      { student_name: 'Ansh Singh', name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', portal_username: 'ansh14', username: 'ansh14', portal_password: 'gaqhf', password: 'gaqhf' },
+      { student_name: 'Anuj Kumar', name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', portal_username: 'anuj2', username: 'anuj2', portal_password: 'ldkdl', password: 'ldkdl' },
+      { student_name: 'Demo Student', name: 'Demo Student', admission_number: '0012345678', phone_number: '0012345678', section: 'CSE-A', portal_username: null, username: '', portal_password: null, password: '' }
     ];
 
     for (let i = 1; i <= 10; i++) {
       const num = String(1000000000 + i);
       seedStudents.push({
+        student_name: `Test Student ${num}`,
         name: `Test Student ${num}`,
         admission_number: num,
         phone_number: num,
         section: 'CSE-A',
+        portal_username: 'mock_student',
         username: 'mock_student',
+        portal_password: 'mock_password_123',
         password: 'mock_password_123'
       });
     }
@@ -1360,17 +1583,30 @@ class AdminDbService {
 
   /**
    * Formats student object for clean API response.
+   * Maps both canonical schema fields (student_name, portal_username, portal_password)
+   * and backwards-compatible aliases (name, username, password).
    */
   _formatStudent(s) {
     if (!s) return null;
+    const studentName = String(s.student_name || s.name || '').trim();
+    const user = (s.portal_username !== undefined && s.portal_username !== null && s.portal_username !== '')
+      ? String(s.portal_username).trim()
+      : (s.username ? String(s.username).trim() : null);
+    const pass = (s.portal_password !== undefined && s.portal_password !== null && s.portal_password !== '')
+      ? String(s.portal_password).trim()
+      : (s.password ? String(s.password).trim() : null);
+
     return {
       id: Number(s.id),
-      name: s.name || '',
-      admission_number: s.admission_number || '',
-      phone_number: s.phone_number || '',
-      username: s.username || '',
-      password: s.password || '',
-      section: s.section || '',
+      student_name: studentName,
+      name: studentName,
+      admission_number: String(s.admission_number || '').trim(),
+      phone_number: String(s.phone_number || '').trim(),
+      portal_username: user,
+      username: user || '',
+      portal_password: pass,
+      password: pass || '',
+      section: String(s.section || '').trim(),
       created_at: s.created_at ? new Date(s.created_at).toISOString() : new Date().toISOString(),
       updated_at: s.updated_at ? new Date(s.updated_at).toISOString() : new Date().toISOString()
     };

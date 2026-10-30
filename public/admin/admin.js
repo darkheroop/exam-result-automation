@@ -623,11 +623,11 @@
 
     tbody.innerHTML = students.map(s => {
       const id = s.id;
-      const name = s.name || '—';
+      const name = s.student_name || s.name || '—';
       const adm = s.admission_number || s.admissionNumber || '—';
       const phone = s.phone_number || s.phone || '—';
-      const username = s.username || '';
-      const password = s.password || '';
+      const username = s.portal_username || s.username || '';
+      const password = s.portal_password || s.password || '';
       const section = s.section || '—';
 
       return `
@@ -965,12 +965,12 @@
     };
 
     setVal('edit-student-id', s.id);
-    setVal('edit-student-name', s.name);
+    setVal('edit-student-name', s.student_name || s.name);
     setVal('edit-student-adm', s.admission_number || s.admissionNumber);
     setVal('edit-student-phone', s.phone_number || s.phone);
     setVal('edit-student-section', s.section);
-    setVal('edit-student-username', s.username);
-    setVal('edit-student-password', s.password);
+    setVal('edit-student-username', s.portal_username || s.username);
+    setVal('edit-student-password', s.portal_password || s.password);
   }
 
   async function handleSaveStudentEdit(e) {

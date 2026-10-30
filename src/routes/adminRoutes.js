@@ -350,9 +350,12 @@ router.get('/students/:id', requireAdminAuth, async (req, res, next) => {
  */
 router.post('/students', requireAdminAuth, async (req, res, next) => {
   try {
-    const { name, admission_number, phone_number, username, password, section } = req.body || {};
+    const { name, student_name, admission_number, phone_number, username, portal_username, password, portal_password, section } = req.body || {};
+    const effectiveName = student_name || name;
+    const effectiveUser = portal_username !== undefined ? portal_username : username;
+    const effectivePass = portal_password !== undefined ? portal_password : password;
 
-    if (!name || !admission_number) {
+    if (!effectiveName || !admission_number) {
       return res.status(400).json({
         success: false,
         error: {
@@ -363,11 +366,14 @@ router.post('/students', requireAdminAuth, async (req, res, next) => {
     }
 
     const result = await defaultAdminDbService.upsertStudent({
-      name,
+      student_name: effectiveName,
+      name: effectiveName,
       admission_number,
       phone_number,
-      username,
-      password,
+      portal_username: effectiveUser,
+      username: effectiveUser,
+      portal_password: effectivePass,
+      password: effectivePass,
       section
     });
 

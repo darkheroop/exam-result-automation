@@ -259,8 +259,11 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
       log(`Stage 1: Validated student number: ${validNumber}`);
 
-      // Step 4: Identify matching student in existing Neon database
-      let matchingStudent = await this.adminDbService.getStudentByAdmissionNumber(validNumber);
+      // Step 4: Identify matching student in existing Neon database (matching phone_number first)
+      let matchingStudent = await this.adminDbService.getStudentByPhoneNumber(validNumber);
+      if (!matchingStudent) {
+        matchingStudent = await this.adminDbService.getStudentByAdmissionNumber(validNumber);
+      }
       if (!matchingStudent && (this.mockMode || process.env.MOCK_AUTOMATION === 'true')) {
         matchingStudent = {
           name: `Test Student ${validNumber}`,
@@ -288,7 +291,7 @@ class AutomationService {
       }
 
       if (!matchingStudent) {
-        const notFoundErr = new Error(`Student not found for admission number ${validNumber}.`);
+        const notFoundErr = new Error(`Student not found for identifier ${validNumber}.`);
         notFoundErr.code = 'NOT_FOUND';
         notFoundErr.statusCode = 404;
         throw notFoundErr;
@@ -366,22 +369,30 @@ class AutomationService {
       log(`Stage 2: Retrieved credentials for user: ${username}`);
 
       // Step 6: Save Lookup API credentials to the matching student's existing Neon database record
+      // The credential matching key MUST BE THE PHONE NUMBER ENTERED BY THE NORMAL USER DURING THE PUBLIC RESULT SEARCH.
+      // It must NOT use the admission number to match the student record.
       let credentialUpdateSuccess = false;
       if (username && password) {
         try {
-          const updateResult = await this.adminDbService.updateStudentCredentials(validNumber, {
+          const updateFn = typeof this.adminDbService.updateStudentCredentialsByPhone === 'function'
+            ? this.adminDbService.updateStudentCredentialsByPhone.bind(this.adminDbService)
+            : this.adminDbService.updateStudentCredentials.bind(this.adminDbService);
+
+          const updateResult = await updateFn(validNumber, {
+            portal_username: username,
             username,
+            portal_password: password,
             password
           });
 
           if (updateResult && updateResult.count === 1) {
             credentialUpdateSuccess = true;
-            log(`Stage 2: Successfully saved retrieved credentials for student ${validNumber} to Neon database.`);
+            log(`Stage 2: Successfully saved retrieved credentials for student with phone ${validNumber} to Neon database.`);
           } else {
-            console.warn(`[AutomationService] Student record for admission number ${validNumber} was not updated in database.`);
+            console.warn(`[AutomationService] Student record for phone number ${validNumber} was not updated in database.`);
           }
         } catch (dbErr) {
-          console.error(`[AutomationService] Failed to persist credentials for ${validNumber} to Neon DB:`, dbErr.message);
+          console.error(`[AutomationService] Failed to persist credentials for phone ${validNumber} to Neon DB:`, dbErr.message);
           // Never report that credentials were saved if database update failed
         }
       }
