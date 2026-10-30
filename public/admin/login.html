@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body class="login-body">
 
@@ -226,41 +226,28 @@
             data = null;
           }
 
-          if (response.ok && data) {
+          if (response.ok && data && data.success) {
             // Save token and session info
-            const token = data.token || data.sessionToken || ('admin_' + Date.now());
-            localStorage.setItem('admin_token', token);
-            localStorage.setItem('admin_user', JSON.stringify(data.user || { username, role: 'Super Admin' }));
+            const token = data.token;
+            if (token) {
+              localStorage.setItem('admin_token', token);
+            }
+            if (data.user) {
+              localStorage.setItem('admin_user', JSON.stringify(data.user));
+            }
 
             showAlert('Authentication successful. Redirecting to dashboard...', 'success');
             setTimeout(() => {
               window.location.href = '/admin';
-            }, 500);
-          } else if (response.status === 404) {
-            // Development fallback if endpoint is not mounted yet
-            console.warn('[Admin Portal] /api/admin/login returned 404. Proceeding in administrative session mode.');
-            const token = 'mock_admin_token_' + Date.now();
-            localStorage.setItem('admin_token', token);
-            localStorage.setItem('admin_user', JSON.stringify({ username: username || 'inexpert_trifler', role: 'Super Admin' }));
-            showAlert('Administrative session initiated. Redirecting...', 'success');
-            setTimeout(() => {
-              window.location.href = '/admin';
-            }, 500);
+            }, 400);
           } else {
             const errorMsg = (data && (data.error?.message || data.message || data.error)) || 'Invalid username or password. Access denied.';
             showAlert(errorMsg, 'error');
             setLoading(false);
           }
         } catch (networkErr) {
-          // Network error or offline
-          console.warn('[Admin Portal] Network connection note:', networkErr.message);
-          const token = 'mock_admin_token_' + Date.now();
-          localStorage.setItem('admin_token', token);
-          localStorage.setItem('admin_user', JSON.stringify({ username: username || 'inexpert_trifler', role: 'Super Admin' }));
-          showAlert('Direct administrator access enabled. Redirecting...', 'success');
-          setTimeout(() => {
-            window.location.href = '/admin';
-          }, 500);
+          showAlert('Network error. Please check your connection and try again.', 'error');
+          setLoading(false);
         }
       });
     })();

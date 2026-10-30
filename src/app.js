@@ -62,6 +62,10 @@ app.post('/api/result', (req, res, next) => {
   return automationRoutes(req, res, next);
 });
 
+// Serve Frontend Static Assets
+app.use(express.static(path.resolve(__dirname, '../public')));
+app.use('/admin', express.static(path.resolve(__dirname, '../public/admin')));
+
 // Admin Dashboard UI Routes
 app.get('/admin/login', (req, res) => {
   const loginPath = path.resolve(__dirname, '../public/admin/login.html');
@@ -78,9 +82,6 @@ app.get(['/admin', '/admin/*'], (req, res) => {
   }
   return res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
-
-// Serve Frontend Static Assets
-app.use(express.static(path.resolve(__dirname, '../public')));
 
 // Fallback to index.html for SPA client navigation
 app.get('*', (req, res, next) => {
