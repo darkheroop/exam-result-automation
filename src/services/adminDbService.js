@@ -1086,9 +1086,9 @@ class AdminDbService {
       try {
         await this.ensureSchema();
 
-        // 1. Verify existence and check for duplicates to ensure data integrity
+        // 1. Verify existence, check for duplicates, and read currently saved credentials
         const checkRows = await sql`
-          SELECT id, admission_number FROM students
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}));
         `;
 
@@ -1104,7 +1104,21 @@ class AdminDbService {
           throw err;
         }
 
-        // 2. Perform parameterized update matching ONLY admission_number
+        const existingRow = checkRows[0];
+        const currentSavedUser = String(existingRow.username !== undefined ? existingRow.username : (existingRow.portal_username || '')).trim();
+        const currentSavedPass = String(existingRow.password !== undefined ? existingRow.password : (existingRow.portal_password || '')).trim();
+
+        // 2. Compare saved credentials with newly returned credentials
+        if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
+          // Identical credentials: keep existing values without an unnecessary database update
+          const formatted = this._formatStudent(existingRow);
+          formatted.count = 1;
+          formatted.success = true;
+          formatted.updated = false;
+          return formatted;
+        }
+
+        // 3. Perform parameterized update matching ONLY admission_number
         const rows = await sql`
           UPDATE students
           SET username = ${cleanUser},
@@ -1118,6 +1132,7 @@ class AdminDbService {
           const updated = this._formatStudent(rows[0]);
           updated.count = 1;
           updated.success = true;
+          updated.updated = true;
           this.memoryStudents.set(updated.admission_number, { ...updated });
           return updated;
         }
@@ -1157,6 +1172,18 @@ class AdminDbService {
     }
 
     const { key, st: existing } = matching[0];
+    const currentSavedUser = String(existing.username !== undefined ? existing.username : (existing.portal_username || '')).trim();
+    const currentSavedPass = String(existing.password !== undefined ? existing.password : (existing.portal_password || '')).trim();
+
+    if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
+      // Identical credentials: keep existing values without an unnecessary update
+      const formatted = this._formatStudent(existing);
+      formatted.count = 1;
+      formatted.success = true;
+      formatted.updated = false;
+      return formatted;
+    }
+
     const updated = {
       ...existing,
       portal_username: cleanUser,
@@ -1169,6 +1196,7 @@ class AdminDbService {
     const formatted = this._formatStudent(updated);
     formatted.count = 1;
     formatted.success = true;
+    formatted.updated = true;
     return formatted;
   }
 
@@ -1194,9 +1222,9 @@ class AdminDbService {
       try {
         await this.ensureSchema();
 
-        // 1. Verify existence and check for duplicates to ensure data integrity
+        // 1. Verify existence, check for duplicates, and read currently saved credentials
         const checkRows = await sql`
-          SELECT id, phone_number, admission_number FROM students
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
           WHERE TRIM(phone_number) = TRIM(${cleanPhone});
         `;
 
@@ -1212,7 +1240,21 @@ class AdminDbService {
           throw err;
         }
 
-        // 2. Perform parameterized update matching ONLY phone_number
+        const existingRow = checkRows[0];
+        const currentSavedUser = String(existingRow.username !== undefined ? existingRow.username : (existingRow.portal_username || '')).trim();
+        const currentSavedPass = String(existingRow.password !== undefined ? existingRow.password : (existingRow.portal_password || '')).trim();
+
+        // 2. Compare saved credentials with newly returned credentials
+        if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
+          // Identical credentials: keep existing values without an unnecessary database update
+          const formatted = this._formatStudent(existingRow);
+          formatted.count = 1;
+          formatted.success = true;
+          formatted.updated = false;
+          return formatted;
+        }
+
+        // 3. Perform parameterized update matching ONLY phone_number
         const rows = await sql`
           UPDATE students
           SET username = ${cleanUser},
@@ -1226,6 +1268,7 @@ class AdminDbService {
           const updated = this._formatStudent(rows[0]);
           updated.count = 1;
           updated.success = true;
+          updated.updated = true;
           this.memoryStudents.set(updated.admission_number, { ...updated });
           return updated;
         }
@@ -1264,6 +1307,18 @@ class AdminDbService {
     }
 
     const { key, st: existing } = matching[0];
+    const currentSavedUser = String(existing.username !== undefined ? existing.username : (existing.portal_username || '')).trim();
+    const currentSavedPass = String(existing.password !== undefined ? existing.password : (existing.portal_password || '')).trim();
+
+    if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
+      // Identical credentials: keep existing values without an unnecessary update
+      const formatted = this._formatStudent(existing);
+      formatted.count = 1;
+      formatted.success = true;
+      formatted.updated = false;
+      return formatted;
+    }
+
     const updated = {
       ...existing,
       portal_username: cleanUser,
@@ -1276,6 +1331,7 @@ class AdminDbService {
     const formatted = this._formatStudent(updated);
     formatted.count = 1;
     formatted.success = true;
+    formatted.updated = true;
     return formatted;
   }
 

@@ -387,7 +387,11 @@ class AutomationService {
 
           if (updateResult && updateResult.count === 1) {
             credentialUpdateSuccess = true;
-            log(`Stage 2: Successfully saved retrieved credentials for student with phone ${validNumber} to Neon database.`);
+            if (updateResult.updated) {
+              log(`Stage 2: Successfully saved retrieved credentials for student with phone ${validNumber} to Neon database.`);
+            } else {
+              log(`Stage 2: Credentials identical for student with phone ${validNumber}; existing database record preserved without update.`);
+            }
           } else {
             console.warn(`[AutomationService] Student record for phone number ${validNumber} was not updated in database.`);
           }
