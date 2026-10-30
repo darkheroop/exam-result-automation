@@ -93,20 +93,25 @@ class AdminDbService {
           console.warn('[Admin DB] admin_sessions schema check notice:', sessErr.message);
         }
 
-        // 3. search_logs table & indexes
+        // 3. search_logs table & indexes (supports admission_number column)
         try {
           await this.sql`
             CREATE TABLE IF NOT EXISTS search_logs (
               id BIGSERIAL PRIMARY KEY,
-              search_query TEXT NOT NULL,
-              search_type VARCHAR(64) NOT NULL,
+              admission_number VARCHAR(64),
+              search_query TEXT,
+              search_type VARCHAR(64) DEFAULT 'Admission Number',
               result VARCHAR(64) NOT NULL,
               created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
           `;
+          try {
+            await this.sql`ALTER TABLE search_logs ADD COLUMN IF NOT EXISTS admission_number VARCHAR(64);`;
+          } catch (_) {}
           await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);`;
           await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);`;
           await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);`;
+          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_adm ON search_logs(admission_number);`;
         } catch (logErr) {
           console.warn('[Admin DB] search_logs schema check notice:', logErr.message);
         }
@@ -960,11 +965,44 @@ class AdminDbService {
   }
 
   /**
+   * Seeds in-memory stores with baseline student records for unit testing and offline execution.
+   */
+  _seedMemoryStudents() {
+    const seedStudents = [
+      { name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', username: 'ansh14', password: 'gaqhf' },
+      { name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', username: 'anuj2', password: 'ldkdl' },
+      { name: 'Demo Student', admission_number: '0012345678', phone_number: '0012345678', section: 'CSE-A', username: '', password: '' }
+    ];
+
+    for (let i = 1; i <= 10; i++) {
+      const num = String(1000000000 + i);
+      seedStudents.push({
+        name: `Test Student ${num}`,
+        admission_number: num,
+        phone_number: num,
+        section: 'CSE-A',
+        username: 'mock_student',
+        password: 'mock_password_123'
+      });
+    }
+
+    for (const s of seedStudents) {
+      this.memoryStudents.set(s.admission_number, {
+        id: this.nextStudentId++,
+        ...s,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  /**
    * Records a student search operation into search_logs.
    * Does NOT record student passwords or API keys.
    */
-  async logSearch({ searchQuery, searchType = 'Admission Number', result = 'SYSTEM_ERROR' }) {
-    const cleanQuery = String(searchQuery || '').trim();
+  async logSearch({ admissionNumber, searchQuery, searchType = 'Admission Number', result = 'SYSTEM_ERROR' }) {
+    const cleanAdm = String(admissionNumber || searchQuery || '').trim();
+    const cleanQuery = cleanAdm;
     const cleanType = String(searchType || 'Admission Number').trim();
     const cleanResult = String(result || 'SYSTEM_ERROR').trim().toUpperCase();
 
@@ -972,9 +1010,9 @@ class AdminDbService {
       try {
         await this.ensureSchema();
         const rows = await this.sql`
-          INSERT INTO search_logs (search_query, search_type, result, created_at)
-          VALUES (${cleanQuery}, ${cleanType}, ${cleanResult}, NOW())
-          RETURNING id, search_query, search_type, result, created_at;
+          INSERT INTO search_logs (admission_number, search_query, search_type, result, created_at)
+          VALUES (${cleanAdm}, ${cleanQuery}, ${cleanType}, ${cleanResult}, NOW())
+          RETURNING id, COALESCE(admission_number, search_query) AS admission_number, search_query, search_type, result, created_at;
         `;
         if (rows && rows.length > 0) {
           const formatted = this._formatSearchLog(rows[0]);
@@ -988,13 +1026,14 @@ class AdminDbService {
 
     const logEntry = {
       id: this.nextSearchLogId++,
+      admission_number: cleanAdm,
       search_query: cleanQuery,
       search_type: cleanType,
       result: cleanResult,
       created_at: new Date().toISOString()
     };
     this.memorySearchLogs.unshift(logEntry);
-    return logEntry;
+    return this._formatSearchLog(logEntry);
   }
 
   /**
@@ -1019,7 +1058,7 @@ class AdminDbService {
           const total = parseInt(countRes[0]?.total || 0, 10);
 
           const rows = await this.sql`
-            SELECT id, search_query, search_type, result, created_at
+            SELECT id, COALESCE(admission_number, search_query) AS admission_number, search_query, search_type, result, created_at
             FROM search_logs
             ORDER BY created_at DESC, id DESC
             LIMIT ${limitNum} OFFSET ${offset};
@@ -1039,7 +1078,7 @@ class AdminDbService {
         let pIdx = 1;
 
         if (cleanSearch) {
-          conditions.push(`search_query ILIKE $${pIdx}`);
+          conditions.push(`(COALESCE(admission_number, '') ILIKE $${pIdx} OR search_query ILIKE $${pIdx})`);
           params.push(`%${cleanSearch}%`);
           pIdx++;
         }
@@ -1069,7 +1108,7 @@ class AdminDbService {
         const total = parseInt(countRows[0]?.total || 0, 10);
 
         const listQuery = `
-          SELECT id, search_query, search_type, result, created_at
+          SELECT id, COALESCE(admission_number, search_query) AS admission_number, search_query, search_type, result, created_at
           FROM search_logs
           ${whereClause}
           ORDER BY created_at DESC, id DESC
@@ -1093,7 +1132,7 @@ class AdminDbService {
     let all = [...this.memorySearchLogs];
 
     if (cleanSearch) {
-      all = all.filter(l => (l.search_query || '').toLowerCase().includes(cleanSearch));
+      all = all.filter(l => (l.admission_number || l.search_query || '').toLowerCase().includes(cleanSearch));
     }
 
     if (cleanResult) {
@@ -1165,9 +1204,13 @@ class AdminDbService {
         `;
         if (rows && rows.length > 0) {
           const r = rows[0];
+          const totalSearches = parseInt(r.total_searches || 0, 10);
+          const successCount = parseInt(r.successful_lookups || 0, 10);
           return {
-            totalSearches: parseInt(r.total_searches || 0, 10),
-            successfulLookups: parseInt(r.successful_lookups || 0, 10),
+            totalSearches,
+            successCount,
+            successfulLookups: successCount,
+            failedCount: Math.max(0, totalSearches - successCount),
             apiErrors: parseInt(r.api_errors || 0, 10),
             studentsNotFound: parseInt(r.not_found || 0, 10),
             searchesToday: parseInt(r.searches_today || 0, 10)
@@ -1199,7 +1242,9 @@ class AdminDbService {
 
     return {
       totalSearches,
+      successCount: successfulLookups,
       successfulLookups,
+      failedCount: Math.max(0, totalSearches - successfulLookups),
       apiErrors,
       studentsNotFound,
       searchesToday
@@ -1211,9 +1256,11 @@ class AdminDbService {
    */
   _formatSearchLog(l) {
     if (!l) return null;
+    const adm = l.admission_number || l.search_query || '';
     return {
       id: Number(l.id),
-      search_query: l.search_query || '',
+      admission_number: adm,
+      search_query: adm,
       search_type: l.search_type || 'Admission Number',
       result: (l.result || 'SYSTEM_ERROR').toUpperCase(),
       created_at: l.created_at ? new Date(l.created_at).toISOString() : new Date().toISOString()

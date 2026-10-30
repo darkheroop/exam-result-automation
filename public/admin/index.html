@@ -796,8 +796,8 @@
         <section id="view-logs" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
-              <h1>Search Activity &amp; Resolution Logs</h1>
-              <p>Audit trail of administrator student lookups, credential retrieval outcomes, and error diagnosis.</p>
+              <h1>Public Result Search Logs</h1>
+              <p>Audit trail of examination result searches submitted by students on the public portal.</p>
             </div>
             <div class="view-header-actions">
               <button type="button" id="btn-refresh-logs" class="btn btn-secondary btn-sm" title="Refresh Search Logs">
@@ -817,6 +817,26 @@
             </div>
           </div>
 
+          <!-- Public Search Activity Metrics -->
+          <div class="search-stats-grid" style="margin-bottom: 1.25rem;">
+            <div class="search-stat-pill">
+              <span class="search-stat-label">Total Public Searches</span>
+              <span class="search-stat-val" id="logs-view-total-searches">0</span>
+            </div>
+            <div class="search-stat-pill">
+              <span class="search-stat-label">Success Count</span>
+              <span class="search-stat-val text-emerald" id="logs-view-success-searches">0</span>
+            </div>
+            <div class="search-stat-pill">
+              <span class="search-stat-label">Failed Search Count</span>
+              <span class="search-stat-val text-rose" id="logs-view-failed-searches">0</span>
+            </div>
+            <div class="search-stat-pill">
+              <span class="search-stat-label">Searches Today</span>
+              <span class="search-stat-val text-indigo" id="logs-view-today-searches">0</span>
+            </div>
+          </div>
+
           <!-- Filter Toolbar for Logs -->
           <div class="filter-toolbar">
             <div class="filter-group-left">
@@ -828,7 +848,7 @@
                 <input 
                   type="text" 
                   id="log-search-input" 
-                  placeholder="Filter logs by search query..."
+                  placeholder="Search by admission number..."
                   autocomplete="off"
                 >
                 <button type="button" id="log-search-clear" class="search-clear-btn" aria-label="Clear log search" style="display: none;">
@@ -843,15 +863,14 @@
               <select id="log-result-filter" class="filter-select">
                 <option value="">All Result Statuses</option>
                 <option value="SUCCESS">SUCCESS</option>
-                <option value="FOUND">FOUND</option>
                 <option value="API_ERROR">API_ERROR</option>
-                <option value="INVALID_RESPONSE">INVALID_RESPONSE</option>
+                <option value="AUTH_ERROR">AUTH_ERROR</option>
+                <option value="NOT_FOUND">NOT_FOUND</option>
+                <option value="UNAVAILABLE">UNAVAILABLE</option>
                 <option value="TIMEOUT">TIMEOUT</option>
                 <option value="NETWORK_ERROR">NETWORK_ERROR</option>
-                <option value="NOT_FOUND">NOT_FOUND</option>
-                <option value="INVALID_INPUT">INVALID_INPUT</option>
-                <option value="DATABASE_ERROR">DATABASE_ERROR</option>
                 <option value="SYSTEM_ERROR">SYSTEM_ERROR</option>
+                <option value="DATABASE_ERROR">DATABASE_ERROR</option>
               </select>
 
               <!-- Search Type Filter -->
@@ -878,12 +897,11 @@
               <table class="data-table" id="search-logs-table">
                 <thead>
                   <tr>
-                    <th style="width: 80px;">1. ID</th>
-                    <th>2. Search Query</th>
-                    <th>3. Search Type</th>
-                    <th>4. Result</th>
-                    <th>5. Date (IST)</th>
-                    <th>6. Time (IST)</th>
+                    <th style="width: 80px;">ID</th>
+                    <th>Admission Number</th>
+                    <th>Result</th>
+                    <th>Date</th>
+                    <th>Time</th>
                   </tr>
                 </thead>
                 <tbody id="search-logs-tbody">

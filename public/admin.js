@@ -138,6 +138,8 @@
       'SUCCESS': 'badge-status-success',
       'FOUND': 'badge-status-found',
       'API_ERROR': 'badge-status-api-error',
+      'AUTH_ERROR': 'badge-status-auth-error',
+      'UNAVAILABLE': 'badge-status-unavailable',
       'INVALID_RESPONSE': 'badge-status-invalid-response',
       'TIMEOUT': 'badge-status-timeout',
       'NETWORK_ERROR': 'badge-status-network-error',
@@ -423,11 +425,21 @@
       if (el) el.textContent = Number(val || 0).toLocaleString();
     };
 
-    setText('stat-total-searches', stats.totalSearches || 0);
-    setText('stat-successful-lookups', stats.successfulLookups || 0);
+    const total = stats.totalSearches || 0;
+    const success = stats.successCount !== undefined ? stats.successCount : (stats.successfulLookups || 0);
+    const failed = stats.failedCount !== undefined ? stats.failedCount : Math.max(0, total - success);
+
+    setText('stat-total-searches', total);
+    setText('stat-successful-lookups', success);
     setText('stat-api-errors', stats.apiErrors || 0);
     setText('stat-students-not-found', stats.studentsNotFound || 0);
     setText('stat-searches-today', stats.searchesToday || 0);
+
+    // View-logs specific KPI cards
+    setText('logs-view-total-searches', total);
+    setText('logs-view-success-searches', success);
+    setText('logs-view-failed-searches', failed);
+    setText('logs-view-today-searches', stats.searchesToday || 0);
   }
 
   function renderDashboardStats(data) {
@@ -1707,18 +1719,14 @@
 
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          if (val.length >= 4) {
-            submitUniversalSearch();
-          } else {
-            executeUniversalSearch(val);
-          }
-        }, 350);
+          executeUniversalSearch(val);
+        }, 250);
       });
 
       searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          submitUniversalSearch();
+          executeUniversalSearch(searchInput.value.trim());
         }
       });
     }
@@ -1945,7 +1953,11 @@
       date: date || ''
     });
 
-    const res = await apiFetch(`/api/admin/search-logs?${queryParams.toString()}`);
+    const [res, resStats] = await Promise.all([
+      apiFetch(`/api/admin/search-logs?${queryParams.toString()}`),
+      apiFetch('/api/admin/search-logs/stats')
+    ]);
+
     if (res && res.ok && res.data) {
       const data = res.data;
       state.searchLogs = data.logs || [];
@@ -1956,6 +1968,11 @@
       state.searchLogs = [];
       state.logPagination.total = 0;
       state.logPagination.totalPages = 1;
+    }
+
+    if (resStats && resStats.ok && resStats.data) {
+      const sStats = resStats.data.stats || resStats.data;
+      renderSearchActivityStats(sStats);
     }
 
     renderSearchLogsTable();
@@ -1986,8 +2003,7 @@
 
     tbody.innerHTML = logs.map(l => {
       const id = l.id;
-      const query = l.search_query || '—';
-      const type = l.search_type || 'Admission Number';
+      const adm = l.admission_number || l.search_query || '—';
       const result = l.result || 'SYSTEM_ERROR';
       const dateStr = formatISTDate(l.created_at);
       const timeStr = formatISTTime(l.created_at);
@@ -1995,8 +2011,7 @@
       return `
         <tr>
           <td><span class="font-mono text-slate-500" style="font-size: 0.8rem;">#${id}</span></td>
-          <td><span class="font-semibold text-slate-900 font-mono">${escapeHtml(query)}</span></td>
-          <td><span class="badge badge-section">${escapeHtml(type)}</span></td>
+          <td><span class="font-semibold text-slate-900 font-mono">${escapeHtml(adm)}</span></td>
           <td>${getResultBadgeHtml(result)}</td>
           <td class="text-slate-700 font-mono" style="font-size: 0.85rem;">${dateStr}</td>
           <td class="text-slate-500 font-mono" style="font-size: 0.85rem;">${timeStr}</td>
@@ -2278,18 +2293,14 @@
 
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          if (val.length >= 4) {
-            submitStudentSearch();
-          } else {
-            loadStudents();
-          }
-        }, 350);
+          loadStudents();
+        }, 250);
       });
 
       studentSearchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          submitStudentSearch();
+          loadStudents();
         }
       });
     }

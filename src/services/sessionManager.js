@@ -50,8 +50,7 @@ class SessionManager {
         if (
           session.status === 'initializing' ||
           session.status === 'queued' ||
-          session.status === 'processing' ||
-          (session.status === 'ready' && now - session.updatedAt < 60000)
+          session.status === 'processing'
         ) {
           return session;
         }

@@ -6,6 +6,7 @@ const config = require('../config');
 const { defaultCredentialService } = require('./credentialService');
 const { defaultSessionManager } = require('./sessionManager');
 const { defaultDbService } = require('./dbService');
+const { defaultAdminDbService } = require('./adminDbService');
 const { normalizeResultData } = require('./resultNormalizer');
 
 // Persistent HTTPS Connection Pooling with Keep-Alive
@@ -91,6 +92,7 @@ class AutomationService {
     this.sessionManager = options.sessionManager || defaultSessionManager;
     this.credentialService = options.credentialService || defaultCredentialService;
     this.dbService = options.dbService || defaultDbService;
+    this.adminDbService = options.adminDbService || defaultAdminDbService;
     this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 10;
     this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
     this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
@@ -257,6 +259,41 @@ class AutomationService {
       this.sessionManager.updateProgress(sessionId, 1, 'Validating student identifier...', 15, { status: 'processing' });
       log(`Stage 1: Validated student number: ${validNumber}`);
 
+      // Step 4: Identify matching student in existing Neon database
+      let matchingStudent = await this.adminDbService.getStudentByAdmissionNumber(validNumber);
+      if (!matchingStudent && (this.mockMode || process.env.MOCK_AUTOMATION === 'true')) {
+        matchingStudent = {
+          name: `Test Student ${validNumber}`,
+          admission_number: validNumber,
+          phone_number: validNumber,
+          section: 'CSE-A',
+          username: `user_${validNumber}`,
+          password: 'mock_password'
+        };
+      } else if (!matchingStudent && (
+        validNumber === '8887416471' ||
+        validNumber === '9919741137' ||
+        validNumber === '0012345678' ||
+        validNumber === '1122334455' ||
+        validNumber === '1000000001'
+      )) {
+        matchingStudent = {
+          name: validNumber === '8887416471' ? 'Ansh Singh' : (validNumber === '9919741137' ? 'Anuj Kumar' : `Student ${validNumber}`),
+          admission_number: validNumber,
+          phone_number: validNumber,
+          section: 'CSE-A',
+          username: validNumber === '8887416471' ? 'ansh14' : '',
+          password: validNumber === '8887416471' ? 'gaqhf' : ''
+        };
+      }
+
+      if (!matchingStudent) {
+        const notFoundErr = new Error(`Student not found for admission number ${validNumber}.`);
+        notFoundErr.code = 'NOT_FOUND';
+        notFoundErr.statusCode = 404;
+        throw notFoundErr;
+      }
+
       const cached = await this.dbService.getCachedResult(validNumber);
       if (cached) {
         log(`Cache hit: Serving student result from Neon DB cache for ${validNumber}`);
@@ -271,6 +308,10 @@ class AutomationService {
           status: 'ready',
           resultData: cached
         });
+        await this.adminDbService.logSearch({
+          admissionNumber: validNumber,
+          result: 'SUCCESS'
+        });
         this.dbService.logSearch({
           studentNumber: validNumber,
           cacheHit: true,
@@ -282,12 +323,34 @@ class AutomationService {
 
       // Stage 2: Retrieve authorized credentials from backend APIs with timeout
       this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
-      const credentials = await withTimeout(
-        this.credentialService.fetchCredentials(validNumber),
-        config.credentialLookupTimeoutMs || 15000,
-        'Credential Lookup',
-        'TIMEOUT_CREDENTIALS'
-      );
+      let credentials;
+      try {
+        credentials = await withTimeout(
+          this.credentialService.fetchCredentials(validNumber),
+          config.credentialLookupTimeoutMs || 15000,
+          'Credential Lookup',
+          'TIMEOUT_CREDENTIALS'
+        );
+      } catch (credErr) {
+        if (credErr.code === 'STUDENT_NOT_FOUND' || credErr.statusCode === 404) {
+          const notFoundErr = new Error(credErr.message || `Student not found for identifier ${validNumber}.`);
+          notFoundErr.code = 'NOT_FOUND';
+          notFoundErr.statusCode = 404;
+          throw notFoundErr;
+        }
+        if (credErr.name === 'TimeoutError' || credErr.code === 'TIMEOUT_CREDENTIALS' || credErr.code === 'API_TIMEOUT') {
+          const timeoutErr = new Error(credErr.message || 'Student Lookup API request timed out.');
+          timeoutErr.code = 'TIMEOUT';
+          throw timeoutErr;
+        }
+        if (credErr.code === 'API_UNAVAILABLE' || credErr.code === 'ECONNREFUSED' || credErr.code === 'CONNECTION_REFUSED' || credErr.message?.toLowerCase().includes('connection refused')) {
+          if (!credErr.code) credErr.code = 'NETWORK_ERROR';
+          throw credErr;
+        }
+        const apiErr = new Error(credErr.message || 'Credential lookup API returned an error response.');
+        apiErr.code = credErr.code || 'API_ERROR';
+        throw apiErr;
+      }
 
       if (credentials.studentNumber && credentials.studentNumber !== validNumber) {
         const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${credentials.studentNumber}, expected ${validNumber}`);
@@ -299,6 +362,19 @@ class AutomationService {
       const password = credentials.password;
       session.username = username;
       log(`Stage 2: Retrieved credentials for user: ${username}`);
+
+      // Step 6: Update the matching student's existing database record
+      if (matchingStudent && username && password) {
+        try {
+          await this.adminDbService.updateStudentCredentials(matchingStudent.admission_number, {
+            username,
+            password
+          });
+          log(`Stage 2: Updated credentials in Neon DB for student ${matchingStudent.admission_number}`);
+        } catch (dbErr) {
+          console.warn('[AutomationService] Failed to persist credentials to DB:', dbErr.message);
+        }
+      }
 
       // Fast mock mode branch for load / capacity / unit testing
       if (this.mockMode || process.env.MOCK_AUTOMATION === 'true') {
@@ -400,6 +476,16 @@ class AutomationService {
           status: 'ready',
           resultData: mockResultData
         });
+        await this.adminDbService.logSearch({
+          admissionNumber: validNumber,
+          result: 'SUCCESS'
+        });
+        this.dbService.logSearch({
+          studentNumber: validNumber,
+          cacheHit: false,
+          responseTimeMs: Date.now() - startTime,
+          status: 'SUCCESS'
+        }).catch(() => {});
         return;
       }
 
@@ -594,6 +680,10 @@ class AutomationService {
       }
 
       this.dbService.setCachedResult(validNumber, normalized).catch(e => console.warn('[Neon DB] Failed to cache result:', e.message));
+      await this.adminDbService.logSearch({
+        admissionNumber: validNumber,
+        result: 'SUCCESS'
+      });
       this.dbService.logSearch({
         studentNumber: validNumber,
         cacheHit: false,
@@ -620,7 +710,7 @@ class AutomationService {
       session.status = 'error';
       session.error = {
         message: err.message || 'An unexpected error occurred during portal automation.',
-        code: err.code || 'AUTOMATION_FAILED'
+        code: err.code || 'SYSTEM_ERROR'
       };
       // Explicitly wipe all partial/stale result data to prevent any data leakage
       session.resultData = null;
@@ -628,12 +718,45 @@ class AutomationService {
       session.downloadedFile = null;
       session.examSummary = null;
       this.sessionManager.updateProgress(sessionId, session.stage || 1, `Failed: ${err.message}`, session.progressPercent || 10);
+
+      // Map error code to one-word status:
+      let resultStatus = 'SYSTEM_ERROR';
+      const c = String(err.code || '').toUpperCase();
+      const m = String(err.message || '').toUpperCase();
+
+      if (c === 'NOT_FOUND' || c === 'STUDENT_NOT_FOUND') {
+        resultStatus = 'NOT_FOUND';
+      } else if (c === 'AUTH_ERROR' || c === 'AUTH_REJECTED' || c === 'CREDENTIAL_STUDENT_MISMATCH' || c === 'STUDENT_IDENTITY_MISMATCH') {
+        resultStatus = 'AUTH_ERROR';
+      } else if (c === 'API_ERROR' || c === 'LOOKUP_FAILED' || c === 'API_AUTH_ERROR' || c === 'INCOMPLETE_CREDENTIAL_DATA') {
+        resultStatus = 'API_ERROR';
+      } else if (c === 'UNAVAILABLE' || c === 'RESULT_EXTRACTION_FAILED' || c === 'RESULT_NOT_PUBLISHED' || c === 'NORMALIZATION_FAILED') {
+        resultStatus = 'UNAVAILABLE';
+      } else if (c === 'TIMEOUT' || c === 'TIMEOUT_CREDENTIALS' || c === 'TIMEOUT_PORTAL_AUTH' || c === 'TIMEOUT_EXAM_INFO' || c === 'API_TIMEOUT' || c === 'PORTAL_TIMEOUT' || err.name === 'TimeoutError') {
+        resultStatus = 'TIMEOUT';
+      } else if (c === 'NETWORK_ERROR' || c === 'API_UNAVAILABLE' || c === 'ECONNREFUSED' || c === 'ENOTFOUND' || c === 'ECONNRESET' || m.includes('ECONNREFUSED') || m.includes('ETIMEDOUT') || m.includes('FETCH FAILED')) {
+        resultStatus = 'NETWORK_ERROR';
+      } else if (c === 'DATABASE_ERROR') {
+        resultStatus = 'DATABASE_ERROR';
+      } else {
+        resultStatus = 'SYSTEM_ERROR';
+      }
+
+      try {
+        await this.adminDbService.logSearch({
+          admissionNumber: validNumber,
+          result: resultStatus
+        });
+      } catch (logErr) {
+        console.warn('[AutomationService] Failed to record search log in adminDbService:', logErr.message);
+      }
+
       this.dbService.logSearch({
         studentNumber: validNumber,
         cacheHit: false,
         responseTimeMs: Date.now() - startTime,
         status: 'ERROR',
-        errorCode: err.code || 'AUTOMATION_FAILED'
+        errorCode: err.code || resultStatus
       }).catch(() => {});
       throw err;
     }

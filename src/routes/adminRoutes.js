@@ -287,16 +287,7 @@ router.delete('/search-logs', requireAdminAuth, async (req, res, next) => {
  */
 router.get('/students', requireAdminAuth, async (req, res, next) => {
   try {
-    const { page, limit, search, section, credential, sortBy, sortOrder, sort, submit, logSearch, searchType } = req.query;
-    
-    // Automatic credential lookup & audit logging when search is explicitly submitted or a 10-digit identifier is searched
-    let searchLogResult = null;
-    if (search && (submit === 'true' || logSearch === 'true' || /^\d{10}$/.test(search.trim()))) {
-      searchLogResult = await defaultAdminSearchService.executeSearch({
-        query: search,
-        searchType
-      });
-    }
+    const { page, limit, search, section, credential, sortBy, sortOrder, sort } = req.query;
 
     let effSortBy = sortBy;
     let effSortOrder = sortOrder;
@@ -320,9 +311,7 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
 
     return res.json({
       success: true,
-      ...result,
-      searchResult: searchLogResult ? searchLogResult.result : undefined,
-      credentialUpdated: searchLogResult ? searchLogResult.updated : undefined
+      ...result
     });
   } catch (err) {
     return next(err);
