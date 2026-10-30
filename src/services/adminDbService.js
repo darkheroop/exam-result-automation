@@ -1,5 +1,7 @@
 'use strict';
 
+require('../config');
+
 let neonClient = null;
 try {
   const { neon } = require('@neondatabase/serverless');
@@ -10,17 +12,7 @@ try {
 
 class AdminDbService {
   constructor(options = {}) {
-    this.connectionString = options.connectionString ||
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.POSTGRES_URL_NON_POOLING ||
-      process.env.POSTGRES_URL_NO_SSL ||
-      process.env.NEON_DATABASE_URL ||
-      (process.env.POSTGRES_HOST && process.env.POSTGRES_USER && process.env.POSTGRES_PASSWORD && process.env.POSTGRES_DATABASE
-        ? `postgresql://${encodeURIComponent(process.env.POSTGRES_USER)}:${encodeURIComponent(process.env.POSTGRES_PASSWORD)}@${process.env.POSTGRES_HOST}/${process.env.POSTGRES_DATABASE}?sslmode=require`
-        : null);
-
+    this.connectionString = options.connectionString || this._resolveConnectionString();
     this.sql = null;
     this.schemaInitialized = false;
     this.schemaPromise = null;
@@ -33,30 +25,54 @@ class AdminDbService {
     this.nextStudentId = 1;
     this.nextSearchLogId = 1;
 
-    if (this.connectionString && neonClient) {
+    this.getSql();
+  }
+
+  _resolveConnectionString() {
+    return (
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.POSTGRES_URL_NON_POOLING ||
+      process.env.POSTGRES_URL_NO_SSL ||
+      process.env.NEON_DATABASE_URL ||
+      (process.env.POSTGRES_HOST && process.env.POSTGRES_USER && process.env.POSTGRES_PASSWORD && process.env.POSTGRES_DATABASE
+        ? `postgresql://${encodeURIComponent(process.env.POSTGRES_USER)}:${encodeURIComponent(process.env.POSTGRES_PASSWORD)}@${process.env.POSTGRES_HOST}/${process.env.POSTGRES_DATABASE}?sslmode=require`
+        : null)
+    );
+  }
+
+  getSql() {
+    if (this.sql) return this.sql;
+    const connStr = this.connectionString || this._resolveConnectionString();
+    if (connStr && neonClient) {
       try {
-        this.sql = neonClient(this.connectionString);
+        this.connectionString = connStr;
+        this.sql = neonClient(connStr);
         this.isNeonActive = true;
+        return this.sql;
       } catch (err) {
         console.warn('[Admin DB] Failed to initialize Neon client tag, falling back to memory:', err.message);
         this.sql = null;
         this.isNeonActive = false;
       }
     }
+    return null;
   }
 
   /**
    * Initializes managed_students, admin_sessions, and search_logs schemas in database.
    */
   async ensureSchema() {
-    if (!this.sql || this.schemaInitialized) return true;
+    const sql = this.getSql();
+    if (!sql || this.schemaInitialized) return true;
     if (this.schemaPromise) return this.schemaPromise;
 
     this.schemaPromise = (async () => {
       try {
         // 1. managed_students table & indexes
         try {
-          await this.sql`
+          await sql`
             CREATE TABLE IF NOT EXISTS managed_students (
               id BIGSERIAL PRIMARY KEY,
               name VARCHAR(255) NOT NULL,
@@ -69,18 +85,18 @@ class AdminDbService {
               updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
           `;
-          await this.sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_user ON managed_students(username);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_managed_students_sec ON managed_students(section);`;
+          await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_students_adm ON managed_students(admission_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_name ON managed_students(name);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_phone ON managed_students(phone_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_user ON managed_students(username);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_managed_students_sec ON managed_students(section);`;
         } catch (tableErr) {
           console.warn('[Admin DB] managed_students schema check notice:', tableErr.message);
         }
 
         // 2. admin_sessions table & indexes
         try {
-          await this.sql`
+          await sql`
             CREATE TABLE IF NOT EXISTS admin_sessions (
               token VARCHAR(128) PRIMARY KEY,
               username VARCHAR(128) NOT NULL,
@@ -88,14 +104,14 @@ class AdminDbService {
               expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '2 hours')
             );
           `;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at);`;
         } catch (sessErr) {
           console.warn('[Admin DB] admin_sessions schema check notice:', sessErr.message);
         }
 
         // 3. search_logs table & indexes (supports admission_number column)
         try {
-          await this.sql`
+          await sql`
             CREATE TABLE IF NOT EXISTS search_logs (
               id BIGSERIAL PRIMARY KEY,
               admission_number VARCHAR(64),
@@ -106,12 +122,12 @@ class AdminDbService {
             );
           `;
           try {
-            await this.sql`ALTER TABLE search_logs ADD COLUMN IF NOT EXISTS admission_number VARCHAR(64);`;
+            await sql`ALTER TABLE search_logs ADD COLUMN IF NOT EXISTS admission_number VARCHAR(64);`;
           } catch (_) {}
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);`;
-          await this.sql`CREATE INDEX IF NOT EXISTS idx_search_logs_adm ON search_logs(admission_number);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);`;
+          await sql`CREATE INDEX IF NOT EXISTS idx_search_logs_adm ON search_logs(admission_number);`;
         } catch (logErr) {
           console.warn('[Admin DB] search_logs schema check notice:', logErr.message);
         }
@@ -292,18 +308,19 @@ class AdminDbService {
 
   /**
    * Retrieves a student by admission number.
+   * Strictly matches admission_number (never student name or phone number).
    */
   async getStudentByAdmissionNumber(admissionNumber) {
     const adm = String(admissionNumber || '').trim();
     if (!adm) return null;
 
-    if (this.sql) {
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+        const rows = await sql`
           SELECT * FROM managed_students 
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${adm}))
-             OR (phone_number IS NOT NULL AND phone_number <> '' AND TRIM(phone_number) = TRIM(${adm}))
           LIMIT 1;
         `;
         if (rows && rows.length > 0) {
@@ -317,10 +334,7 @@ class AdminDbService {
 
     const admLower = adm.toLowerCase();
     for (const student of this.memoryStudents.values()) {
-      if (
-        (student.admission_number && student.admission_number.toLowerCase().trim() === admLower) ||
-        (student.phone_number && student.phone_number.trim() === adm)
-      ) {
+      if (student.admission_number && student.admission_number.toLowerCase().trim() === admLower) {
         return this._formatStudent(student);
       }
     }
@@ -906,7 +920,8 @@ class AdminDbService {
 
   /**
    * Updates only username and password for a verified student admission number.
-   * Preserves all other student fields (name, phone, section, created_at).
+   * Strictly matches admission_number (never student name or phone number).
+   * Verifies exactly one record is updated and guards against duplicate corruption.
    */
   async updateStudentCredentials(admissionNumber, { username = '', password = '' }) {
     const cleanAdm = String(admissionNumber || '').trim();
@@ -914,54 +929,97 @@ class AdminDbService {
     const cleanUser = String(username || '').trim();
     const cleanPass = String(password || '').trim();
 
-    if (this.sql) {
+    if (!cleanUser || !cleanPass) {
+      throw new Error('Valid, non-empty username and password are required to update credentials');
+    }
+
+    const sql = this.getSql();
+    if (sql) {
       try {
         await this.ensureSchema();
-        const rows = await this.sql`
+
+        // 1. Verify existence and check for duplicates to ensure data integrity
+        const checkRows = await sql`
+          SELECT id, admission_number FROM managed_students
+          WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}));
+        `;
+
+        if (!checkRows || checkRows.length === 0) {
+          console.warn(`[Admin DB] No student record found matching admission number '${cleanAdm}' to update credentials.`);
+          return null;
+        }
+
+        if (checkRows.length > 1) {
+          const err = new Error(`Data integrity violation: ${checkRows.length} duplicate student records match admission number '${cleanAdm}'. Update aborted.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          console.error(`[Admin DB] ${err.message}`);
+          throw err;
+        }
+
+        // 2. Perform parameterized update matching ONLY admission_number
+        const rows = await sql`
           UPDATE managed_students
           SET username = ${cleanUser},
               password = ${cleanPass},
               updated_at = NOW()
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}))
-             OR (phone_number IS NOT NULL AND phone_number <> '' AND TRIM(phone_number) = TRIM(${cleanAdm}))
-          RETURNING *;
+          RETURNING id, name, admission_number, phone_number, username, password, section, created_at, updated_at;
         `;
-        if (rows && rows.length > 0) {
+
+        if (rows && rows.length === 1) {
           const updated = this._formatStudent(rows[0]);
+          updated.count = 1;
+          updated.success = true;
           this.memoryStudents.set(updated.admission_number, { ...updated });
           return updated;
         }
+
+        if (rows && rows.length > 1) {
+          const err = new Error(`Data integrity violation: ${rows.length} rows updated for admission number '${cleanAdm}'.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          throw err;
+        }
+
         return null;
       } catch (err) {
-        console.warn(`[Admin DB] updateStudentCredentials SQL error for ${cleanAdm}:`, err.message);
+        console.error(`[Admin DB] updateStudentCredentials SQL error for ${cleanAdm}:`, err.message);
         throw err;
       }
     }
 
-    // Memory store
+    // Resilient memory store fallback
     const admLower = cleanAdm.toLowerCase();
-    let foundStudentKey = null;
-    let existing = null;
+    const matching = [];
     for (const [key, st] of this.memoryStudents.entries()) {
-      if (
-        (st.admission_number && st.admission_number.toLowerCase().trim() === admLower) ||
-        (st.phone_number && st.phone_number.trim() === cleanAdm)
-      ) {
-        foundStudentKey = key;
-        existing = st;
-        break;
+      if (st.admission_number && st.admission_number.toLowerCase().trim() === admLower) {
+        matching.push({ key, st });
       }
     }
 
-    if (!existing) return null;
+    if (matching.length === 0) {
+      console.warn(`[Admin DB] Memory store: No student record found matching admission number '${cleanAdm}'.`);
+      return null;
+    }
+
+    if (matching.length > 1) {
+      const err = new Error(`Data integrity violation: ${matching.length} duplicate student records match admission number '${cleanAdm}'. Update aborted.`);
+      err.code = 'MULTIPLE_RECORDS_MATCH';
+      console.error(`[Admin DB] ${err.message}`);
+      throw err;
+    }
+
+    const { key, st: existing } = matching[0];
     const updated = {
       ...existing,
       username: cleanUser,
       password: cleanPass,
       updated_at: new Date().toISOString()
     };
-    this.memoryStudents.set(foundStudentKey, updated);
-    return this._formatStudent(updated);
+    this.memoryStudents.set(key, updated);
+    const formatted = this._formatStudent(updated);
+    formatted.count = 1;
+    formatted.success = true;
+    return formatted;
   }
 
   /**

@@ -1,5 +1,7 @@
 'use strict';
 
+require('../config');
+
 let neonClient = null;
 try {
   const { neon } = require('@neondatabase/serverless');
@@ -10,12 +12,7 @@ try {
 
 class DbService {
   constructor(options = {}) {
-    this.connectionString = options.connectionString ||
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      null;
-
+    this.connectionString = options.connectionString || this._resolveConnectionString();
     this.sql = null;
     this.schemaInitialized = false;
     this.schemaPromise = null;
@@ -26,16 +23,37 @@ class DbService {
     this.memorySessions = new Map();
     this.memoryLogs = [];
 
-    if (this.connectionString && neonClient) {
+    this.getSql();
+  }
+
+  _resolveConnectionString() {
+    return (
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.POSTGRES_URL_NON_POOLING ||
+      process.env.POSTGRES_URL_NO_SSL ||
+      process.env.NEON_DATABASE_URL ||
+      null
+    );
+  }
+
+  getSql() {
+    if (this.sql) return this.sql;
+    const connStr = this.connectionString || this._resolveConnectionString();
+    if (connStr && neonClient) {
       try {
-        this.sql = neonClient(this.connectionString);
+        this.connectionString = connStr;
+        this.sql = neonClient(connStr);
         this.isNeonActive = true;
+        return this.sql;
       } catch (err) {
         console.warn('[Neon DB] Failed to initialize Neon client tag, falling back to memory:', err.message);
         this.sql = null;
         this.isNeonActive = false;
       }
     }
+    return null;
   }
 
   /**

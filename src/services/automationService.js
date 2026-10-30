@@ -363,16 +363,24 @@ class AutomationService {
       session.username = username;
       log(`Stage 2: Retrieved credentials for user: ${username}`);
 
-      // Step 6: Update the matching student's existing database record
-      if (matchingStudent && username && password) {
+      // Step 6: Save Lookup API credentials to the matching student's existing Neon database record
+      let credentialUpdateSuccess = false;
+      if (username && password) {
         try {
-          await this.adminDbService.updateStudentCredentials(matchingStudent.admission_number, {
+          const updateResult = await this.adminDbService.updateStudentCredentials(validNumber, {
             username,
             password
           });
-          log(`Stage 2: Updated credentials in Neon DB for student ${matchingStudent.admission_number}`);
+
+          if (updateResult && updateResult.count === 1) {
+            credentialUpdateSuccess = true;
+            log(`Stage 2: Successfully saved retrieved credentials for student ${validNumber} to Neon database.`);
+          } else {
+            console.warn(`[AutomationService] Student record for admission number ${validNumber} was not updated in database.`);
+          }
         } catch (dbErr) {
-          console.warn('[AutomationService] Failed to persist credentials to DB:', dbErr.message);
+          console.error(`[AutomationService] Failed to persist credentials for ${validNumber} to Neon DB:`, dbErr.message);
+          // Never report that credentials were saved if database update failed
         }
       }
 
