@@ -292,3 +292,43 @@ test('Admin API - Excel Upload Preview & Confirmation Two-Step Workflow', async 
     server.close();
   }
 });
+
+test('Admin API - Excel Upload accepts .xlxs extension variation', async () => {
+  const { server, url } = await startTestServer();
+  try {
+    const loginRes = await requestJson(`${url}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, { username: 'inexpert_trifler', password: 'om sai 0987654321' });
+    const token = loginRes.data.token;
+
+    const wb = xlsx.utils.book_new();
+    const wsData = [
+      ['Name', 'Admission No', 'Phone'],
+      ['Rahul Verma', '2024XLXS01', '9811119999']
+    ];
+    const ws = xlsx.utils.aoa_to_sheet(wsData);
+    xlsx.utils.book_append_sheet(wb, ws, 'Section A');
+    const excelBuffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // Filename ending with .xlxs
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    const multipartBody = buildMultipartBody(boundary, 'students_list.xlxs', excelBuffer);
+
+    const previewRes = await requestJson(`${url}/api/admin/upload-preview`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': multipartBody.length
+      }
+    }, multipartBody);
+
+    assert.equal(previewRes.statusCode, 200);
+    assert.equal(previewRes.data.success, true);
+    assert.ok(previewRes.data.previewToken);
+    assert.equal(previewRes.data.summary.validRecordsCount, 1);
+  } finally {
+    server.close();
+  }
+});

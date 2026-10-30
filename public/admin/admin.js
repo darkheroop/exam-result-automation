@@ -918,12 +918,14 @@
   }
 
   async function processSelectedExcelFile(file) {
-    const validExtensions = ['.xlsx', '.xls'];
-    const fileName = file.name || '';
-    const hasValidExt = validExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
+    const validExtensions = ['.xlsx', '.xlxs', '.xls', '.xlsm', '.xlsb', '.csv'];
+    const fileName = (file.name || '').toLowerCase();
+    const hasValidExt = validExtensions.some(ext => fileName.endsWith(ext));
+    const mime = (file.type || '').toLowerCase();
+    const isExcelMime = mime.includes('sheet') || mime.includes('excel') || mime.includes('csv');
 
-    if (!hasValidExt) {
-      showToast('Invalid file format. Please upload a valid .xlsx or .xls spreadsheet.', 'error');
+    if (!hasValidExt && !isExcelMime) {
+      showToast('Invalid file format. Please upload an Excel workbook (.xlsx, .xlxs, .xls).', 'error');
       return;
     }
 

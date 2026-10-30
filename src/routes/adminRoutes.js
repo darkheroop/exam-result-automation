@@ -9,16 +9,24 @@ const { defaultExcelImportService } = require('../services/excelImportService');
 
 const router = express.Router();
 
-// Multer memory storage configuration (10MB limit, .xlsx and .xls only)
+// Multer memory storage configuration (15MB limit, .xlsx, .xlxs, .xls, .xlsm, .csv)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    if (ext === '.xlsx' || ext === '.xls') {
+    const allowedExts = new Set(['.xlsx', '.xlxs', '.xls', '.xlsm', '.xlsb', '.csv']);
+    const mime = (file.mimetype || '').toLowerCase();
+    const isExcelMime =
+      mime.includes('spreadsheet') ||
+      mime.includes('excel') ||
+      mime.includes('csv') ||
+      mime === 'application/octet-stream';
+
+    if (allowedExts.has(ext) || isExcelMime) {
       return cb(null, true);
     }
-    return cb(new Error('Invalid file format. Only Excel files (.xlsx, .xls) are allowed.'));
+    return cb(new Error('Invalid file format. Please upload an Excel workbook (.xlsx, .xlxs, .xls).'));
   }
 });
 
