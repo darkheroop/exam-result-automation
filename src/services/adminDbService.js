@@ -1336,12 +1336,211 @@ class AdminDbService {
   }
 
   /**
+   * Clears only portal credentials for a verified student admission number (sets username = null, password = null, updated_at = NOW()).
+   * Strictly matches admission_number (never student name or phone number).
+   * Verifies exactly one record is updated and guards against duplicate corruption.
+   */
+  async clearStudentCredentials(admissionNumber) {
+    const cleanAdm = String(admissionNumber || '').trim();
+    if (!cleanAdm) throw new Error('Admission number is required to clear credentials');
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+
+        const checkRows = await sql`
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
+          WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}));
+        `;
+
+        if (!checkRows || checkRows.length === 0) {
+          console.warn(`[Admin DB] No student record found matching admission number '${cleanAdm}' to clear credentials.`);
+          return null;
+        }
+
+        if (checkRows.length > 1) {
+          const err = new Error(`Data integrity violation: ${checkRows.length} duplicate student records match admission number '${cleanAdm}'. Clear aborted.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          console.error(`[Admin DB] ${err.message}`);
+          throw err;
+        }
+
+        const rows = await sql`
+          UPDATE students
+          SET username = NULL,
+              password = NULL,
+              updated_at = NOW()
+          WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}))
+          RETURNING id, student_name, admission_number, phone_number, username, password, created_at, updated_at;
+        `;
+
+        if (rows && rows.length === 1) {
+          const updated = this._formatStudent(rows[0]);
+          updated.count = 1;
+          updated.success = true;
+          updated.cleared = true;
+          this.memoryStudents.set(updated.admission_number, { ...updated });
+          return updated;
+        }
+
+        if (rows && rows.length > 1) {
+          const err = new Error(`Data integrity violation: ${rows.length} rows updated for admission number '${cleanAdm}'.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          throw err;
+        }
+
+        return null;
+      } catch (err) {
+        console.error(`[Admin DB] clearStudentCredentials SQL error for ${cleanAdm}:`, err.message);
+        throw err;
+      }
+    }
+
+    // Memory store fallback
+    const admLower = cleanAdm.toLowerCase();
+    const matching = [];
+    for (const [key, st] of this.memoryStudents.entries()) {
+      if (st.admission_number && st.admission_number.toLowerCase().trim() === admLower) {
+        matching.push({ key, st });
+      }
+    }
+
+    if (matching.length === 0) {
+      console.warn(`[Admin DB] Memory store: No student record found matching admission number '${cleanAdm}'.`);
+      return null;
+    }
+
+    if (matching.length > 1) {
+      const err = new Error(`Data integrity violation: ${matching.length} duplicate student records match admission number '${cleanAdm}'. Clear aborted.`);
+      err.code = 'MULTIPLE_RECORDS_MATCH';
+      console.error(`[Admin DB] ${err.message}`);
+      throw err;
+    }
+
+    const { key, st: existing } = matching[0];
+    const updated = {
+      ...existing,
+      portal_username: null,
+      username: '',
+      portal_password: null,
+      password: '',
+      updated_at: new Date().toISOString()
+    };
+    this.memoryStudents.set(key, updated);
+    const formatted = this._formatStudent(updated);
+    formatted.count = 1;
+    formatted.success = true;
+    formatted.cleared = true;
+    return formatted;
+  }
+
+  /**
+   * Clears only portal credentials for a verified student phone number (sets username = null, password = null, updated_at = NOW()).
+   * Strictly matches phone_number (never student name or admission number).
+   * Verifies exactly one record is updated and guards against duplicate corruption.
+   */
+  async clearStudentCredentialsByPhone(phoneNumber) {
+    const cleanPhone = String(phoneNumber || '').trim();
+    if (!cleanPhone) throw new Error('Phone number is required to clear credentials');
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+
+        const checkRows = await sql`
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
+          WHERE TRIM(phone_number) = TRIM(${cleanPhone});
+        `;
+
+        if (!checkRows || checkRows.length === 0) {
+          console.warn(`[Admin DB] No student record found matching phone number '${cleanPhone}' to clear credentials.`);
+          return null;
+        }
+
+        if (checkRows.length > 1) {
+          const err = new Error(`Data integrity violation: ${checkRows.length} duplicate student records match phone number '${cleanPhone}'. Clear aborted.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          console.error(`[Admin DB] ${err.message}`);
+          throw err;
+        }
+
+        const rows = await sql`
+          UPDATE students
+          SET username = NULL,
+              password = NULL,
+              updated_at = NOW()
+          WHERE TRIM(phone_number) = TRIM(${cleanPhone})
+          RETURNING id, student_name, admission_number, phone_number, username, password, created_at, updated_at;
+        `;
+
+        if (rows && rows.length === 1) {
+          const updated = this._formatStudent(rows[0]);
+          updated.count = 1;
+          updated.success = true;
+          updated.cleared = true;
+          this.memoryStudents.set(updated.admission_number, { ...updated });
+          return updated;
+        }
+
+        if (rows && rows.length > 1) {
+          const err = new Error(`Data integrity violation: ${rows.length} rows updated for phone number '${cleanPhone}'.`);
+          err.code = 'MULTIPLE_RECORDS_MATCH';
+          throw err;
+        }
+
+        return null;
+      } catch (err) {
+        console.error(`[Admin DB] clearStudentCredentialsByPhone SQL error for ${cleanPhone}:`, err.message);
+        throw err;
+      }
+    }
+
+    // Memory store fallback
+    const matching = [];
+    for (const [key, st] of this.memoryStudents.entries()) {
+      if (st.phone_number && String(st.phone_number).trim() === cleanPhone) {
+        matching.push({ key, st });
+      }
+    }
+
+    if (matching.length === 0) {
+      console.warn(`[Admin DB] Memory store: No student record found matching phone number '${cleanPhone}'.`);
+      return null;
+    }
+
+    if (matching.length > 1) {
+      const err = new Error(`Data integrity violation: ${matching.length} duplicate student records match phone number '${cleanPhone}'. Clear aborted.`);
+      err.code = 'MULTIPLE_RECORDS_MATCH';
+      console.error(`[Admin DB] ${err.message}`);
+      throw err;
+    }
+
+    const { key, st: existing } = matching[0];
+    const updated = {
+      ...existing,
+      portal_username: null,
+      username: '',
+      portal_password: null,
+      password: '',
+      updated_at: new Date().toISOString()
+    };
+    this.memoryStudents.set(key, updated);
+    const formatted = this._formatStudent(updated);
+    formatted.count = 1;
+    formatted.success = true;
+    formatted.cleared = true;
+    return formatted;
+  }
+
+  /**
    * Seeds in-memory stores with baseline student records for unit testing and offline execution.
    */
   _seedMemoryStudents() {
     const seedStudents = [
-      { student_name: 'Ansh Singh', name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', portal_username: 'ansh14', username: 'ansh14', portal_password: 'gaqhf', password: 'gaqhf' },
-      { student_name: 'Anuj Kumar', name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', portal_username: 'anuj2', username: 'anuj2', portal_password: 'ldkdl', password: 'ldkdl' },
+      { student_name: 'Ansh Singh', name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', portal_username: null, username: '', portal_password: null, password: '' },
+      { student_name: 'Anuj Kumar', name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', portal_username: null, username: '', portal_password: null, password: '' },
       { student_name: 'Demo Student', name: 'Demo Student', admission_number: '0012345678', phone_number: '0012345678', section: 'CSE-A', portal_username: null, username: '', portal_password: null, password: '' }
     ];
 
@@ -1353,10 +1552,10 @@ class AdminDbService {
         admission_number: num,
         phone_number: num,
         section: 'CSE-A',
-        portal_username: 'mock_student',
-        username: 'mock_student',
-        portal_password: 'mock_password_123',
-        password: 'mock_password_123'
+        portal_username: null,
+        username: '',
+        portal_password: null,
+        password: ''
       });
     }
 

@@ -47,6 +47,7 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
     success: true,
     username: 'second_user_v2',
     password: 'second_pass_v2',
+    rejectUser: 'initial_user_v1',
     studentNumber: testPhone
   };
 
@@ -55,6 +56,14 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
     adminDbService: adminDb,
     mockMode: true,
     mockDelayMs: 5,
+    portalAuthHandler: async (user, pass) => {
+      if (user === currentMockCredentials.rejectUser) {
+        const err = new Error('Portal rejected old credentials');
+        err.code = 'AUTH_REJECTED';
+        throw err;
+      }
+      return { id: '101', mobile: testPhone };
+    },
     credentialService: {
       fetchCredentials: async (phone) => {
         if (currentMockCredentials.fail) {
@@ -87,7 +96,8 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
   currentMockCredentials = {
     success: true,
     username: 'third_user_v3',
-    password: 'third_pass_v3'
+    password: 'third_pass_v3',
+    rejectUser: 'second_user_v2'
   };
 
   const sess2 = sessionManager.createSession(testPhone);
@@ -107,7 +117,8 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
   currentMockCredentials = {
     success: true,
     username: 'third_user_v3',
-    password: 'third_pass_v3'
+    password: 'third_pass_v3',
+    rejectUser: null
   };
 
   const sess3 = sessionManager.createSession(testPhone);
@@ -130,57 +141,74 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
   assert.equal(directIdenticalResult.count, 1);
 
   // -------------------------------------------------------------------------
-  // 9. Simulate API failure and verify saved credentials remain unchanged
+  // 9. Simulate a non-login portal timeout and verify saved credentials remain unchanged
   // -------------------------------------------------------------------------
-  currentMockCredentials = {
-    fail: true
-  };
+  let portalTimeoutTriggered = false;
+  const timeoutAutomationService = new AutomationService({
+    sessionManager,
+    adminDbService: adminDb,
+    mockMode: true,
+    mockDelayMs: 5,
+    portalAuthHandler: async () => {
+      portalTimeoutTriggered = true;
+      const err = new Error('Portal connection timeout');
+      err.code = 'TIMEOUT_PORTAL_AUTH';
+      throw err;
+    },
+    credentialService: {
+      fetchCredentials: async () => {
+        throw new Error('API should not be called');
+      }
+    }
+  });
 
   const sessFail = sessionManager.createSession(testPhone);
   await assert.rejects(
     async () => {
-      await automationService.runWorkflow(sessFail.sessionId, sessFail.sessionToken, testPhone);
+      await timeoutAutomationService.runWorkflow(sessFail.sessionId, sessFail.sessionToken, testPhone);
     },
-    (err) => err.code === 'API_ERROR' || Boolean(err.message)
+    (err) => err.code === 'TIMEOUT_PORTAL_AUTH' || err.code === 'TIMEOUT'
   );
+  assert.equal(portalTimeoutTriggered, true);
 
   const studentAfterFail = await adminDb.getStudentByAdmissionNumber(testAdm);
-  assert.equal(studentAfterFail.username, 'third_user_v3', 'Credentials must not change on API failure');
-  assert.equal(studentAfterFail.password, 'third_pass_v3', 'Credentials must not change on API failure');
-  assert.equal(studentAfterFail.updated_at, v3UpdatedAt, 'updated_at must remain unchanged on API failure');
+  assert.equal(studentAfterFail.username, 'third_user_v3', 'Credentials must not change on non-login portal error');
+  assert.equal(studentAfterFail.password, 'third_pass_v3', 'Credentials must not change on non-login portal error');
+  assert.equal(studentAfterFail.updated_at, v3UpdatedAt, 'updated_at must remain unchanged on non-login portal error');
 
   // -------------------------------------------------------------------------
-  // 10. Simulate an incomplete API response and verify saved credentials remain unchanged
+  // 10. When saved credentials fail portal auth and API fails, old credentials are cleared
   // -------------------------------------------------------------------------
-  // Subcase A: Missing password
-  currentMockCredentials = {
-    success: true,
-    username: 'incomplete_user_no_pass',
-    password: ''
-  };
+  const clearOnFailAutomationService = new AutomationService({
+    sessionManager,
+    adminDbService: adminDb,
+    mockMode: true,
+    mockDelayMs: 5,
+    portalAuthHandler: async () => {
+      const err = new Error('Portal authentication failed: rejected credentials');
+      err.code = 'AUTH_REJECTED';
+      throw err;
+    },
+    credentialService: {
+      fetchCredentials: async () => {
+        const err = new Error('API failed to retrieve fresh credentials');
+        err.code = 'API_ERROR';
+        throw err;
+      }
+    }
+  });
 
-  const sessIncompleteA = sessionManager.createSession(testPhone);
-  await automationService.runWorkflow(sessIncompleteA.sessionId, sessIncompleteA.sessionToken, testPhone);
+  const sessClear = sessionManager.createSession(testPhone);
+  await assert.rejects(
+    async () => {
+      await clearOnFailAutomationService.runWorkflow(sessClear.sessionId, sessClear.sessionToken, testPhone);
+    },
+    (err) => err.code === 'AUTH_CREDENTIALS_FAILED' || Boolean(err.message)
+  );
 
-  const studentAfterIncompleteA = await adminDb.getStudentByAdmissionNumber(testAdm);
-  assert.equal(studentAfterIncompleteA.username, 'third_user_v3', 'Saved credentials must remain unchanged when password is empty');
-  assert.equal(studentAfterIncompleteA.password, 'third_pass_v3');
-  assert.equal(studentAfterIncompleteA.updated_at, v3UpdatedAt);
-
-  // Subcase B: Missing username
-  currentMockCredentials = {
-    success: true,
-    username: '',
-    password: 'incomplete_pass_no_user'
-  };
-
-  const sessIncompleteB = sessionManager.createSession(testPhone);
-  await automationService.runWorkflow(sessIncompleteB.sessionId, sessIncompleteB.sessionToken, testPhone);
-
-  const studentAfterIncompleteB = await adminDb.getStudentByAdmissionNumber(testAdm);
-  assert.equal(studentAfterIncompleteB.username, 'third_user_v3', 'Saved credentials must remain unchanged when username is empty');
-  assert.equal(studentAfterIncompleteB.password, 'third_pass_v3');
-  assert.equal(studentAfterIncompleteB.updated_at, v3UpdatedAt);
+  const studentAfterClear = await adminDb.getStudentByAdmissionNumber(testAdm);
+  assert.equal(studentAfterClear.username, '', 'Saved credentials must be cleared from database');
+  assert.equal(studentAfterClear.password, '', 'Saved credentials must be cleared from database');
 
   // -------------------------------------------------------------------------
   // 11. Searches with zero or multiple matching phone-number records do not update
@@ -256,6 +284,14 @@ test('Credential Comparison & Update - Full 14-Point Lifecycle Test', async (t) 
     adminDbService: adminDb,
     mockMode: true,
     mockDelayMs: 15,
+    portalAuthHandler: async (user, pass, phone) => {
+      if (user === 'alpha_init' || user === 'beta_init') {
+        const err = new Error('Portal rejected old initial credentials');
+        err.code = 'AUTH_REJECTED';
+        throw err;
+      }
+      return { id: phone, mobile: phone };
+    },
     credentialService: {
       fetchCredentials: async (phone) => {
         // Return phone-bound credentials

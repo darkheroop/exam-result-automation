@@ -93,6 +93,7 @@ class AutomationService {
     this.credentialService = options.credentialService || defaultCredentialService;
     this.dbService = options.dbService || defaultDbService;
     this.adminDbService = options.adminDbService || defaultAdminDbService;
+    this.portalAuthHandler = options.portalAuthHandler || null;
     this.maxConcurrentWorkers = options.maxConcurrentWorkers || config.maxConcurrentWorkers || 10;
     this.maxQueueSize = options.maxQueueSize || config.maxQueueSize || 200;
     this.queueTimeoutMs = options.queueTimeoutMs || config.queueTimeoutMs || 120000;
@@ -233,6 +234,89 @@ class AutomationService {
   }
 
   /**
+   * Helper to determine whether an error represents an explicit portal authentication rejection
+   * (as opposed to timeouts, network dropouts, portal downtime, or marksheet extraction issues).
+   */
+  isPortalAuthFailure(err) {
+    if (!err) return false;
+    const code = String(err.code || '').toUpperCase();
+    const msg = String(err.message || '').toUpperCase();
+    return (
+      code === 'AUTH_REJECTED' ||
+      code === 'AUTH_ERROR' ||
+      code === 'STUDENT_IDENTITY_MISMATCH' ||
+      code === 'INVALID_CREDENTIALS' ||
+      code === 'AUTH_CREDENTIALS_FAILED' ||
+      msg.includes('AUTHENTICATION FAILED') ||
+      msg.includes('REJECTED CREDENTIALS') ||
+      msg.includes('INVALID USERNAME OR PASSWORD')
+    );
+  }
+
+  /**
+   * Attempts direct portal authentication via GetUserAuthenticatedData.
+   * Supports pluggable portalAuthHandler for unit and scenario testing.
+   */
+  async attemptPortalAuthentication(username, password, validNumber, session, log) {
+    this.sessionManager.updateProgress(session.sessionId, 4, 'Authenticating session...', 60);
+
+    if (typeof this.portalAuthHandler === 'function') {
+      return await this.portalAuthHandler(username, password, validNumber);
+    }
+
+    if (this.mockMode || process.env.MOCK_AUTOMATION === 'true') {
+      log(`Stage 4: Authenticated user ${username} in mock mode.`);
+      return {
+        id: '99999',
+        mobile: validNumber,
+        firstName: 'Mock',
+        lastName: 'Student',
+        classData: []
+      };
+    }
+
+    const md5Password = crypto.createHash('md5').update(password).digest('hex');
+    const authPayload = JSON.stringify({
+      username,
+      password: md5Password,
+      authMethod: 'online'
+    });
+
+    const portalAuthUrl = `https://edunova.abes.ac.in/sims-services/digitalsims/?r=api/v1/User/GetUserAuthenticatedData&data=${encodeURIComponent(authPayload)}`;
+    log(`Stage 4: Authenticating user ${username} via GetUserAuthenticatedData...`);
+
+    const authResponse = await withTimeout(
+      fetchPortalJson(portalAuthUrl, { hash: 'trr36pdthb9xbhcppyqkgbpkq' }, config.authCompletionTimeoutMs || 15000),
+      (config.authCompletionTimeoutMs || 15000) + 2000,
+      'Portal Direct Authentication',
+      'TIMEOUT_PORTAL_AUTH'
+    );
+
+    const respStatus = authResponse?.collection?.response?.responseStatus;
+    const userData = authResponse?.collection?.response?.userData;
+
+    if (respStatus !== 'SUCCESS' || !userData || userData === 'FALSE' || typeof userData !== 'object') {
+      const errorMsg = authResponse?.collection?.response?.responseMsg || 'Portal authentication rejected credentials.';
+      const authErr = new Error(`Authentication failed: ${errorMsg}`);
+      authErr.code = 'AUTH_REJECTED';
+      throw authErr;
+    }
+
+    const authenticatedStudentMobile = String(userData.mobile || '').trim();
+    if (authenticatedStudentMobile !== validNumber) {
+      const identityErr = new Error(`Student identity mismatch: authenticated account (${authenticatedStudentMobile}) does not match requested student (${validNumber}).`);
+      identityErr.code = 'STUDENT_IDENTITY_MISMATCH';
+      throw identityErr;
+    }
+
+    const loggedInUsrId = String(userData.id);
+    const studentFullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || username;
+    log(`Stage 4: Portal authentication confirmed for ${studentFullName} (User ID: ${loggedInUsrId}, Mobile: ${authenticatedStudentMobile})`);
+
+    return userData;
+  }
+
+  /**
    * High-Performance Direct Portal API Workflow:
    * 1. Retrieve authorized credentials from backend lookup.
    * 2. Authenticate directly via GetUserAuthenticatedData using MD5 password.
@@ -270,8 +354,8 @@ class AutomationService {
           admission_number: validNumber,
           phone_number: validNumber,
           section: 'CSE-A',
-          username: `user_${validNumber}`,
-          password: 'mock_password'
+          username: '',
+          password: ''
         };
       } else if (!matchingStudent && (
         validNumber === '8887416471' ||
@@ -285,8 +369,8 @@ class AutomationService {
           admission_number: validNumber,
           phone_number: validNumber,
           section: 'CSE-A',
-          username: validNumber === '8887416471' ? 'ansh14' : '',
-          password: validNumber === '8887416471' ? 'gaqhf' : ''
+          username: '',
+          password: ''
         };
       }
 
@@ -297,86 +381,177 @@ class AutomationService {
         throw notFoundErr;
       }
 
-      const cached = await this.dbService.getCachedResult(validNumber);
+      // Check whether record already contains both username and password
+      const dbUsername = String(matchingStudent?.username || matchingStudent?.portal_username || '').trim();
+      const dbPassword = String(matchingStudent?.password || matchingStudent?.portal_password || '').trim();
+      const hasDbCredentials = Boolean(dbUsername && dbPassword);
 
-      // Stage 2: Retrieve authorized credentials from backend APIs with timeout
-      this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
-      let credentials;
-      try {
-        credentials = await withTimeout(
-          this.credentialService.fetchCredentials(validNumber),
-          config.credentialLookupTimeoutMs || 15000,
-          'Credential Lookup',
-          'TIMEOUT_CREDENTIALS'
-        );
-      } catch (credErr) {
-        if (credErr.code === 'STUDENT_NOT_FOUND' || credErr.statusCode === 404) {
-          const notFoundErr = new Error(credErr.message || `Student not found for identifier ${validNumber}.`);
-          notFoundErr.code = 'NOT_FOUND';
-          notFoundErr.statusCode = 404;
-          throw notFoundErr;
-        }
-        if (credErr.name === 'TimeoutError' || credErr.code === 'TIMEOUT_CREDENTIALS' || credErr.code === 'API_TIMEOUT') {
-          const timeoutErr = new Error(credErr.message || 'Student Lookup API request timed out.');
-          timeoutErr.code = 'TIMEOUT';
-          throw timeoutErr;
-        }
-        if (credErr.code === 'API_UNAVAILABLE' || credErr.code === 'ECONNREFUSED' || credErr.code === 'CONNECTION_REFUSED' || credErr.message?.toLowerCase().includes('connection refused')) {
-          if (!credErr.code) credErr.code = 'NETWORK_ERROR';
-          throw credErr;
-        }
-        const apiErr = new Error(credErr.message || 'Credential lookup API returned an error response.');
-        apiErr.code = credErr.code || 'API_ERROR';
-        throw apiErr;
-      }
+      let activeUsername = null;
+      let activePassword = null;
+      let userData = null;
 
-      if (credentials.studentNumber && credentials.studentNumber !== validNumber) {
-        const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${credentials.studentNumber}, expected ${validNumber}`);
-        mismatchErr.code = 'CREDENTIAL_STUDENT_MISMATCH';
-        throw mismatchErr;
-      }
+      if (hasDbCredentials) {
+        // =====================================================================
+        // CASE 1: Credentials already exist in the database
+        // =====================================================================
+        log(`Stage 2: Found saved credentials in database for student (${validNumber}). Using database credentials first...`);
+        activeUsername = dbUsername;
+        activePassword = dbPassword;
+        session.username = activeUsername;
 
-      const username = credentials.username;
-      const password = credentials.password;
-      session.username = username;
-      log(`Stage 2: Retrieved credentials for user: ${username}`);
-
-      // Step 6: Save Lookup API credentials to the matching student's existing Neon database record
-      // The credential matching key MUST BE THE PHONE NUMBER ENTERED BY THE NORMAL USER DURING THE PUBLIC RESULT SEARCH.
-      // It must NOT use the admission number to match the student record.
-      let credentialUpdateSuccess = false;
-      if (username && password) {
         try {
-          const updateFn = typeof this.adminDbService.updateStudentCredentialsByPhone === 'function'
-            ? this.adminDbService.updateStudentCredentialsByPhone.bind(this.adminDbService)
-            : this.adminDbService.updateStudentCredentials.bind(this.adminDbService);
+          // 1. Attempt student portal login using saved credentials
+          this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
+          userData = await this.attemptPortalAuthentication(activeUsername, activePassword, validNumber, session, log);
+          log(`Stage 4: Saved database credentials succeeded for user ${activeUsername}. Credential lookup API bypassed.`);
+        } catch (authErr) {
+          // If the error is NOT an explicit authentication failure, preserve credentials and re-throw
+          if (!this.isPortalAuthFailure(authErr)) {
+            log(`Stage 4: Portal returned non-authentication failure (${authErr.code || authErr.message}). Preserving saved database credentials.`);
+            throw authErr;
+          }
 
-          const updateResult = await updateFn(validNumber, {
-            portal_username: username,
-            username,
-            portal_password: password,
-            password
+          // 4. Portal explicitly rejected saved credentials!
+          log(`Stage 4: Portal rejected saved database credentials (${authErr.message}). Calling fallback credential lookup API...`);
+          this.sessionManager.updateProgress(sessionId, 2, 'Saved credentials rejected. Retrieving fresh credentials...', 30);
+
+          let freshCreds;
+          try {
+            freshCreds = await withTimeout(
+              this.credentialService.fetchCredentials(validNumber),
+              config.credentialLookupTimeoutMs || 15000,
+              'Credential Lookup Fallback',
+              'TIMEOUT_CREDENTIALS'
+            );
+          } catch (apiErr) {
+            log(`Stage 2: Credential lookup API failed after saved credentials rejected: ${apiErr.message}. Clearing saved database credentials.`);
+            try {
+              await this.adminDbService.clearStudentCredentialsByPhone(validNumber);
+            } catch (clearErr) {
+              console.error(`[AutomationService] Error clearing credentials for phone ${validNumber}:`, clearErr.message);
+            }
+            const failErr = new Error(`Portal credentials rejected and fresh credentials could not be retrieved from lookup API: ${apiErr.message}`);
+            failErr.code = 'AUTH_CREDENTIALS_FAILED';
+            failErr.originalError = apiErr;
+            throw failErr;
+          }
+
+          const freshUser = String(freshCreds?.username || freshCreds?.portal_username || '').trim();
+          const freshPass = String(freshCreds?.password || freshCreds?.portal_password || '').trim();
+
+          if (!freshUser || !freshPass) {
+            log(`Stage 2: Lookup API returned incomplete credentials after saved credentials rejected. Clearing saved database credentials.`);
+            try {
+              await this.adminDbService.clearStudentCredentialsByPhone(validNumber);
+            } catch (clearErr) {
+              console.error(`[AutomationService] Error clearing credentials for phone ${validNumber}:`, clearErr.message);
+            }
+            const incErr = new Error('Portal rejected saved credentials and lookup API returned incomplete credentials.');
+            incErr.code = 'INCOMPLETE_CREDENTIAL_DATA';
+            throw incErr;
+          }
+
+          if (freshCreds.studentNumber && String(freshCreds.studentNumber).trim() !== validNumber) {
+            log(`Stage 2: Retrieved credentials belong to different student. Clearing saved database credentials.`);
+            try {
+              await this.adminDbService.clearStudentCredentialsByPhone(validNumber);
+            } catch (clearErr) {}
+            const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${freshCreds.studentNumber}, expected ${validNumber}`);
+            mismatchErr.code = 'CREDENTIAL_STUDENT_MISMATCH';
+            throw mismatchErr;
+          }
+
+          // Update database record with fresh credentials
+          log(`Stage 2: Updating student database record with fresh credentials for user ${freshUser}...`);
+          await this.adminDbService.updateStudentCredentialsByPhone(validNumber, {
+            username: freshUser,
+            password: freshPass
           });
 
-          if (updateResult && updateResult.count === 1) {
-            credentialUpdateSuccess = true;
-            if (updateResult.updated) {
-              log(`Stage 2: Successfully saved retrieved credentials for student with phone ${validNumber} to Neon database.`);
-            } else {
-              log(`Stage 2: Credentials identical for student with phone ${validNumber}; existing database record preserved without update.`);
-            }
-          } else {
-            console.warn(`[AutomationService] Student record for phone number ${validNumber} was not updated in database.`);
-          }
-        } catch (dbErr) {
-          console.error(`[AutomationService] Failed to persist credentials for phone ${validNumber} to Neon DB:`, dbErr.message);
-          // Never report that credentials were saved if database update failed
+          activeUsername = freshUser;
+          activePassword = freshPass;
+          session.username = activeUsername;
+
+          // Retry portal login using newly returned credentials
+          log(`Stage 4: Retrying portal login with newly retrieved credentials for user ${activeUsername}...`);
+          this.sessionManager.updateProgress(sessionId, 4, 'Retrying portal authentication with fresh credentials...', 60);
+          userData = await this.attemptPortalAuthentication(activeUsername, activePassword, validNumber, session, log);
+          log(`Stage 4: Portal authentication retry succeeded for user ${activeUsername}.`);
         }
+      } else {
+        // =====================================================================
+        // CASE 2: Credentials do not exist or are incomplete in database
+        // =====================================================================
+        log(`Stage 2: No valid credentials saved in database for phone ${validNumber}. Calling credential lookup API immediately...`);
+        this.sessionManager.updateProgress(sessionId, 2, 'Retrieving authorized credentials...', 30);
+
+        let initialCreds;
+        try {
+          initialCreds = await withTimeout(
+            this.credentialService.fetchCredentials(validNumber),
+            config.credentialLookupTimeoutMs || 15000,
+            'Credential Lookup',
+            'TIMEOUT_CREDENTIALS'
+          );
+        } catch (credErr) {
+          if (credErr.code === 'STUDENT_NOT_FOUND' || credErr.statusCode === 404) {
+            const notFoundErr = new Error(credErr.message || `Student not found for identifier ${validNumber}.`);
+            notFoundErr.code = 'NOT_FOUND';
+            notFoundErr.statusCode = 404;
+            throw notFoundErr;
+          }
+          if (credErr.name === 'TimeoutError' || credErr.code === 'TIMEOUT_CREDENTIALS' || credErr.code === 'API_TIMEOUT') {
+            const timeoutErr = new Error(credErr.message || 'Student Lookup API request timed out.');
+            timeoutErr.code = 'TIMEOUT';
+            throw timeoutErr;
+          }
+          if (credErr.code === 'API_UNAVAILABLE' || credErr.code === 'ECONNREFUSED' || credErr.code === 'CONNECTION_REFUSED' || credErr.message?.toLowerCase().includes('connection refused')) {
+            if (!credErr.code) credErr.code = 'NETWORK_ERROR';
+            throw credErr;
+          }
+          const apiErr = new Error(credErr.message || 'Credential lookup API returned an error response.');
+          apiErr.code = credErr.code || 'API_ERROR';
+          throw apiErr;
+        }
+
+        const newUser = String(initialCreds?.username || initialCreds?.portal_username || '').trim();
+        const newPass = String(initialCreds?.password || initialCreds?.portal_password || '').trim();
+
+        if (!newUser || !newPass) {
+          log(`Stage 2: Lookup API did not return complete credentials. Database fields kept empty.`);
+          const incErr = new Error('Credential lookup API returned incomplete credentials.');
+          incErr.code = 'INCOMPLETE_CREDENTIAL_DATA';
+          throw incErr;
+        }
+
+        if (initialCreds.studentNumber && String(initialCreds.studentNumber).trim() !== validNumber) {
+          const mismatchErr = new Error(`Security mismatch: retrieved credentials belong to ${initialCreds.studentNumber}, expected ${validNumber}`);
+          mismatchErr.code = 'CREDENTIAL_STUDENT_MISMATCH';
+          throw mismatchErr;
+        }
+
+        log(`Stage 2: Saving retrieved credentials for user ${newUser} to student database record...`);
+        try {
+          await this.adminDbService.updateStudentCredentialsByPhone(validNumber, {
+            username: newUser,
+            password: newPass
+          });
+        } catch (dbErr) {
+          console.error(`[AutomationService] Failed to persist credentials for phone ${validNumber}:`, dbErr.message);
+        }
+
+        activeUsername = newUser;
+        activePassword = newPass;
+        session.username = activeUsername;
+
+        this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
+        userData = await this.attemptPortalAuthentication(activeUsername, activePassword, validNumber, session, log);
       }
 
-      // If cached marksheet is already available now that credentials are saved, serve directly
+      // Check cached result: if cached marksheet exists in DB, serve directly
+      const cached = await this.dbService.getCachedResult(validNumber);
       if (cached) {
-        log(`Cache hit: Serving student result from Neon DB cache after persisting credentials for ${validNumber}`);
+        log(`Cache hit: Serving student result from Neon DB cache after verified authentication for ${validNumber}`);
         session.resultData = cached;
         session.examSummary = {
           title: session.resultData?.institution?.headerTitle || 'ABES Engineering College : Annual Result',
@@ -404,12 +579,6 @@ class AutomationService {
       // Fast mock mode branch for load / capacity / unit testing
       if (this.mockMode || process.env.MOCK_AUTOMATION === 'true') {
         log(`Executing in mock mode for load/capacity testing: student ${validNumber}`);
-        this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-        await new Promise(r => setTimeout(r, this.mockDelayMs));
-
-        this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
-        await new Promise(r => setTimeout(r, this.mockDelayMs));
-
         this.sessionManager.updateProgress(sessionId, 5, 'Navigating to Annual Examination results...', 75);
         await new Promise(r => setTimeout(r, this.mockDelayMs));
 
@@ -418,7 +587,7 @@ class AutomationService {
 
         const mockResultData = {
           student: {
-            name: `Test Student ${validNumber}`,
+            name: matchingStudent?.name || matchingStudent?.student_name || `Test Student ${validNumber}`,
             studentNumber: validNumber,
             regnNo: validNumber,
             seatNo: `SEAT_${validNumber}`,
@@ -514,57 +683,11 @@ class AutomationService {
         return;
       }
 
-      // Stage 3: Connect to the educational portal
-      this.sessionManager.updateProgress(sessionId, 3, 'Connecting to the examination portal...', 45);
-      log('Stage 3: Preparing portal direct API client connection...');
-
-      // Stage 4: Authenticate with the educational portal
-      this.sessionManager.updateProgress(sessionId, 4, 'Authenticating session...', 60);
-
-      // Compute MD5 hash of the plaintext password
-      const md5Password = crypto.createHash('md5').update(password).digest('hex');
-      const authPayload = JSON.stringify({
-        username,
-        password: md5Password,
-        authMethod: 'online'
-      });
-
-      const portalAuthUrl = `https://edunova.abes.ac.in/sims-services/digitalsims/?r=api/v1/User/GetUserAuthenticatedData&data=${encodeURIComponent(authPayload)}`;
-      log(`Stage 4: Authenticating user ${username} via GetUserAuthenticatedData...`);
-
-      const authResponse = await withTimeout(
-        fetchPortalJson(portalAuthUrl, { hash: 'trr36pdthb9xbhcppyqkgbpkq' }, config.authCompletionTimeoutMs || 15000),
-        (config.authCompletionTimeoutMs || 15000) + 2000,
-        'Portal Direct Authentication',
-        'TIMEOUT_PORTAL_AUTH'
-      );
-
-      const respStatus = authResponse?.collection?.response?.responseStatus;
-      const userData = authResponse?.collection?.response?.userData;
-
-      if (respStatus !== 'SUCCESS' || !userData || userData === 'FALSE' || typeof userData !== 'object') {
-        const errorMsg = authResponse?.collection?.response?.responseMsg || 'Portal authentication rejected credentials.';
-        const authErr = new Error(`Authentication failed: ${errorMsg}`);
-        authErr.code = 'AUTH_REJECTED';
-        throw authErr;
-      }
-
-      // Strict User Identity Verification: verified mobile must match requested studentNumber
-      const authenticatedStudentMobile = String(userData.mobile || '').trim();
-      if (authenticatedStudentMobile !== validNumber) {
-        const identityErr = new Error(`Student identity mismatch: authenticated account (${authenticatedStudentMobile}) does not match requested student (${validNumber}).`);
-        identityErr.code = 'STUDENT_IDENTITY_MISMATCH';
-        throw identityErr;
-      }
-
-      const loggedInUsrId = String(userData.id);
-      const studentFullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || username;
-      log(`Stage 4: Portal authentication confirmed for ${studentFullName} (User ID: ${loggedInUsrId}, Mobile: ${authenticatedStudentMobile})`);
-
       // Stage 5: Prepare query parameters from userData.classData or default Year 1 mappings
       this.sessionManager.updateProgress(sessionId, 5, 'Querying examination records...', 75);
 
-      const classList = Array.isArray(userData.classData) ? userData.classData : [];
+      const loggedInUsrId = String(userData?.id || '');
+      const classList = Array.isArray(userData?.classData) ? userData.classData : [];
       const sem2Class = classList.find(c => String(c.mpId) === '2') ||
                         classList.find(c => (c.classShortName && c.classShortName.includes('FY-')) || c.academicYear === '2025');
       const sem1Class = classList.find(c => String(c.mpId) === '1') || sem2Class;
@@ -751,7 +874,7 @@ class AutomationService {
 
       if (c === 'NOT_FOUND' || c === 'STUDENT_NOT_FOUND') {
         resultStatus = 'NOT_FOUND';
-      } else if (c === 'AUTH_ERROR' || c === 'AUTH_REJECTED' || c === 'CREDENTIAL_STUDENT_MISMATCH' || c === 'STUDENT_IDENTITY_MISMATCH') {
+      } else if (c === 'AUTH_ERROR' || c === 'AUTH_REJECTED' || c === 'CREDENTIAL_STUDENT_MISMATCH' || c === 'STUDENT_IDENTITY_MISMATCH' || c === 'AUTH_CREDENTIALS_FAILED') {
         resultStatus = 'AUTH_ERROR';
       } else if (c === 'API_ERROR' || c === 'LOOKUP_FAILED' || c === 'API_AUTH_ERROR' || c === 'INCOMPLETE_CREDENTIAL_DATA') {
         resultStatus = 'API_ERROR';

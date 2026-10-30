@@ -100,8 +100,8 @@ test('Scenario 2: Normal user searches and the credential lookup API returns an 
     name: 'Aditi Rao',
     admission_number: '9876543210',
     phone_number: '9876543210',
-    username: 'aditi_orig',
-    password: 'aditi_orig_pass',
+    username: '',
+    password: '',
     section: 'CSE-B'
   });
 
@@ -133,8 +133,8 @@ test('Scenario 2: Normal user searches and the credential lookup API returns an 
 
   // Existing credentials must remain untouched (Scenario 9 check)
   const student = await adminDb.getStudentByAdmissionNumber('9876543210');
-  assert.equal(student.username, 'aditi_orig');
-  assert.equal(student.password, 'aditi_orig_pass');
+  assert.equal(student.username, '');
+  assert.equal(student.password, '');
 });
 
 test('Scenario 3: Normal user searches with an admission number that does not exist locally -> NOT_FOUND', async () => {
@@ -408,16 +408,19 @@ test('Scenario 8 & 9: Successful credentials appear in student card & failed API
   assert.equal(student.username, 'pers_user');
   assert.equal(student.password, 'pers_initial_password');
 
-  // 2. Subsequent search where API fails -> must NOT erase credentials
+  // 2. Subsequent search where portal encounters a non-login timeout -> must NOT erase credentials
   const failureService = new AutomationService({
     sessionManager,
     adminDbService: adminDb,
     mockMode: true,
+    portalAuthHandler: async () => {
+      const err = new Error('Portal temporarily unavailable');
+      err.code = 'TIMEOUT_PORTAL_AUTH';
+      throw err;
+    },
     credentialService: {
       fetchCredentials: async () => {
-        const err = new Error('API Outage');
-        err.code = 'API_ERROR';
-        throw err;
+        throw new Error('API should not be called on network error');
       }
     }
   });
@@ -435,6 +438,6 @@ test('Scenario 8 & 9: Successful credentials appear in student card & failed API
   // Verify search logs recorded both
   const logs = await adminDb.listSearchLogs();
   assert.equal(logs.total, 2);
-  assert.equal(logs.logs[0].result, 'API_ERROR'); // Newest first
+  assert.equal(logs.logs[0].result, 'TIMEOUT'); // Newest first
   assert.equal(logs.logs[1].result, 'SUCCESS');
 });

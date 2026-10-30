@@ -194,7 +194,12 @@ test('Save Lookup Credentials - Failed credential lookup preserves existing cred
   const automationService = new AutomationService({
     sessionManager,
     adminDbService: adminDb,
-    mockMode: false,
+    mockMode: true,
+    portalAuthHandler: async () => {
+      const err = new Error('Student Lookup API 500 server error');
+      err.code = 'TIMEOUT_PORTAL_AUTH';
+      throw err;
+    },
     credentialService: {
       fetchCredentials: async () => {
         const err = new Error('Student Lookup API 500 server error');
