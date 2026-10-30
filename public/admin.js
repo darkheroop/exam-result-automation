@@ -25,7 +25,7 @@
       search: '',
       section: '',
       credential: '',
-      sort: 'updated_desc'
+      sort: 'name_asc'
     },
     sections: [],
     stats: {
@@ -327,7 +327,14 @@
   }
 
   function switchTab(tabId, updateHash = true) {
-    const validTabs = ['overview', 'students', 'upload', 'search', 'logs'];
+    if (tabId === 'search') {
+      tabId = 'students';
+      setTimeout(() => {
+        const sInput = document.getElementById('student-search-input');
+        if (sInput) sInput.focus();
+      }, 50);
+    }
+    const validTabs = ['overview', 'students', 'upload', 'logs'];
     if (!validTabs.includes(tabId)) tabId = 'overview';
 
     state.activeTab = tabId;
@@ -358,7 +365,6 @@
         overview: 'Dashboard Overview',
         students: 'Student Management',
         upload: 'Excel Upload & Import',
-        search: 'Universal Search',
         logs: 'Search Activity Logs'
       };
       breadcrumb.textContent = titles[tabId] || 'Dashboard';
@@ -368,9 +374,6 @@
       loadDashboardStats();
     } else if (tabId === 'students') {
       loadStudents();
-    } else if (tabId === 'search') {
-      const universalInput = document.getElementById('universal-search-input');
-      if (universalInput) universalInput.focus();
     } else if (tabId === 'logs') {
       loadSearchLogs();
     }
@@ -2306,7 +2309,7 @@
     const submitStudentSearchBtn = document.getElementById('btn-student-search-submit');
     if (submitStudentSearchBtn) {
       submitStudentSearchBtn.addEventListener('click', () => {
-        submitStudentSearch();
+        loadStudents();
       });
     }
 

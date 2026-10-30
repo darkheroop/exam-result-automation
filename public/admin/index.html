@@ -66,14 +66,6 @@
           <span>Excel Upload & Import</span>
         </a>
 
-        <a href="#search" class="nav-link" data-tab="search" id="nav-tab-search">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <span>Universal Search</span>
-        </a>
-
         <a href="#logs" class="nav-link" data-tab="logs" id="nav-tab-logs">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -713,89 +705,7 @@
 
 
         <!-- ============================================================
-             VIEW 4: Universal Search
-             ============================================================ -->
-        <section id="view-search" class="tab-view">
-          <!-- Universal Search Hero Header -->
-          <div class="universal-search-hero">
-            <div class="universal-search-header">
-              <h2>Universal Student Intelligence Search</h2>
-              <p>Execute real-time queries across names, admission numbers, phone numbers, and portal credentials with instantaneous matching.</p>
-            </div>
-
-            <div class="universal-input-container">
-              <svg class="hero-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input 
-                type="text" 
-                id="universal-search-input" 
-                placeholder="Type name, admission no, phone, or username to search..." 
-                autocomplete="off"
-              >
-              <button type="button" id="universal-search-clear" class="universal-clear-btn" aria-label="Clear universal search">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-              <button type="button" id="btn-universal-search-submit" class="universal-submit-btn" title="Submit Search" aria-label="Submit search">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-            </div>
-
-            <div class="filter-chips-row">
-              <button type="button" class="filter-chip-btn active" data-field="all">All Fields</button>
-              <button type="button" class="filter-chip-btn" data-field="name">Name Only</button>
-              <button type="button" class="filter-chip-btn" data-field="adm">Admission No Only</button>
-              <button type="button" class="filter-chip-btn" data-field="phone">Phone Only</button>
-              <button type="button" class="filter-chip-btn" data-field="username">Username Only</button>
-            </div>
-          </div>
-
-          <!-- Search Results Section -->
-          <div class="search-results-bar">
-            <span id="universal-results-count" style="font-size: 0.85rem; font-weight: 600; color: var(--slate-600);">
-              Enter search query to begin lookup
-            </span>
-          </div>
-
-          <div class="table-card">
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Student Name</th>
-                    <th>Admission Number</th>
-                    <th>Phone Number</th>
-                    <th>Username</th>
-                    <th>Password</th>
-                    <th style="text-align: right;">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="universal-results-tbody">
-                  <!-- Populated dynamically via JS -->
-                </tbody>
-              </table>
-
-              <div id="universal-empty-state" class="table-empty-state">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <h4>Instantaneous record lookup</h4>
-                <p>Begin typing in the search bar above to query students across all sections.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-
-        <!-- ============================================================
-             VIEW 5: Search Activity Logs
+             VIEW 4: Search Activity Logs
              ============================================================ -->
         <section id="view-logs" class="tab-view">
           <div class="view-header">

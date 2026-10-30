@@ -228,7 +228,7 @@ class AdminDbService {
     const allowedSortFields = ['id', 'student_name', 'name', 'admission_number', 'phone_number', 'portal_username', 'username', 'section', 'created_at', 'updated_at'];
     let sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
     if (sortBy === 'name') sortField = 'student_name';
-    if (sortBy === 'username') sortField = 'portal_username';
+    if (sortBy === 'username') sortField = 'username';
     if (sortBy === 'adm') sortField = 'admission_number';
     if (sortBy === 'updated') sortField = 'updated_at';
     const sortDirection = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
@@ -840,48 +840,41 @@ class AdminDbService {
         const statsQuery = await sql`
           SELECT
             COUNT(*)::int AS total_students,
-            COUNT(DISTINCT section) FILTER (WHERE section IS NOT NULL AND section <> '')::int AS total_sections,
-            COUNT(*) FILTER (WHERE portal_username IS NOT NULL AND portal_username <> '')::int AS students_with_username,
-            COUNT(*) FILTER (WHERE portal_username IS NULL OR portal_username = '')::int AS students_without_username,
-            COUNT(*) FILTER (WHERE portal_password IS NOT NULL AND portal_password <> '')::int AS students_with_password,
-            COUNT(*) FILTER (WHERE portal_password IS NULL OR portal_password = '')::int AS students_without_password
+            0::int AS total_sections,
+            COUNT(*) FILTER (WHERE username IS NOT NULL AND username <> '')::int AS students_with_username,
+            COUNT(*) FILTER (WHERE username IS NULL OR username = '')::int AS students_without_username,
+            COUNT(*) FILTER (WHERE password IS NOT NULL AND password <> '')::int AS students_with_password,
+            COUNT(*) FILTER (WHERE password IS NULL OR password = '')::int AS students_without_password
           FROM students;
         `;
 
         const recentAdded = await sql`
-          SELECT id, student_name, admission_number, phone_number, section, created_at
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at
           FROM students
           ORDER BY id DESC
           LIMIT 5;
         `;
 
         const recentUpdated = await sql`
-          SELECT id, student_name, admission_number, phone_number, section, updated_at
+          SELECT id, student_name, admission_number, phone_number, username, password, updated_at
           FROM students
           ORDER BY updated_at DESC
           LIMIT 5;
         `;
 
-        const sectionRows = await sql`
-          SELECT
-            CASE WHEN section IS NULL OR section = '' THEN 'Unassigned' ELSE section END AS section,
-            COUNT(*)::int AS count
-          FROM students
-          GROUP BY section
-          ORDER BY count DESC;
-        `;
+        const sectionRows = [];
 
         const row = statsQuery[0] || {};
         return {
           totalStudents: row.total_students || 0,
-          totalSections: row.total_sections || 0,
+          totalSections: 0,
           studentsWithUsername: row.students_with_username || 0,
           studentsWithoutUsername: row.students_without_username || 0,
           studentsWithPassword: row.students_with_password || 0,
           studentsWithoutPassword: row.students_without_password || 0,
           recentlyAdded: recentAdded.map(s => this._formatStudent(s)),
           recentlyUpdated: recentUpdated.map(s => this._formatStudent(s)),
-          sectionBreakdown: sectionRows.map(r => ({ section: r.section, count: Number(r.count) }))
+          sectionBreakdown: []
         };
       } catch (err) {
         console.warn('[Admin DB] getDashboardStats error, falling back to memory stats:', err.message);

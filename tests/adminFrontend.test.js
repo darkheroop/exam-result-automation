@@ -47,7 +47,7 @@ test('Admin Frontend - index.html contains complete dashboard layout and require
   assert.ok(content.includes('Dashboard Overview'), 'Must have Dashboard Overview nav item');
   assert.ok(content.includes('Student Management'), 'Must have Student Management nav item');
   assert.ok(content.includes('Excel Upload & Import') || content.includes('Excel Upload'), 'Must have Excel Upload nav item');
-  assert.ok(content.includes('Universal Search'), 'Must have Universal Search nav item');
+  assert.ok(content.includes('Search Logs') || content.includes('Search Activity Logs'), 'Must have Search Logs nav item');
   assert.ok(content.includes('Sign Out') || content.includes('Logout'), 'Must have Logout item');
 
   // Top header elements
@@ -58,27 +58,25 @@ test('Admin Frontend - index.html contains complete dashboard layout and require
   // View 1: Dashboard Overview
   assert.ok(content.includes('id="view-overview"'), 'Must have overview view container');
   assert.ok(content.includes('Total Students'), 'Must have Total Students metric card');
-  assert.ok(content.includes('Total Sections'), 'Must have Total Sections metric card');
   assert.ok(content.includes('With Usernames') || content.includes('With Passwords'), 'Must have credential metrics');
-  assert.ok(content.includes('Enrollment by Section') || content.includes('section-chips'), 'Must have section breakdown component');
   assert.ok(content.includes('Recently Added Students'), 'Must have recently added table');
   assert.ok(content.includes('Recently Updated Students'), 'Must have recently updated table');
 
-  // View 2: Student Management
+  // View 2: Unified Student Management with Universal Search
   assert.ok(content.includes('id="view-students"'), 'Must have student management view');
   assert.ok(content.includes('student-search-input'), 'Must have search input');
-  assert.ok(content.includes('student-section-filter'), 'Must have section filter');
+  assert.ok(content.includes('student-credential-filter'), 'Must have credential filter');
+  assert.ok(content.includes('student-sort-filter'), 'Must have sort filter');
   assert.ok(content.includes('students-table'), 'Must have student management table');
   assert.ok(content.includes('Pagination') || content.includes('pagination-bar'), 'Must have pagination controls');
   assert.ok(content.includes('students-empty-state'), 'Must have empty state element');
 
-  // 7 Table Columns check
-  assert.ok(content.includes('Name'), 'Must have Name column');
+  // Table Columns check
+  assert.ok(content.includes('Student Name'), 'Must have Student Name column');
   assert.ok(content.includes('Admission Number'), 'Must have Admission Number column');
   assert.ok(content.includes('Phone Number'), 'Must have Phone Number column');
   assert.ok(content.includes('Username'), 'Must have Username column');
   assert.ok(content.includes('Password'), 'Must have Password column');
-  assert.ok(content.includes('Section'), 'Must have Section column');
   assert.ok(content.includes('Actions'), 'Must have Actions column');
 
   // View 3: Excel Upload & Import
@@ -89,13 +87,7 @@ test('Admin Frontend - index.html contains complete dashboard layout and require
   assert.ok(content.includes('btn-confirm-import'), 'Must have confirm import button');
   assert.ok(content.includes('import-result-card'), 'Must have import result summary card');
 
-  // View 4: Universal Search
-  assert.ok(content.includes('id="view-search"'), 'Must have universal search view');
-  assert.ok(content.includes('universal-search-input'), 'Must have universal search input');
-  assert.ok(content.includes('filter-chip-btn') || content.includes('filter-chips'), 'Must have search filter chips');
-  assert.ok(content.includes('universal-results-tbody'), 'Must have universal search results table');
-
-  // View 5: Search Logs
+  // View 4: Search Logs
   assert.ok(content.includes('id="view-logs"'), 'Must have search logs view');
   assert.ok(content.includes('search-logs-table'), 'Must have search logs table');
   assert.ok(content.includes('log-result-filter'), 'Must have search logs result filter');
