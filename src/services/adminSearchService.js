@@ -19,13 +19,13 @@ class AdminSearchService {
    */
   resolveSearchType(query, explicitType) {
     const cleanType = String(explicitType || '').trim().toLowerCase();
-    if (cleanType === 'adm' || cleanType === 'admission number' || cleanType === 'admission_number') {
+    if (cleanType === 'adm' || cleanType === 'admission number' || cleanType === 'admission_number' || cleanType === 'admissionnumber') {
       return 'Admission Number';
     }
     if (cleanType === 'name') {
       return 'Name';
     }
-    if (cleanType === 'phone' || cleanType === 'phone number' || cleanType === 'phone_number') {
+    if (cleanType === 'phone' || cleanType === 'phone number' || cleanType === 'phone_number' || cleanType === 'phonenumber') {
       return 'Phone Number';
     }
     if (cleanType === 'username') {
@@ -33,17 +33,20 @@ class AdminSearchService {
     }
 
     const q = String(query || '').trim();
-    // 10-digit starting with 6-9 is typically a phone number unless explicitly searched as admission
-    if (/^[6-9]\d{9}$/.test(q)) {
-      return 'Phone Number';
-    }
-    // Admission numbers: e.g. 2023CS001, 2021..., 10-digit enrollment starting with 20...
-    if (/^20\d{2}[A-Za-z0-9_-]{3,}$/.test(q) || /^\d{10}$/.test(q)) {
+    // Alphanumeric admission numbers: e.g. 2023CS001, 2021...
+    if (/^20\d{2}[A-Za-z0-9_-]{3,}$/.test(q)) {
       return 'Admission Number';
     }
     // Name with spaces or alphabets
     if (/^[A-Za-z\s.]{3,}$/.test(q) && q.includes(' ')) {
       return 'Name';
+    }
+    // 10-digit starting with 6-9 is typically a phone number unless matched to student admission
+    if (/^[6-9]\d{9}$/.test(q)) {
+      return 'Phone Number';
+    }
+    if (/^\d{10}$/.test(q)) {
+      return 'Admission Number';
     }
     return 'Admission Number';
   }
@@ -141,7 +144,18 @@ class AdminSearchService {
     }
 
     const cleanQuery = rawQuery.trim();
-    const effectiveType = this.resolveSearchType(cleanQuery, searchType);
+    let effectiveType = this.resolveSearchType(cleanQuery, searchType);
+
+    // If searchType was not explicitly pinned to Phone Number, but a student exists locally with this admission_number,
+    // ensure effectiveType resolves to 'Admission Number' so automatic credential lookup triggers.
+    const cleanSearchType = String(searchType || '').trim().toLowerCase();
+    const isExplicitPhone = cleanSearchType === 'phone' || cleanSearchType === 'phone number' || cleanSearchType === 'phone_number' || cleanSearchType === 'phonenumber';
+    if (!isExplicitPhone && effectiveType === 'Phone Number') {
+      const studentByAdm = await this.dbService.getStudentByAdmissionNumber(cleanQuery);
+      if (studentByAdm) {
+        effectiveType = 'Admission Number';
+      }
+    }
 
     try {
       // -------------------------------------------------------------

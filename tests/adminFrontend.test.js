@@ -173,6 +173,26 @@ test('Admin Frontend - admin.js implements complete SPA features and API endpoin
   assert.ok(js.includes('/api/admin/search-logs'), 'Must query /api/admin/search-logs');
   assert.ok(js.includes('loadSearchLogs'), 'Must implement loadSearchLogs');
   assert.ok(js.includes('/api/admin/search'), 'Must query /api/admin/search');
+
+  // Filter chips support admissionNumber and phoneNumber
+  assert.ok(js.includes('admissionNumber') && js.includes('phoneNumber'), 'Universal search must support camelCase filter keys');
+});
+
+test('Admin Frontend - admin.js is valid JavaScript without syntax errors', () => {
+  const vm = require('vm');
+  const js = fs.readFileSync(adminJsPath, 'utf8');
+  assert.doesNotThrow(() => {
+    new vm.Script(js);
+  }, 'public/admin/admin.js must have valid syntax without errors');
+
+  const rootAdminJs = path.resolve(__dirname, '../public/admin.js');
+  if (fs.existsSync(rootAdminJs)) {
+    const rootJs = fs.readFileSync(rootAdminJs, 'utf8');
+    assert.doesNotThrow(() => {
+      new vm.Script(rootJs);
+    }, 'public/admin.js must have valid syntax without errors');
+    assert.equal(rootJs, js, 'public/admin.js and public/admin/admin.js must be in exact sync');
+  }
 });
 
 test('Admin Frontend - Integrity check: public/index.html and styles.css remain untouched', () => {

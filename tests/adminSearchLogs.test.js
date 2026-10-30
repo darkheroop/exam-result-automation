@@ -286,6 +286,42 @@ test('AdminSearchService - Handles empty and invalid search inputs', async () =>
   assert.equal(logs.logs[0].result, 'INVALID_INPUT');
 });
 
+test('AdminSearchService - Handles camelCase searchType and intelligent 10-digit admission resolution', async () => {
+  const db = new AdminDbService();
+  await db.upsertStudent({
+    name: 'Kavita Joshi',
+    admission_number: '9599099932',
+    phone_number: '9876543210',
+    username: '',
+    password: '',
+    section: 'CSE-D'
+  });
+
+  let credentialApiCalled = false;
+  const searchService = new AdminSearchService({
+    dbService: db,
+    mockMode: true,
+    mockCredentialHandler: async () => {
+      credentialApiCalled = true;
+      return { status: 'SUCCESS', username: 'kavita95', password: 'pass_kavita_123' };
+    }
+  });
+
+  // 1. camelCase 'admissionNumber' forces Admission Number
+  assert.equal(searchService.resolveSearchType('9599099932', 'admissionNumber'), 'Admission Number');
+  assert.equal(searchService.resolveSearchType('9876543210', 'phoneNumber'), 'Phone Number');
+
+  // 2. Querying 10-digit '9599099932' with 'all' resolves to Admission Number because student exists by adm
+  const res = await searchService.executeSearch({
+    query: '9599099932',
+    searchType: 'all'
+  });
+
+  assert.equal(credentialApiCalled, true);
+  assert.equal(res.result, 'SUCCESS');
+  assert.equal(res.students[0].username, 'kavita95');
+});
+
 test('Admin API - Search and Search-Logs HTTP Endpoints with Auth', async () => {
   const http = require('node:http');
   const app = require('../src/app');

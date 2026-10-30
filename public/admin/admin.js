@@ -61,6 +61,7 @@
     },
     pendingUpload: null,
     searchDebounceTimer: null,
+    logSearchDebounceTimer: null,
     searchRequestId: 0,
     universalSearchFilter: 'all',
     deleteTargetId: null
@@ -236,7 +237,12 @@
         return null;
       }
 
-      const data = await response.json();
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
       return { ok: response.ok, status: response.status, data };
     } catch (err) {
       console.error(`[Admin API Error] ${endpoint}:`, err);
@@ -248,12 +254,6 @@
   // Authentication & Session Guard
   // =========================================================================
   async function checkAuthSession() {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      window.location.href = '/admin/login';
-      return false;
-    }
-
     const res = await apiFetch('/api/admin/me');
     if (res && res.ok && res.data && res.data.user) {
       state.currentUser = res.data.user;
@@ -261,7 +261,7 @@
       return true;
     }
 
-    // Invalid session token
+    // Invalid session token or cookie
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     window.location.href = '/admin/login';
@@ -1708,7 +1708,7 @@
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
           executeUniversalSearch(val);
-        }, 300);
+        }, 250);
       });
 
       searchInput.addEventListener('keydown', (e) => {
@@ -1782,8 +1782,8 @@
       const q = query.toLowerCase();
       results = results.filter(s => {
         if (field === 'name') return (s.name || '').toLowerCase().includes(q);
-        if (field === 'adm') return (s.admission_number || s.admissionNumber || '').toLowerCase().includes(q);
-        if (field === 'phone') return (s.phone_number || s.phone || '').toLowerCase().includes(q);
+        if (field === 'adm' || field === 'admissionNumber') return (s.admission_number || s.admissionNumber || '').toLowerCase().includes(q);
+        if (field === 'phone' || field === 'phoneNumber') return (s.phone_number || s.phone || '').toLowerCase().includes(q);
         if (field === 'username') return (s.username || '').toLowerCase().includes(q);
         return true;
       });
@@ -1916,9 +1916,13 @@
   function highlightMatch(text, query) {
     if (!text || !query) return escapeHtml(text || '—');
     const safeText = String(text);
-    const safeQuery = escapeRegExp(query);
-    const regex = new RegExp(`(${safeQuery})`, 'gi');
-    return escapeHtml(safeText).replace(regex, '<mark class="search-highlight">$1</mark>');
+    const safeQuery = escapeRegExp(escapeHtml(query));
+    try {
+      const regex = new RegExp(`(${safeQuery})`, 'gi');
+      return escapeHtml(safeText).replace(regex, '<mark class="search-highlight">$1</mark>');
+    } catch {
+      return escapeHtml(safeText);
+    }
   }
 
   // =========================================================================
@@ -2139,7 +2143,7 @@
       method: 'POST',
       body: {
         query,
-        searchType: 'Admission Number'
+        searchType: ''
       }
     });
 
@@ -2172,7 +2176,7 @@
     }
 
     const thisReqId = ++state.searchRequestId;
-    const searchType = state.universalSearchFilter;
+    const searchType = state.universalSearchFilter === 'all' ? '' : state.universalSearchFilter;
 
     const res = await apiFetch('/api/admin/search', {
       method: 'POST',
@@ -2266,9 +2270,8 @@
         clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
           loadStudents();
-        }, 300);
+        }, 250);
       });
-    }
 
       studentSearchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -2413,10 +2416,10 @@
         state.logPagination.page = 1;
         if (logSearchClearBtn) logSearchClearBtn.style.display = val ? 'inline-flex' : 'none';
 
-        clearTimeout(state.searchDebounceTimer);
-        state.searchDebounceTimer = setTimeout(() => {
+        clearTimeout(state.logSearchDebounceTimer);
+        state.logSearchDebounceTimer = setTimeout(() => {
           loadSearchLogs();
-        }, 300);
+        }, 250);
       });
     }
 
