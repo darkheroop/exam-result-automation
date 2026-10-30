@@ -212,14 +212,25 @@ router.get('/stats', requireAdminAuth, async (req, res, next) => {
  */
 router.get('/students', requireAdminAuth, async (req, res, next) => {
   try {
-    const { page, limit, search, section, sortBy, sortOrder } = req.query;
+    const { page, limit, search, section, credential, sortBy, sortOrder, sort } = req.query;
+    let effSortBy = sortBy;
+    let effSortOrder = sortOrder;
+
+    if (sort) {
+      if (sort === 'name_asc') { effSortBy = 'name'; effSortOrder = 'ASC'; }
+      else if (sort === 'name_desc') { effSortBy = 'name'; effSortOrder = 'DESC'; }
+      else if (sort === 'adm_asc') { effSortBy = 'admission_number'; effSortOrder = 'ASC'; }
+      else if (sort === 'updated_desc') { effSortBy = 'updated_at'; effSortOrder = 'DESC'; }
+    }
+
     const result = await defaultAdminDbService.listStudents({
       page,
       limit,
       search,
       section,
-      sortBy,
-      sortOrder
+      credential,
+      sortBy: effSortBy,
+      sortOrder: effSortOrder
     });
 
     return res.json({

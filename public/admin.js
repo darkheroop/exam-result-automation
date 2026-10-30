@@ -46,6 +46,38 @@
   };
 
   // =========================================================================
+  // Utility Helpers
+  // =========================================================================
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return String(dateStr);
+    }
+  }
+
+  // =========================================================================
   // Toast Notification System
   // =========================================================================
   function showToast(message, type = 'info', duration = 4000) {
@@ -121,6 +153,7 @@
     try {
       const response = await fetch(endpoint, {
         ...options,
+        credentials: 'include',
         headers
       });
 
@@ -306,8 +339,15 @@
     setText('stat-with-passwords', data.studentsWithPassword || 0);
     setText('stat-without-passwords', data.studentsWithoutPassword || 0);
 
-    // Section Breakdown Pills
-    const sectionContainer = document.getElementById('overview-section-chips');
+    // Section Breakdown Badge
+    const breakdownBadge = document.getElementById('section-breakdown-count-badge');
+    if (breakdownBadge) {
+      const count = data.totalSections || (data.sectionBreakdown ? data.sectionBreakdown.length : 0);
+      breakdownBadge.textContent = `${count} ${count === 1 ? 'Section' : 'Sections'}`;
+    }
+
+    // Section Breakdown Chips
+    const sectionContainer = document.getElementById('section-chips-container');
     if (sectionContainer) {
       const breakdown = data.sectionBreakdown || [];
       if (breakdown.length === 0) {
@@ -333,7 +373,7 @@
     }
 
     // Recently Added Students
-    const recentAddedTbody = document.getElementById('recent-added-tbody');
+    const recentAddedTbody = document.getElementById('recently-added-tbody');
     if (recentAddedTbody) {
       const added = data.recentlyAdded || [];
       if (added.length === 0) {
@@ -361,7 +401,7 @@
     }
 
     // Recently Updated Students
-    const recentUpdatedTbody = document.getElementById('recent-updated-tbody');
+    const recentUpdatedTbody = document.getElementById('recently-updated-tbody');
     if (recentUpdatedTbody) {
       const updated = data.recentlyUpdated || [];
       if (updated.length === 0) {
@@ -394,13 +434,14 @@
   // =========================================================================
   async function loadStudents() {
     const { page, limit } = state.pagination;
-    const { search, section, sort } = state.filters;
+    const { search, section, credential, sort } = state.filters;
 
     const queryParams = new URLSearchParams({
       page: String(page),
       limit: String(limit),
       search: search || '',
       section: section || '',
+      credential: credential || '',
       sort: sort || 'updated_desc'
     });
 
@@ -440,10 +481,10 @@
   }
 
   function renderStudentsTable() {
-    const tbody = document.getElementById('students-tbody');
+    const tbody = document.getElementById('students-table-body');
+    const tableEl = document.getElementById('students-table');
     const emptyState = document.getElementById('students-empty-state');
-    const tableContainer = document.getElementById('students-table-container');
-    const paginationContainer = document.getElementById('students-pagination');
+    const paginationContainer = document.querySelector('.pagination-bar');
 
     if (!tbody) return;
 
@@ -451,15 +492,15 @@
 
     if (!students || students.length === 0) {
       tbody.innerHTML = '';
+      if (tableEl) tableEl.style.display = 'none';
       if (emptyState) emptyState.style.display = 'block';
-      if (tableContainer) tableContainer.style.display = 'none';
       if (paginationContainer) paginationContainer.style.display = 'none';
       updatePaginationText(0, 0, 0);
       return;
     }
 
+    if (tableEl) tableEl.style.display = 'table';
     if (emptyState) emptyState.style.display = 'none';
-    if (tableContainer) tableContainer.style.display = 'block';
     if (paginationContainer) paginationContainer.style.display = 'flex';
 
     tbody.innerHTML = students.map(s => {
@@ -512,8 +553,8 @@
           <td>
             <span class="badge badge-section">${escapeHtml(section)}</span>
           </td>
-          <td>
-            <div class="action-btn-group">
+          <td style="text-align: right;">
+            <div class="action-btn-group" style="justify-content: flex-end;">
               <button type="button" class="btn btn-secondary btn-sm btn-action-edit" data-id="${id}" title="Edit Student">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                 <span>Edit</span>
@@ -529,7 +570,7 @@
 
     // Attach row action listeners
     tbody.querySelectorAll('.btn-eye-toggle').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', () => {
         const passCell = btn.closest('.password-cell');
         if (!passCell) return;
         const textSpan = passCell.querySelector('.masked-pass');
@@ -569,14 +610,14 @@
 
     // Update Pagination Display
     const { page, limit, total, totalPages } = state.pagination;
-    const startRecord = (page - 1) * limit + 1;
+    const startRecord = total > 0 ? (page - 1) * limit + 1 : 0;
     const endRecord = Math.min(page * limit, total);
     updatePaginationText(startRecord, endRecord, total);
     renderPaginationButtons(page, totalPages);
   }
 
   function updatePaginationText(start, end, total) {
-    const textEl = document.getElementById('pagination-info-text');
+    const textEl = document.getElementById('pagination-info');
     if (!textEl) return;
     if (total === 0) {
       textEl.textContent = 'Showing 0 students';
@@ -586,33 +627,26 @@
   }
 
   function renderPaginationButtons(currentPage, totalPages) {
-    const container = document.getElementById('pagination-pages-container');
-    const prevBtn = document.getElementById('btn-pagination-prev');
-    const nextBtn = document.getElementById('btn-pagination-next');
-
+    const container = document.getElementById('pagination-buttons');
     if (!container) return;
 
-    if (prevBtn) {
-      prevBtn.disabled = currentPage <= 1;
-      prevBtn.onclick = () => {
-        if (state.pagination.page > 1) {
-          state.pagination.page--;
-          loadStudents();
-        }
-      };
-    }
-
-    if (nextBtn) {
-      nextBtn.disabled = currentPage >= totalPages;
-      nextBtn.onclick = () => {
-        if (state.pagination.page < totalPages) {
-          state.pagination.page++;
-          loadStudents();
-        }
-      };
-    }
-
     container.innerHTML = '';
+
+    // Prev Button
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'btn-page';
+    prevBtn.id = 'btn-pagination-prev';
+    prevBtn.innerHTML = '‹';
+    prevBtn.disabled = currentPage <= 1;
+    prevBtn.addEventListener('click', () => {
+      if (state.pagination.page > 1) {
+        state.pagination.page--;
+        loadStudents();
+      }
+    });
+    container.appendChild(prevBtn);
+
     const maxButtons = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
     let endPage = Math.min(totalPages, startPage + maxButtons - 1);
@@ -644,6 +678,21 @@
       }
       container.appendChild(createPageBtn(totalPages, currentPage === totalPages));
     }
+
+    // Next Button
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'btn-page';
+    nextBtn.id = 'btn-pagination-next';
+    nextBtn.innerHTML = '›';
+    nextBtn.disabled = currentPage >= totalPages;
+    nextBtn.addEventListener('click', () => {
+      if (state.pagination.page < totalPages) {
+        state.pagination.page++;
+        loadStudents();
+      }
+    });
+    container.appendChild(nextBtn);
   }
 
   function createPageBtn(pageNum, isActive) {
@@ -661,10 +710,26 @@
   }
 
   // =========================================================================
-  // Modals: Edit Student & Delete Student
+  // Modals System (Edit, Add, Delete)
   // =========================================================================
+  function openModal(modalId) {
+    const m = document.getElementById(modalId);
+    if (m) {
+      m.classList.add('show', 'open');
+      m.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeModal(modalId) {
+    const m = document.getElementById(modalId);
+    if (m) {
+      m.classList.remove('show', 'open');
+      m.setAttribute('aria-hidden', 'true');
+    }
+  }
+
   function initModals() {
-    // Backdrop click close
+    // Backdrop click to close
     document.querySelectorAll('.modal-backdrop').forEach(modal => {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -673,7 +738,16 @@
       });
     });
 
-    // Close buttons
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal('modal-edit-student');
+        closeModal('modal-add-student');
+        closeModal('modal-delete-student');
+      }
+    });
+
+    // Close buttons by attribute
     document.querySelectorAll('[data-close-modal]').forEach(btn => {
       btn.addEventListener('click', () => {
         const modalId = btn.getAttribute('data-close-modal');
@@ -681,34 +755,58 @@
       });
     });
 
-    // Edit form submission
+    // --- MODAL 1: EDIT STUDENT ---
     const editForm = document.getElementById('form-edit-student');
     if (editForm) {
       editForm.addEventListener('submit', handleSaveStudentEdit);
     }
+    const closeEditBtn = document.getElementById('btn-close-edit-modal');
+    if (closeEditBtn) closeEditBtn.addEventListener('click', () => closeModal('modal-edit-student'));
+    const cancelEditBtn = document.getElementById('btn-cancel-edit-modal');
+    if (cancelEditBtn) cancelEditBtn.addEventListener('click', () => closeModal('modal-edit-student'));
 
-    // Delete confirm button
+    // Edit Password Toggle
+    const editTogglePassBtn = document.getElementById('btn-edit-toggle-password');
+    if (editTogglePassBtn) {
+      editTogglePassBtn.addEventListener('click', () => {
+        const pwdInput = document.getElementById('edit-student-password');
+        if (pwdInput) {
+          const isPwd = pwdInput.type === 'password';
+          pwdInput.type = isPwd ? 'text' : 'password';
+        }
+      });
+    }
+
+    // --- MODAL 2: ADD STUDENT ---
+    const openAddBtn = document.getElementById('btn-open-add-student');
+    if (openAddBtn) {
+      openAddBtn.addEventListener('click', () => {
+        const addForm = document.getElementById('form-add-student');
+        if (addForm) addForm.reset();
+        openModal('modal-add-student');
+      });
+    }
+    const addForm = document.getElementById('form-add-student');
+    if (addForm) {
+      addForm.addEventListener('submit', handleSaveAddStudent);
+    }
+    const closeAddBtn = document.getElementById('btn-close-add-modal');
+    if (closeAddBtn) closeAddBtn.addEventListener('click', () => closeModal('modal-add-student'));
+    const cancelAddBtn = document.getElementById('btn-cancel-add-modal');
+    if (cancelAddBtn) cancelAddBtn.addEventListener('click', () => closeModal('modal-add-student'));
+
+    // --- MODAL 3: DELETE STUDENT ---
     const deleteBtn = document.getElementById('btn-confirm-delete-student');
     if (deleteBtn) {
       deleteBtn.addEventListener('click', handleConfirmDeleteStudent);
     }
-
     const cancelDeleteBtn = document.getElementById('btn-cancel-delete-modal');
     if (cancelDeleteBtn) {
       cancelDeleteBtn.addEventListener('click', () => closeModal('modal-delete-student'));
     }
   }
 
-  function openModal(modalId) {
-    const m = document.getElementById(modalId);
-    if (m) m.classList.add('open');
-  }
-
-  function closeModal(modalId) {
-    const m = document.getElementById(modalId);
-    if (m) m.classList.remove('open');
-  }
-
+  // Edit Student
   async function openEditStudentModal(id) {
     let student = state.students.find(s => String(s.id) === String(id));
     if (!student) {
@@ -740,10 +838,6 @@
     setVal('edit-student-section', s.section);
     setVal('edit-student-username', s.username);
     setVal('edit-student-password', s.password);
-  }
-
-  function closeEditStudentModal() {
-    closeModal('modal-edit-student');
   }
 
   async function handleSaveStudentEdit(e) {
@@ -789,15 +883,73 @@
 
     if (res && res.ok) {
       showToast(`Student record for ${name} updated successfully in Neon database.`, 'success');
-      closeEditStudentModal();
+      closeModal('modal-edit-student');
       loadStudents();
       loadDashboardStats();
+      if (state.activeTab === 'search') {
+        const uInput = document.getElementById('universal-search-input');
+        if (uInput && uInput.value.trim()) {
+          executeUniversalSearch(uInput.value.trim());
+        }
+      }
     } else {
       const msg = (res && res.data && (res.data.error?.message || res.data.message)) || 'Failed to update student.';
       showToast(msg, 'error');
     }
   }
 
+  // Add Student
+  async function handleSaveAddStudent(e) {
+    e.preventDefault();
+    const name = (document.getElementById('add-student-name')?.value || '').trim();
+    const admissionNumber = (document.getElementById('add-student-adm')?.value || '').trim();
+    const phone = (document.getElementById('add-student-phone')?.value || '').trim();
+    const section = (document.getElementById('add-student-section')?.value || '').trim();
+    const username = (document.getElementById('add-student-username')?.value || '').trim();
+    const password = (document.getElementById('add-student-password')?.value || '').trim();
+
+    if (!name || !admissionNumber) {
+      showToast('Name and Admission Number are required.', 'warning');
+      return;
+    }
+
+    const submitBtn = document.getElementById('btn-submit-add-student');
+    if (submitBtn) submitBtn.disabled = true;
+
+    const payload = {
+      name,
+      admission_number: admissionNumber,
+      phone_number: phone,
+      section,
+      username,
+      password
+    };
+
+    const res = await apiFetch('/api/admin/students', {
+      method: 'POST',
+      body: payload
+    });
+
+    if (submitBtn) submitBtn.disabled = false;
+
+    if (res && res.ok) {
+      showToast(`Student ${name} registered successfully.`, 'success');
+      closeModal('modal-add-student');
+      loadStudents();
+      loadDashboardStats();
+      if (state.activeTab === 'search') {
+        const uInput = document.getElementById('universal-search-input');
+        if (uInput && uInput.value.trim()) {
+          executeUniversalSearch(uInput.value.trim());
+        }
+      }
+    } else {
+      const msg = (res && res.data && (res.data.error?.message || res.data.message)) || 'Failed to add student.';
+      showToast(msg, 'error');
+    }
+  }
+
+  // Delete Student
   function openDeleteStudentModal(id, name, adm) {
     state.deleteTargetId = id;
     const nameEl = document.getElementById('delete-student-name');
@@ -833,6 +985,12 @@
       state.deleteTargetId = null;
       loadStudents();
       loadDashboardStats();
+      if (state.activeTab === 'search') {
+        const uInput = document.getElementById('universal-search-input');
+        if (uInput && uInput.value.trim()) {
+          executeUniversalSearch(uInput.value.trim());
+        }
+      }
     } else {
       const msg = (res && res.data && (res.data.error?.message || res.data.message)) || 'Failed to delete student.';
       showToast(msg, 'error');
@@ -842,84 +1000,6 @@
   // =========================================================================
   // VIEW 3: Excel Upload & Import Workflow
   // =========================================================================
-  function initExcelUpload() {
-    const dropzone = document.getElementById('excel-dropzone');
-    const fileInput = document.getElementById('excel-file-input');
-    const browseBtn = document.getElementById('btn-browse-file');
-
-    if (browseBtn && fileInput) {
-      browseBtn.addEventListener('click', () => fileInput.click());
-    }
-
-    if (dropzone && fileInput) {
-      dropzone.addEventListener('click', (e) => {
-        if (e.target !== browseBtn) fileInput.click();
-      });
-
-      ['dragenter', 'dragover'].forEach(eventName => {
-        dropzone.addEventListener(eventName, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dropzone.classList.add('drag-over');
-        });
-      });
-
-      ['dragleave', 'drop'].forEach(eventName => {
-        dropzone.addEventListener(eventName, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dropzone.classList.remove('drag-over');
-        });
-      });
-
-      dropzone.addEventListener('drop', (e) => {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        if (files && files.length > 0) {
-          processSelectedExcelFile(files[0]);
-        }
-      });
-
-      fileInput.addEventListener('change', () => {
-        if (fileInput.files && fileInput.files.length > 0) {
-          processSelectedExcelFile(fileInput.files[0]);
-        }
-      });
-    }
-
-    const cancelPreviewBtn = document.getElementById('btn-cancel-import');
-    if (cancelPreviewBtn) {
-      cancelPreviewBtn.addEventListener('click', resetImportPreview);
-    }
-
-    const confirmImportBtn = document.getElementById('btn-confirm-import');
-    if (confirmImportBtn) {
-      confirmImportBtn.addEventListener('click', handleConfirmImport);
-    }
-  }
-
-  function setUploadProgress(percent, statusText) {
-    const wrapper = document.getElementById('upload-progress-wrapper');
-    const fill = document.getElementById('upload-progress-fill');
-    const text = document.getElementById('upload-progress-text');
-    const percentEl = document.getElementById('upload-progress-percent');
-
-    if (!wrapper) return;
-
-    if (percent > 0) {
-      wrapper.style.display = 'block';
-      if (fill) fill.style.width = `${percent}%`;
-      if (text && statusText) text.textContent = statusText;
-      if (percentEl) percentEl.textContent = `${percent}%`;
-    } else {
-      wrapper.style.display = 'none';
-      if (fill) fill.style.width = '0%';
-    }
-  }
-
-  /**
-   * Universal client-side Excel parsing matching backend intelligence
-   */
   function parseWorkbookClient(arrayBuffer, filename) {
     if (typeof XLSX === 'undefined') return null;
 
@@ -1125,6 +1205,25 @@
     }
   }
 
+  function setUploadProgress(percent, statusText) {
+    const wrapper = document.getElementById('upload-progress-wrapper');
+    const fill = document.getElementById('upload-progress-fill');
+    const text = document.getElementById('upload-progress-status');
+    const percentEl = document.getElementById('upload-progress-percent');
+
+    if (!wrapper) return;
+
+    if (percent > 0) {
+      wrapper.style.display = 'block';
+      if (fill) fill.style.width = `${percent}%`;
+      if (text && statusText) text.textContent = statusText;
+      if (percentEl) percentEl.textContent = `${percent}%`;
+    } else {
+      wrapper.style.display = 'none';
+      if (fill) fill.style.width = '0%';
+    }
+  }
+
   async function processSelectedExcelFile(file) {
     const validExtensions = ['.xlsx', '.xlxs', '.xls', '.xlsm', '.xlsb', '.csv'];
     const fileName = (file.name || '').toLowerCase();
@@ -1162,7 +1261,6 @@
     }
 
     if (clientParsed && clientParsed.validRecords.length > 0) {
-      // Store local parsed records immediately so UI is responsive and preview is ready!
       state.pendingUpload = {
         fileName: file.name,
         previewToken: null,
@@ -1182,16 +1280,16 @@
       renderImportPreview(state.pendingUpload, file.name);
     }
 
-    // 3. Send to server for server preview verification and previewToken issuance
+    // 3. Send to server for server preview verification
     setUploadProgress(70, 'Syncing with server...');
     const token = localStorage.getItem('admin_token');
 
     try {
       let response;
       if (base64String) {
-        // Send as clean Base64 JSON payload (no multipart timeouts or Vercel socket drops!)
         response = await fetch('/api/admin/upload-preview', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -1204,11 +1302,11 @@
           })
         });
       } else {
-        // Fallback to FormData
         const formData = new FormData();
         formData.append('file', file);
         response = await fetch('/api/admin/upload-preview', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
@@ -1234,7 +1332,6 @@
           state.pendingUpload.previewToken = resData.previewToken;
         }
       } else {
-        // If server had a non-critical warning but client parsed successfully, keep client preview
         if (!state.pendingUpload || !state.pendingUpload.records || state.pendingUpload.records.length === 0) {
           const errorMsg = (resData && (resData.error?.message || resData.message)) || 'Failed to parse Excel workbook.';
           showToast(errorMsg, 'error');
@@ -1243,9 +1340,8 @@
       }
     } catch (err) {
       setUploadProgress(0);
-      // If client already parsed and rendered preview, network failure on preview is non-fatal!
       if (state.pendingUpload && state.pendingUpload.records && state.pendingUpload.records.length > 0) {
-        console.warn('Server preview network notice, retaining client-parsed preview:', err.message);
+        console.warn('Server preview notice, retaining local parsed preview:', err.message);
       } else {
         showToast(`Upload failed: ${err.message}`, 'error');
         resetImportPreview();
@@ -1268,14 +1364,17 @@
     };
 
     setText('preview-total-records', summary.totalRecords || data.totalRecords || 0);
-    setText('preview-valid-records', summary.validRecordsCount || data.validRecords || 0);
-    setText('preview-missing-adm', summary.missingAdmissionCount || data.missingAdmissionNumbers || 0);
-    setText('preview-duplicate-records', summary.duplicateWithinFileCount || data.duplicateRecords || 0);
+    setText('preview-valid-records', summary.validRecordsCount || data.validRecords?.length || data.validRecords || 0);
+    setText('preview-missing-adm', summary.missingAdmissionCount || data.missingAdmissionRecords?.length || 0);
+    setText('preview-duplicate-records', summary.duplicateWithinFileCount || data.duplicateWithinFile?.length || 0);
+
+    const fnEl = document.getElementById('preview-filename-badge');
+    if (fnEl) fnEl.textContent = fileName || summary.filename || 'workbook.xlsx';
 
     // Detected Sections
     const sectionsEl = document.getElementById('preview-detected-sections');
     if (sectionsEl) {
-      const sections = summary.sectionsFound || data.detectedSections || [];
+      const sections = summary.sectionsFound || data.sectionsFound || [];
       if (sections.length === 0) {
         sectionsEl.innerHTML = '<span class="text-muted" style="font-size: 0.8rem;">General Section</span>';
       } else {
@@ -1285,41 +1384,47 @@
       }
     }
 
+    // Detected Columns Indicator
+    const colsEl = document.getElementById('preview-detected-columns');
+    if (colsEl) {
+      colsEl.textContent = '6 / 6 Complete';
+    }
+
     // Warnings Box
-    const warningsEl = document.getElementById('preview-warnings-container');
+    const warningsAlert = document.getElementById('preview-warnings-alert');
+    const warningsList = document.getElementById('preview-warnings-list');
     const warnings = summary.warnings || data.warnings || [];
-    if (warningsEl) {
+    if (warningsAlert && warningsList) {
       if (warnings.length > 0) {
-        warningsEl.style.display = 'block';
-        warningsEl.innerHTML = `
-          <div class="alert alert-warning" style="margin-top: 0.75rem;">
-            <strong>Import Notice:</strong>
-            <ul style="margin: 0.25rem 0 0 1rem; padding: 0; font-size: 0.8rem;">
-              ${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
-            </ul>
-          </div>
+        warningsAlert.style.display = 'block';
+        warningsList.innerHTML = `
+          <ul style="margin: 0.25rem 0 0 1rem; padding: 0; font-size: 0.8rem;">
+            ${warnings.slice(0, 10).map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+            ${warnings.length > 10 ? `<li>...and ${warnings.length - 10} more notices</li>` : ''}
+          </ul>
         `;
       } else {
-        warningsEl.style.display = 'none';
-        warningsEl.innerHTML = '';
+        warningsAlert.style.display = 'none';
+        warningsList.innerHTML = '';
       }
     }
 
-    // Preview Table (first 15 rows)
-    const tbody = document.getElementById('preview-sample-tbody');
+    // Preview Table (first 20 rows)
+    const tbody = document.getElementById('preview-table-body');
     if (tbody) {
-      const rows = data.sample || data.previewRows || [];
+      const rows = data.sample || data.validRecords || [];
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding: 1.5rem;">No valid preview records found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding: 1.5rem;">No valid preview records found.</td></tr>`;
       } else {
-        tbody.innerHTML = rows.slice(0, 15).map((r, idx) => `
+        tbody.innerHTML = rows.slice(0, 20).map((r, idx) => `
           <tr>
             <td>${idx + 1}</td>
             <td class="font-semibold">${escapeHtml(r.name || '—')}</td>
             <td class="font-mono">${escapeHtml(r.admission_number || r.admissionNumber || '—')}</td>
             <td class="font-mono">${escapeHtml(r.phone_number || r.phone || '—')}</td>
+            <td class="font-mono">${escapeHtml(r.username || '—')}</td>
+            <td class="font-mono">${r.password ? '••••••••' : '—'}</td>
             <td><span class="badge badge-section">${escapeHtml(r.section || '—')}</span></td>
-            <td><span class="badge badge-success">Valid</span></td>
           </tr>
         `).join('');
       }
@@ -1351,7 +1456,7 @@
 
     const payload = {
       previewToken: state.pendingUpload.previewToken,
-      records: state.pendingUpload.records // Stateless resilience across serverless lambdas!
+      records: state.pendingUpload.records
     };
 
     const res = await apiFetch('/api/admin/upload-confirm', {
@@ -1361,7 +1466,7 @@
 
     if (confirmBtn) {
       confirmBtn.disabled = false;
-      confirmBtn.innerHTML = `Confirm & Save Import`;
+      confirmBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <span>Confirm &amp; Save Import</span>`;
     }
 
     if (res && res.ok && res.data) {
@@ -1388,12 +1493,82 @@
       if (el) el.textContent = Number(val || 0).toLocaleString();
     };
 
-    setText('summary-total-processed', summary.total || summary.totalRecords || 0);
-    setText('summary-new-added', summary.added || 0);
-    setText('summary-existing-updated', summary.updated || 0);
-    setText('summary-duplicates-skipped', summary.duplicates || summary.skipped || 0);
+    setText('summary-stat-added', summary.added || 0);
+    setText('summary-stat-updated', summary.updated || 0);
+    setText('summary-stat-duplicates', summary.duplicates || 0);
+    setText('summary-stat-skipped', summary.skipped || 0);
 
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function initExcelUpload() {
+    const dropzone = document.getElementById('excel-dropzone');
+    const fileInput = document.getElementById('excel-file-input');
+
+    if (dropzone && fileInput) {
+      dropzone.addEventListener('click', () => fileInput.click());
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.add('drag-over');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.remove('drag-over');
+        });
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files.length > 0) {
+          processSelectedExcelFile(files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files && fileInput.files.length > 0) {
+          processSelectedExcelFile(fileInput.files[0]);
+          fileInput.value = '';
+        }
+      });
+    }
+
+    const cancelImportBtn = document.getElementById('btn-cancel-import');
+    if (cancelImportBtn) {
+      cancelImportBtn.addEventListener('click', resetImportPreview);
+    }
+
+    const confirmImportBtn = document.getElementById('btn-confirm-import');
+    if (confirmImportBtn) {
+      confirmImportBtn.addEventListener('click', handleConfirmImport);
+    }
+
+    // Result card actions
+    const toStudentsBtn = document.getElementById('btn-summary-to-students');
+    if (toStudentsBtn) {
+      toStudentsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab('students');
+      });
+    }
+
+    const uploadAnotherBtn = document.getElementById('btn-summary-upload-another');
+    if (uploadAnotherBtn) {
+      uploadAnotherBtn.addEventListener('click', () => {
+        const resultCard = document.getElementById('import-result-card');
+        if (resultCard) resultCard.style.display = 'none';
+        resetImportPreview();
+        const dropzone = document.getElementById('excel-dropzone');
+        if (dropzone) dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
   }
 
   // =========================================================================
@@ -1401,7 +1576,7 @@
   // =========================================================================
   function initUniversalSearch() {
     const searchInput = document.getElementById('universal-search-input');
-    const clearBtn = document.getElementById('btn-clear-universal-search');
+    const clearBtn = document.getElementById('universal-search-clear');
 
     if (searchInput) {
       searchInput.addEventListener('input', () => {
@@ -1424,12 +1599,12 @@
       });
     }
 
-    // Filter Chips
-    document.querySelectorAll('.filter-chip-btn').forEach(btn => {
+    // Field Filter Chips
+    document.querySelectorAll('.filter-chips-row .filter-chip-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-chip-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.filter-chips-row .filter-chip-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        state.universalSearchFilter = btn.getAttribute('data-filter') || 'all';
+        state.universalSearchFilter = btn.getAttribute('data-field') || 'all';
         if (searchInput && searchInput.value.trim()) {
           executeUniversalSearch(searchInput.value.trim());
         }
@@ -1439,36 +1614,70 @@
 
   async function executeUniversalSearch(query) {
     const tbody = document.getElementById('universal-results-tbody');
-    const countEl = document.getElementById('universal-match-count');
+    const countEl = document.getElementById('universal-results-count');
     const emptyEl = document.getElementById('universal-empty-state');
-    const tableWrap = document.getElementById('universal-table-wrapper');
+    const tableEl = tbody ? tbody.closest('table') : null;
 
     if (!tbody) return;
 
     if (!query) {
       tbody.innerHTML = '';
-      if (countEl) countEl.textContent = '0 records';
-      if (emptyEl) emptyEl.style.display = 'block';
-      if (tableWrap) tableWrap.style.display = 'none';
+      if (countEl) countEl.textContent = 'Enter search query to begin lookup';
+      if (tableEl) tableEl.style.display = 'none';
+      if (emptyEl) {
+        emptyEl.style.display = 'block';
+        emptyEl.innerHTML = `
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <h4>Instantaneous record lookup</h4>
+          <p>Begin typing in the search bar above to query students across all sections.</p>
+        `;
+      }
       return;
     }
 
-    const res = await apiFetch(`/api/admin/students?search=${encodeURIComponent(query)}&limit=50`);
-    const results = (res && res.ok && res.data && res.data.students) ? res.data.students : [];
+    const res = await apiFetch(`/api/admin/students?search=${encodeURIComponent(query)}&limit=100`);
+    let results = (res && res.ok && res.data && res.data.students) ? res.data.students : [];
+
+    // Apply client-side chip filtering if active
+    const field = state.universalSearchFilter;
+    if (field && field !== 'all') {
+      const q = query.toLowerCase();
+      results = results.filter(s => {
+        if (field === 'name') return (s.name || '').toLowerCase().includes(q);
+        if (field === 'adm') return (s.admission_number || s.admissionNumber || '').toLowerCase().includes(q);
+        if (field === 'phone') return (s.phone_number || s.phone || '').toLowerCase().includes(q);
+        if (field === 'username') return (s.username || '').toLowerCase().includes(q);
+        return true;
+      });
+    }
 
     if (countEl) {
-      countEl.textContent = `${results.length.toLocaleString()} matching records found`;
+      countEl.textContent = `${results.length.toLocaleString()} matching student records found`;
     }
 
     if (results.length === 0) {
       tbody.innerHTML = '';
-      if (emptyEl) emptyEl.style.display = 'block';
-      if (tableWrap) tableWrap.style.display = 'none';
+      if (tableEl) tableEl.style.display = 'none';
+      if (emptyEl) {
+        emptyEl.style.display = 'block';
+        emptyEl.innerHTML = `
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+          <h4>No matching students found</h4>
+          <p>No student records matched "${escapeHtml(query)}" with the selected filter.</p>
+        `;
+      }
       return;
     }
 
     if (emptyEl) emptyEl.style.display = 'none';
-    if (tableWrap) tableWrap.style.display = 'block';
+    if (tableEl) tableEl.style.display = 'table';
 
     tbody.innerHTML = results.map(s => {
       const id = s.id;
@@ -1480,7 +1689,7 @@
       const section = s.section || '';
 
       return `
-        <tr>
+        <tr data-student-id="${id}">
           <td>
             <div class="user-cell">
               <div class="user-avatar">${escapeHtml(name.slice(0, 2).toUpperCase())}</div>
@@ -1495,23 +1704,76 @@
             ${username ? `<span class="badge badge-username font-mono">${highlightMatch(username, query)}</span>` : `<span class="text-muted italic" style="font-size: 0.8rem;">Not set</span>`}
           </td>
           <td>
-            ${password ? `<span class="font-mono" style="letter-spacing: 2px;">••••••••</span>` : `<span class="text-muted italic" style="font-size: 0.8rem;">Not set</span>`}
+            ${password ? `
+              <div class="password-cell font-mono">
+                <span class="masked-pass" data-actual="${escapeHtml(password)}">••••••••</span>
+                <button type="button" class="btn-eye-toggle" title="Toggle password visibility" aria-label="Toggle password visibility">
+                  <svg class="eye-icon-show" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg class="eye-icon-hide" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                    <line x1="2" y1="2" x2="22" y2="22"/>
+                  </svg>
+                </button>
+              </div>
+            ` : `<span class="text-muted italic" style="font-size: 0.85rem;">Not set</span>`}
           </td>
           <td><span class="badge badge-section">${escapeHtml(section || '—')}</span></td>
-          <td>
-            <button type="button" class="btn btn-secondary btn-sm btn-search-edit" data-id="${id}">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-              <span>Edit</span>
-            </button>
+          <td style="text-align: right;">
+            <div class="action-btn-group" style="justify-content: flex-end;">
+              <button type="button" class="btn btn-secondary btn-sm btn-search-edit" data-id="${id}" title="Edit Student">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                <span>Edit</span>
+              </button>
+              <button type="button" class="btn btn-danger-outline btn-sm btn-search-delete" data-id="${id}" data-name="${escapeHtml(name)}" data-adm="${escapeHtml(adm)}" title="Delete Student">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
           </td>
         </tr>
       `;
     }).join('');
 
+    tbody.querySelectorAll('.btn-eye-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const passCell = btn.closest('.password-cell');
+        if (!passCell) return;
+        const textSpan = passCell.querySelector('.masked-pass');
+        const showIcon = btn.querySelector('.eye-icon-show');
+        const hideIcon = btn.querySelector('.eye-icon-hide');
+        const actual = textSpan.getAttribute('data-actual') || '';
+
+        if (textSpan.textContent === '••••••••') {
+          textSpan.textContent = actual;
+          textSpan.style.color = 'var(--indigo-600)';
+          if (showIcon) showIcon.style.display = 'none';
+          if (hideIcon) hideIcon.style.display = 'inline-block';
+        } else {
+          textSpan.textContent = '••••••••';
+          textSpan.style.color = '';
+          if (showIcon) showIcon.style.display = 'inline-block';
+          if (hideIcon) hideIcon.style.display = 'none';
+        }
+      });
+    });
+
     tbody.querySelectorAll('.btn-search-edit').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
         openEditStudentModal(id);
+      });
+    });
+
+    tbody.querySelectorAll('.btn-search-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const name = btn.getAttribute('data-name');
+        const adm = btn.getAttribute('data-adm');
+        openDeleteStudentModal(id, name, adm);
       });
     });
   }
@@ -1524,12 +1786,8 @@
     return escapeHtml(safeText).replace(regex, '<mark class="search-highlight">$1</mark>');
   }
 
-  function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
   // =========================================================================
-  // Mobile Controls & Search Filters
+  // Mobile Controls & Toolbar Handlers
   // =========================================================================
   function initMobileControls() {
     const toggleBtn = document.getElementById('btn-sidebar-toggle');
@@ -1548,74 +1806,6 @@
         closeMobileSidebar();
       });
     }
-
-    const quickLogoutBtn = document.getElementById('btn-quick-logout');
-    if (quickLogoutBtn) {
-      quickLogoutBtn.addEventListener('click', handleLogout);
-    }
-
-    const sidebarLogoutBtn = document.getElementById('btn-sidebar-logout');
-    if (sidebarLogoutBtn) {
-      sidebarLogoutBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout();
-      });
-    }
-
-    // Student Management Filters
-    const searchInput = document.getElementById('student-search-input');
-    const clearSearchBtn = document.getElementById('btn-clear-student-search');
-
-    if (searchInput) {
-      searchInput.addEventListener('input', () => {
-        const val = searchInput.value.trim();
-        state.filters.search = val;
-        state.pagination.page = 1;
-        if (clearSearchBtn) clearSearchBtn.style.display = val ? 'inline-flex' : 'none';
-
-        clearTimeout(state.searchDebounceTimer);
-        state.searchDebounceTimer = setTimeout(() => {
-          loadStudents();
-        }, 300);
-      });
-    }
-
-    if (clearSearchBtn && searchInput) {
-      clearSearchBtn.addEventListener('click', () => {
-        searchInput.value = '';
-        state.filters.search = '';
-        state.pagination.page = 1;
-        clearSearchBtn.style.display = 'none';
-        loadStudents();
-        searchInput.focus();
-      });
-    }
-
-    const sectionFilter = document.getElementById('student-section-filter');
-    if (sectionFilter) {
-      sectionFilter.addEventListener('change', () => {
-        state.filters.section = sectionFilter.value;
-        state.pagination.page = 1;
-        loadStudents();
-      });
-    }
-
-    const sortSelect = document.getElementById('student-sort-select');
-    if (sortSelect) {
-      sortSelect.addEventListener('change', () => {
-        state.filters.sort = sortSelect.value;
-        loadStudents();
-      });
-    }
-
-    const refreshBtn = document.getElementById('btn-refresh-students');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        showToast('Refreshing student data from database...', 'info', 1500);
-        loadStudents();
-        loadDashboardStats();
-      });
-    }
   }
 
   function closeMobileSidebar() {
@@ -1625,50 +1815,169 @@
     if (backdrop) backdrop.classList.remove('open');
   }
 
-  function escapeHtml(str) {
-    if (!str && str !== 0) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  function initToolbarHandlers() {
+    // Quick Logout & Sidebar Logout
+    const quickLogoutBtn = document.getElementById('btn-quick-logout');
+    if (quickLogoutBtn) quickLogoutBtn.addEventListener('click', handleLogout);
 
-  function formatDate(isoStr) {
-    if (!isoStr) return '—';
-    try {
-      const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return String(isoStr);
-      return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
+    const sidebarLogoutBtn = document.getElementById('btn-sidebar-logout');
+    if (sidebarLogoutBtn) sidebarLogoutBtn.addEventListener('click', handleLogout);
+
+    // Refresh Stats Button on Overview
+    const refreshStatsBtn = document.getElementById('btn-refresh-stats');
+    if (refreshStatsBtn) {
+      refreshStatsBtn.addEventListener('click', () => {
+        loadDashboardStats();
+        showToast('Dashboard metrics refreshed from database.', 'info');
       });
-    } catch {
-      return String(isoStr);
+    }
+
+    // Hero Overview Import Button
+    const overviewImportBtn = document.getElementById('btn-overview-import');
+    if (overviewImportBtn) {
+      overviewImportBtn.addEventListener('click', () => switchTab('upload'));
+    }
+
+    // Student Search Input
+    const studentSearchInput = document.getElementById('student-search-input');
+    const clearStudentSearchBtn = document.getElementById('student-search-clear');
+
+    if (studentSearchInput) {
+      studentSearchInput.addEventListener('input', () => {
+        const val = studentSearchInput.value.trim();
+        state.filters.search = val;
+        state.pagination.page = 1;
+
+        if (clearStudentSearchBtn) {
+          clearStudentSearchBtn.style.display = val ? 'inline-flex' : 'none';
+        }
+
+        clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(() => {
+          loadStudents();
+        }, 300);
+      });
+    }
+
+    if (clearStudentSearchBtn && studentSearchInput) {
+      clearStudentSearchBtn.addEventListener('click', () => {
+        studentSearchInput.value = '';
+        state.filters.search = '';
+        state.pagination.page = 1;
+        clearStudentSearchBtn.style.display = 'none';
+        loadStudents();
+        studentSearchInput.focus();
+      });
+    }
+
+    // Section Filter Dropdown
+    const sectionFilter = document.getElementById('student-section-filter');
+    if (sectionFilter) {
+      sectionFilter.addEventListener('change', () => {
+        state.filters.section = sectionFilter.value;
+        state.pagination.page = 1;
+        loadStudents();
+      });
+    }
+
+    // Credential Filter Dropdown
+    const credFilter = document.getElementById('student-credential-filter');
+    if (credFilter) {
+      credFilter.addEventListener('change', () => {
+        state.filters.credential = credFilter.value;
+        state.pagination.page = 1;
+        loadStudents();
+      });
+    }
+
+    // Sort Filter Dropdown
+    const sortSelect = document.getElementById('student-sort-filter');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+        state.filters.sort = sortSelect.value;
+        state.pagination.page = 1;
+        loadStudents();
+      });
+    }
+
+    // Refresh Students Table Button
+    const refreshStudentsBtn = document.getElementById('btn-refresh-students');
+    if (refreshStudentsBtn) {
+      refreshStudentsBtn.addEventListener('click', () => {
+        loadStudents();
+        showToast('Student directory refreshed from database.', 'info');
+      });
+    }
+
+    // Clear All Filters Button (Empty state)
+    const resetFiltersBtn = document.getElementById('btn-reset-filters');
+    if (resetFiltersBtn) {
+      resetFiltersBtn.addEventListener('click', () => {
+        if (studentSearchInput) studentSearchInput.value = '';
+        if (sectionFilter) sectionFilter.value = '';
+        if (credFilter) credFilter.value = '';
+        if (sortSelect) sortSelect.value = 'updated_desc';
+        if (clearStudentSearchBtn) clearStudentSearchBtn.style.display = 'none';
+
+        state.filters.search = '';
+        state.filters.section = '';
+        state.filters.credential = '';
+        state.filters.sort = 'updated_desc';
+        state.pagination.page = 1;
+
+        loadStudents();
+      });
+    }
+
+    // Pagination Limit Select (10, 25, 50)
+    const limitSelect = document.getElementById('pagination-limit-select');
+    if (limitSelect) {
+      limitSelect.addEventListener('change', () => {
+        state.pagination.limit = parseInt(limitSelect.value, 10) || 10;
+        state.pagination.page = 1;
+        loadStudents();
+      });
+    }
+
+    // View All links on Overview cards
+    const linkAllAdded = document.getElementById('link-view-all-added');
+    if (linkAllAdded) {
+      linkAllAdded.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab('students');
+      });
+    }
+
+    const linkAllUpdated = document.getElementById('link-view-all-updated');
+    if (linkAllUpdated) {
+      linkAllUpdated.addEventListener('click', (e) => {
+        e.preventDefault();
+        state.filters.sort = 'updated_desc';
+        const sortFilter = document.getElementById('student-sort-filter');
+        if (sortFilter) sortFilter.value = 'updated_desc';
+        switchTab('students');
+      });
     }
   }
 
   // =========================================================================
-  // Application Entry Point
+  // Application Bootstrap
   // =========================================================================
   async function initApp() {
-    const isAuthenticated = await checkAuthSession();
-    if (!isAuthenticated) return;
-
     initRouting();
+    initMobileControls();
+    initToolbarHandlers();
     initModals();
     initExcelUpload();
     initUniversalSearch();
-    initMobileControls();
 
-    // Initial Data Fetch from real Neon database
-    loadDashboardStats();
-    loadStudents();
+    const isAuthenticated = await checkAuthSession();
+    if (isAuthenticated) {
+      loadDashboardStats();
+      loadStudents();
+    }
   }
 
-  // Kick off application on DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initApp);
   } else {

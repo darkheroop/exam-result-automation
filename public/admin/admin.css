@@ -1919,7 +1919,8 @@ mark.search-highlight {
   transition: opacity 0.2s ease-in-out;
 }
 
-.modal-backdrop.show {
+.modal-backdrop.show,
+.modal-backdrop.open {
   display: flex;
   opacity: 1;
 }
@@ -1936,7 +1937,8 @@ mark.search-highlight {
   transition: transform 0.2s ease-in-out;
 }
 
-.modal-backdrop.show .modal-dialog {
+.modal-backdrop.show .modal-dialog,
+.modal-backdrop.open .modal-dialog {
   transform: scale(1);
 }
 

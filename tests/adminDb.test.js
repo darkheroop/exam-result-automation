@@ -97,6 +97,23 @@ test('AdminDb - listStudents with search, section filter, sorting, and paginatio
   // 6. Sorting DESC by name
   const sorted = await db.listStudents({ sortBy: 'name', sortOrder: 'DESC' });
   assert.equal(sorted.students[0].name, 'Gamma Student');
+
+  // 7. Credential filtering
+  await db.upsertStudent({ name: 'User With Credentials', admission_number: 'ADM991', phone_number: '9999999991', section: 'Sec-A', username: 'hasuser', password: 'haspassword' });
+  await db.upsertStudent({ name: 'User Missing Password', admission_number: 'ADM992', phone_number: '9999999992', section: 'Sec-A', username: 'useronly', password: '' });
+  await db.upsertStudent({ name: 'User Missing Username', admission_number: 'ADM993', phone_number: '9999999993', section: 'Sec-A', username: '', password: 'pwdonly' });
+
+  const completeCreds = await db.listStudents({ credential: 'complete' });
+  assert.ok(completeCreds.students.some(s => s.admission_number === 'ADM991'));
+  assert.ok(completeCreds.students.every(s => s.username && s.password));
+
+  const missingUser = await db.listStudents({ credential: 'missing_username' });
+  assert.ok(missingUser.students.some(s => s.admission_number === 'ADM993'));
+  assert.ok(missingUser.students.every(s => !s.username));
+
+  const missingPass = await db.listStudents({ credential: 'missing_password' });
+  assert.ok(missingPass.students.some(s => s.admission_number === 'ADM992'));
+  assert.ok(missingPass.students.every(s => !s.password));
 });
 
 test('AdminDb - updateStudent and deleteStudent', async () => {

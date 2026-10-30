@@ -106,15 +106,18 @@ class AdminDbService {
   /**
    * Lists students with pagination, sorting, and universal search.
    */
-  async listStudents({ page = 1, limit = 20, search = '', section = '', sortBy = 'id', sortOrder = 'ASC' } = {}) {
+  async listStudents({ page = 1, limit = 20, search = '', section = '', credential = '', sortBy = 'id', sortOrder = 'ASC' } = {}) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (pageNum - 1) * limitNum;
     const cleanSearch = String(search || '').trim().toLowerCase();
     const cleanSection = String(section || '').trim();
+    const cleanCredential = String(credential || '').trim().toLowerCase();
 
     const allowedSortFields = ['id', 'name', 'admission_number', 'phone_number', 'username', 'section', 'created_at', 'updated_at'];
-    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
+    let sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
+    if (sortBy === 'adm') sortField = 'admission_number';
+    if (sortBy === 'updated') sortField = 'updated_at';
     const sortDirection = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
     if (this.sql) {
@@ -140,6 +143,14 @@ class AdminDbService {
           conditions.push(`section ILIKE $${pIndex}`);
           params.push(cleanSection);
           pIndex++;
+        }
+
+        if (cleanCredential === 'complete') {
+          conditions.push(`(username IS NOT NULL AND username <> '' AND password IS NOT NULL AND password <> '')`);
+        } else if (cleanCredential === 'missing_username') {
+          conditions.push(`(username IS NULL OR username = '')`);
+        } else if (cleanCredential === 'missing_password') {
+          conditions.push(`(password IS NULL OR password = '')`);
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -183,6 +194,14 @@ class AdminDbService {
 
     if (cleanSection) {
       all = all.filter(s => s.section && s.section.toLowerCase() === cleanSection.toLowerCase());
+    }
+
+    if (cleanCredential === 'complete') {
+      all = all.filter(s => s.username && s.password);
+    } else if (cleanCredential === 'missing_username') {
+      all = all.filter(s => !s.username);
+    } else if (cleanCredential === 'missing_password') {
+      all = all.filter(s => !s.password);
     }
 
     // Sort
