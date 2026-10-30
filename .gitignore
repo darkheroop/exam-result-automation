@@ -4,5 +4,6 @@ temp_downloads/
 *.pdf
 *.log
 *.png
+!public/assets/images/*.png
 scratch/
 .DS_Store
