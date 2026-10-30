@@ -73,6 +73,17 @@
           </svg>
           <span>Universal Search</span>
         </a>
+
+        <a href="#logs" class="nav-link" data-tab="logs" id="nav-tab-logs">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span>Search Logs</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
@@ -347,6 +358,39 @@
               </div>
             </div>
           </div>
+
+          <!-- Search Activity Overview Section -->
+          <div class="search-activity-overview-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Search Activity &amp; Credential Resolution</h3>
+                <p style="font-size: 0.8rem; color: var(--slate-500);">Live statistics aggregated from student query audit logs in Neon PostgreSQL.</p>
+              </div>
+              <a href="#logs" class="btn btn-secondary btn-sm" id="link-view-all-logs">View Search Logs</a>
+            </div>
+            <div class="search-stats-grid">
+              <div class="search-stat-pill">
+                <span class="search-stat-label">Total Searches</span>
+                <span class="search-stat-val" id="stat-total-searches">0</span>
+              </div>
+              <div class="search-stat-pill">
+                <span class="search-stat-label">Successful Lookups</span>
+                <span class="search-stat-val text-emerald" id="stat-successful-lookups">0</span>
+              </div>
+              <div class="search-stat-pill">
+                <span class="search-stat-label">API Errors</span>
+                <span class="search-stat-val text-rose" id="stat-api-errors">0</span>
+              </div>
+              <div class="search-stat-pill">
+                <span class="search-stat-label">Students Not Found</span>
+                <span class="search-stat-val text-slate" id="stat-students-not-found">0</span>
+              </div>
+              <div class="search-stat-pill">
+                <span class="search-stat-label">Searches Today</span>
+                <span class="search-stat-val text-indigo" id="stat-searches-today">0</span>
+              </div>
+            </div>
+          </div>
         </section>
 
 
@@ -388,6 +432,11 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"/>
                     <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+                <button type="button" id="btn-student-search-submit" class="search-submit-btn" title="Search & Resolve Credentials" aria-label="Submit search">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </button>
               </div>
@@ -686,6 +735,11 @@
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
+              <button type="button" id="btn-universal-search-submit" class="universal-submit-btn" title="Submit Search" aria-label="Submit search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
             </div>
 
             <div class="filter-chips-row">
@@ -730,6 +784,147 @@
                 </svg>
                 <h4>Instantaneous record lookup</h4>
                 <p>Begin typing in the search bar above to query students across all sections.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ============================================================
+             VIEW 5: Search Activity Logs
+             ============================================================ -->
+        <section id="view-logs" class="tab-view">
+          <div class="view-header">
+            <div class="view-header-content">
+              <h1>Search Activity &amp; Resolution Logs</h1>
+              <p>Audit trail of administrator student lookups, credential retrieval outcomes, and error diagnosis.</p>
+            </div>
+            <div class="view-header-actions">
+              <button type="button" id="btn-refresh-logs" class="btn btn-secondary btn-sm" title="Refresh Search Logs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Refresh Logs</span>
+              </button>
+              <button type="button" id="btn-open-clear-logs" class="btn btn-danger-outline btn-sm" title="Clear Search Logs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+                <span>Clear Logs</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Toolbar for Logs -->
+          <div class="filter-toolbar">
+            <div class="filter-group-left">
+              <div class="search-input-wrapper">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input 
+                  type="text" 
+                  id="log-search-input" 
+                  placeholder="Filter logs by search query..."
+                  autocomplete="off"
+                >
+                <button type="button" id="log-search-clear" class="search-clear-btn" aria-label="Clear log search" style="display: none;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Result Status Filter -->
+              <select id="log-result-filter" class="filter-select">
+                <option value="">All Result Statuses</option>
+                <option value="SUCCESS">SUCCESS</option>
+                <option value="FOUND">FOUND</option>
+                <option value="API_ERROR">API_ERROR</option>
+                <option value="INVALID_RESPONSE">INVALID_RESPONSE</option>
+                <option value="TIMEOUT">TIMEOUT</option>
+                <option value="NETWORK_ERROR">NETWORK_ERROR</option>
+                <option value="NOT_FOUND">NOT_FOUND</option>
+                <option value="INVALID_INPUT">INVALID_INPUT</option>
+                <option value="DATABASE_ERROR">DATABASE_ERROR</option>
+                <option value="SYSTEM_ERROR">SYSTEM_ERROR</option>
+              </select>
+
+              <!-- Search Type Filter -->
+              <select id="log-type-filter" class="filter-select">
+                <option value="">All Search Types</option>
+                <option value="Admission Number">Admission Number</option>
+                <option value="Name">Name</option>
+                <option value="Phone Number">Phone Number</option>
+                <option value="Username">Username</option>
+              </select>
+
+              <!-- Date Filter -->
+              <input type="date" id="log-date-filter" class="filter-select date-filter-input" title="Filter by date">
+            </div>
+
+            <div class="filter-group-right">
+              <button type="button" id="btn-reset-log-filters" class="btn btn-secondary btn-sm">Reset Filters</button>
+            </div>
+          </div>
+
+          <!-- Logs Table Card -->
+          <div class="table-card">
+            <div class="table-responsive">
+              <table class="data-table" id="search-logs-table">
+                <thead>
+                  <tr>
+                    <th style="width: 80px;">1. ID</th>
+                    <th>2. Search Query</th>
+                    <th>3. Search Type</th>
+                    <th>4. Result</th>
+                    <th>5. Date (IST)</th>
+                    <th>6. Time (IST)</th>
+                  </tr>
+                </thead>
+                <tbody id="search-logs-tbody">
+                  <!-- Populated dynamically via JS -->
+                </tbody>
+              </table>
+
+              <!-- Empty State -->
+              <div id="search-logs-empty-state" class="table-empty-state" style="display: none;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <h4>No search activity logs found</h4>
+                <p>No student searches match the active filter criteria. Searches executed in the dashboard will appear here.</p>
+              </div>
+            </div>
+
+            <!-- Pagination Bar for Logs -->
+            <div class="pagination-bar" id="log-pagination-bar">
+              <div class="pagination-info" id="log-pagination-info">
+                Showing 0 to 0 of 0 logs
+              </div>
+
+              <div class="pagination-controls">
+                <div class="limit-select-wrapper">
+                  <span>Show</span>
+                  <select id="log-pagination-limit" class="limit-select">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                  </select>
+                  <span>per page</span>
+                </div>
+
+                <div class="page-btn-group" id="log-pagination-buttons">
+                  <!-- Generated dynamically -->
+                </div>
               </div>
             </div>
           </div>
@@ -913,6 +1108,40 @@
         <button type="button" class="btn btn-danger" id="btn-confirm-delete-student">
           <span id="btn-delete-text">Permanently Delete</span>
           <span id="btn-delete-spinner" class="spinner" style="display: none;" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL 4: Clear Search Logs Confirmation Modal
+       ============================================================ -->
+  <div id="modal-clear-logs" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-clear-logs-title">
+    <div class="modal-dialog delete-dialog">
+      <div class="modal-body">
+        <div class="delete-icon-wrapper" style="background: rgba(239, 68, 68, 0.1); color: var(--rose-600);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </svg>
+        </div>
+        <div class="delete-content-text">
+          <h3 id="modal-clear-logs-title">Clear Search Activity Logs?</h3>
+          <p>
+            Are you sure you want to permanently clear the search activity audit trail?
+          </p>
+          <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--emerald-600); font-weight: 600;">
+            ✓ Student directory records, grades, and stored credentials will NOT be touched.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: center;">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-clear-logs">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-clear-logs">
+          <span id="btn-clear-logs-text">Permanently Clear Logs</span>
+          <span id="btn-clear-logs-spinner" class="spinner" style="display: none;" aria-hidden="true"></span>
         </button>
       </div>
     </div>

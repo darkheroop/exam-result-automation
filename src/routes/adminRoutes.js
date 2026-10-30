@@ -6,6 +6,7 @@ const multer = require('multer');
 const { defaultAdminAuthService, requireAdminAuth } = require('../services/adminAuthService');
 const { defaultAdminDbService } = require('../services/adminDbService');
 const { defaultExcelImportService } = require('../services/excelImportService');
+const { defaultAdminSearchService } = require('../services/adminSearchService');
 
 const router = express.Router();
 
@@ -207,12 +208,96 @@ router.get('/stats', requireAdminAuth, async (req, res, next) => {
 });
 
 /**
+ * POST /api/admin/search
+ * Executes student search with automatic credential retrieval for admission numbers
+ * and single-occurrence audit logging.
+ */
+router.post('/search', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { query, searchType } = req.body || {};
+    const result = await defaultAdminSearchService.executeSearch({
+      query,
+      searchType
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/admin/search-logs
+ * Paginated list of student search activity logs.
+ */
+router.get('/search-logs', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { page, limit, search, result, searchType, date } = req.query;
+    const logsData = await defaultAdminDbService.listSearchLogs({
+      page,
+      limit,
+      search,
+      result,
+      searchType,
+      date
+    });
+    return res.json({
+      success: true,
+      ...logsData
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/admin/search-logs/stats
+ * Real database statistics for search activity.
+ */
+router.get('/search-logs/stats', requireAdminAuth, async (req, res, next) => {
+  try {
+    const stats = await defaultAdminDbService.getSearchLogStats();
+    return res.json({
+      success: true,
+      stats
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * DELETE /api/admin/search-logs
+ * Clears search activity logs without affecting student records.
+ */
+router.delete('/search-logs', requireAdminAuth, async (req, res, next) => {
+  try {
+    await defaultAdminDbService.clearSearchLogs();
+    return res.json({
+      success: true,
+      message: 'Search logs cleared successfully.'
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
  * GET /api/admin/students
  * Paginated, sorted, and searchable student directory.
  */
 router.get('/students', requireAdminAuth, async (req, res, next) => {
   try {
-    const { page, limit, search, section, credential, sortBy, sortOrder, sort } = req.query;
+    const { page, limit, search, section, credential, sortBy, sortOrder, sort, submit, logSearch, searchType } = req.query;
+    
+    // Automatic credential lookup & audit logging when search is explicitly submitted
+    let searchLogResult = null;
+    if (search && (submit === 'true' || logSearch === 'true')) {
+      searchLogResult = await defaultAdminSearchService.executeSearch({
+        query: search,
+        searchType
+      });
+    }
+
     let effSortBy = sortBy;
     let effSortOrder = sortOrder;
 
@@ -235,7 +320,9 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
 
     return res.json({
       success: true,
-      ...result
+      ...result,
+      searchResult: searchLogResult ? searchLogResult.result : undefined,
+      credentialUpdated: searchLogResult ? searchLogResult.updated : undefined
     });
   } catch (err) {
     return next(err);

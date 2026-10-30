@@ -39,8 +39,29 @@
       recentlyAdded: [],
       recentlyUpdated: []
     },
+    searchLogs: [],
+    logPagination: {
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 1
+    },
+    logFilters: {
+      search: '',
+      result: '',
+      searchType: '',
+      date: ''
+    },
+    searchStats: {
+      totalSearches: 0,
+      successfulLookups: 0,
+      apiErrors: 0,
+      studentsNotFound: 0,
+      searchesToday: 0
+    },
     pendingUpload: null,
     searchDebounceTimer: null,
+    searchRequestId: 0,
     universalSearchFilter: 'all',
     deleteTargetId: null
   };
@@ -75,6 +96,57 @@
     } catch {
       return String(dateStr);
     }
+  }
+
+  function formatISTDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr);
+      return d.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return String(dateStr);
+    }
+  }
+
+  function formatISTTime(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return '';
+    }
+  }
+
+  function getResultBadgeHtml(result) {
+    const r = String(result || 'SYSTEM_ERROR').toUpperCase();
+    const classMap = {
+      'SUCCESS': 'badge-status-success',
+      'FOUND': 'badge-status-found',
+      'API_ERROR': 'badge-status-api-error',
+      'INVALID_RESPONSE': 'badge-status-invalid-response',
+      'TIMEOUT': 'badge-status-timeout',
+      'NETWORK_ERROR': 'badge-status-network-error',
+      'NOT_FOUND': 'badge-status-not-found',
+      'INVALID_INPUT': 'badge-status-invalid-input',
+      'DATABASE_ERROR': 'badge-status-database-error',
+      'SYSTEM_ERROR': 'badge-status-system-error'
+    };
+    const cls = classMap[r] || 'badge-status-system-error';
+    return `<span class="badge-status ${cls}">${escapeHtml(r)}</span>`;
   }
 
   // =========================================================================
@@ -241,7 +313,7 @@
       if (a.classList.contains('nav-link')) return;
       a.addEventListener('click', (e) => {
         const target = a.getAttribute('href').replace('#', '');
-        if (['overview', 'students', 'upload', 'search'].includes(target)) {
+        if (['overview', 'students', 'upload', 'search', 'logs'].includes(target)) {
           e.preventDefault();
           switchTab(target, true);
         }
@@ -253,7 +325,7 @@
   }
 
   function switchTab(tabId, updateHash = true) {
-    const validTabs = ['overview', 'students', 'upload', 'search'];
+    const validTabs = ['overview', 'students', 'upload', 'search', 'logs'];
     if (!validTabs.includes(tabId)) tabId = 'overview';
 
     state.activeTab = tabId;
@@ -284,7 +356,8 @@
         overview: 'Dashboard Overview',
         students: 'Student Management',
         upload: 'Excel Upload & Import',
-        search: 'Universal Search'
+        search: 'Universal Search',
+        logs: 'Search Activity Logs'
       };
       breadcrumb.textContent = titles[tabId] || 'Dashboard';
     }
@@ -296,6 +369,8 @@
     } else if (tabId === 'search') {
       const universalInput = document.getElementById('universal-search-input');
       if (universalInput) universalInput.focus();
+    } else if (tabId === 'logs') {
+      loadSearchLogs();
     }
 
     closeMobileSidebar();
@@ -305,9 +380,13 @@
   // VIEW 1: Dashboard Overview & Statistics
   // =========================================================================
   async function loadDashboardStats() {
-    const res = await apiFetch('/api/admin/stats');
-    if (res && res.ok && res.data) {
-      const stats = res.data.stats || res.data;
+    const [resStats, resSearchStats] = await Promise.all([
+      apiFetch('/api/admin/stats'),
+      apiFetch('/api/admin/search-logs/stats')
+    ]);
+
+    if (resStats && resStats.ok && resStats.data) {
+      const stats = resStats.data.stats || resStats.data;
       renderDashboardStats(stats);
     } else {
       renderDashboardStats({
@@ -322,6 +401,33 @@
         recentlyUpdated: []
       });
     }
+
+    if (resSearchStats && resSearchStats.ok && resSearchStats.data) {
+      const sStats = resSearchStats.data.stats || resSearchStats.data;
+      renderSearchActivityStats(sStats);
+    } else {
+      renderSearchActivityStats({
+        totalSearches: 0,
+        successfulLookups: 0,
+        apiErrors: 0,
+        studentsNotFound: 0,
+        searchesToday: 0
+      });
+    }
+  }
+
+  function renderSearchActivityStats(stats) {
+    state.searchStats = { ...state.searchStats, ...stats };
+    const setText = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = Number(val || 0).toLocaleString();
+    };
+
+    setText('stat-total-searches', stats.totalSearches || 0);
+    setText('stat-successful-lookups', stats.successfulLookups || 0);
+    setText('stat-api-errors', stats.apiErrors || 0);
+    setText('stat-students-not-found', stats.studentsNotFound || 0);
+    setText('stat-searches-today', stats.searchesToday || 0);
   }
 
   function renderDashboardStats(data) {
@@ -744,6 +850,7 @@
         closeModal('modal-edit-student');
         closeModal('modal-add-student');
         closeModal('modal-delete-student');
+        closeModal('modal-clear-logs');
       }
     });
 
@@ -803,6 +910,20 @@
     const cancelDeleteBtn = document.getElementById('btn-cancel-delete-modal');
     if (cancelDeleteBtn) {
       cancelDeleteBtn.addEventListener('click', () => closeModal('modal-delete-student'));
+    }
+
+    // --- MODAL 4: CLEAR LOGS ---
+    const openClearLogsBtn = document.getElementById('btn-open-clear-logs');
+    if (openClearLogsBtn) {
+      openClearLogsBtn.addEventListener('click', () => openModal('modal-clear-logs'));
+    }
+    const cancelClearLogsBtn = document.getElementById('btn-cancel-clear-logs');
+    if (cancelClearLogsBtn) {
+      cancelClearLogsBtn.addEventListener('click', () => closeModal('modal-clear-logs'));
+    }
+    const confirmClearLogsBtn = document.getElementById('btn-confirm-clear-logs');
+    if (confirmClearLogsBtn) {
+      confirmClearLogsBtn.addEventListener('click', handleConfirmClearLogs);
     }
   }
 
@@ -1577,6 +1698,7 @@
   function initUniversalSearch() {
     const searchInput = document.getElementById('universal-search-input');
     const clearBtn = document.getElementById('universal-search-clear');
+    const submitBtn = document.getElementById('btn-universal-search-submit');
 
     if (searchInput) {
       searchInput.addEventListener('input', () => {
@@ -1587,6 +1709,19 @@
         state.searchDebounceTimer = setTimeout(() => {
           executeUniversalSearch(val);
         }, 300);
+      });
+
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitUniversalSearch();
+        }
+      });
+    }
+
+    if (submitBtn) {
+      submitBtn.addEventListener('click', () => {
+        submitUniversalSearch();
       });
     }
 
@@ -1787,6 +1922,282 @@
   }
 
   // =========================================================================
+  // VIEW 5: Search Activity & Resolution Logs
+  // =========================================================================
+  async function loadSearchLogs() {
+    const { page, limit } = state.logPagination;
+    const { search, result, searchType, date } = state.logFilters;
+
+    const queryParams = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+      search: search || '',
+      result: result || '',
+      searchType: searchType || '',
+      date: date || ''
+    });
+
+    const res = await apiFetch(`/api/admin/search-logs?${queryParams.toString()}`);
+    if (res && res.ok && res.data) {
+      const data = res.data;
+      state.searchLogs = data.logs || [];
+      state.logPagination.total = data.pagination?.total || data.total || 0;
+      state.logPagination.page = data.pagination?.page || page;
+      state.logPagination.totalPages = data.pagination?.totalPages || Math.max(1, Math.ceil(state.logPagination.total / limit));
+    } else {
+      state.searchLogs = [];
+      state.logPagination.total = 0;
+      state.logPagination.totalPages = 1;
+    }
+
+    renderSearchLogsTable();
+  }
+
+  function renderSearchLogsTable() {
+    const tbody = document.getElementById('search-logs-tbody');
+    const emptyState = document.getElementById('search-logs-empty-state');
+    const tableEl = document.getElementById('search-logs-table');
+    const paginationContainer = document.getElementById('log-pagination-bar');
+
+    if (!tbody) return;
+
+    const logs = state.searchLogs;
+
+    if (!logs || logs.length === 0) {
+      tbody.innerHTML = '';
+      if (tableEl) tableEl.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'block';
+      if (paginationContainer) paginationContainer.style.display = 'none';
+      updateLogPaginationText(0, 0, 0);
+      return;
+    }
+
+    if (tableEl) tableEl.style.display = 'table';
+    if (emptyState) emptyState.style.display = 'none';
+    if (paginationContainer) paginationContainer.style.display = 'flex';
+
+    tbody.innerHTML = logs.map(l => {
+      const id = l.id;
+      const query = l.search_query || '—';
+      const type = l.search_type || 'Admission Number';
+      const result = l.result || 'SYSTEM_ERROR';
+      const dateStr = formatISTDate(l.created_at);
+      const timeStr = formatISTTime(l.created_at);
+
+      return `
+        <tr>
+          <td><span class="font-mono text-slate-500" style="font-size: 0.8rem;">#${id}</span></td>
+          <td><span class="font-semibold text-slate-900 font-mono">${escapeHtml(query)}</span></td>
+          <td><span class="badge badge-section">${escapeHtml(type)}</span></td>
+          <td>${getResultBadgeHtml(result)}</td>
+          <td class="text-slate-700 font-mono" style="font-size: 0.85rem;">${dateStr}</td>
+          <td class="text-slate-500 font-mono" style="font-size: 0.85rem;">${timeStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const { page, limit, total, totalPages } = state.logPagination;
+    const startRecord = total > 0 ? (page - 1) * limit + 1 : 0;
+    const endRecord = Math.min(page * limit, total);
+    updateLogPaginationText(startRecord, endRecord, total);
+    renderLogPaginationButtons(page, totalPages);
+  }
+
+  function updateLogPaginationText(start, end, total) {
+    const textEl = document.getElementById('log-pagination-info');
+    if (!textEl) return;
+    if (total === 0) {
+      textEl.textContent = 'Showing 0 logs';
+    } else {
+      textEl.textContent = `Showing ${start.toLocaleString()} to ${end.toLocaleString()} of ${total.toLocaleString()} logs`;
+    }
+  }
+
+  function renderLogPaginationButtons(currentPage, totalPages) {
+    const container = document.getElementById('log-pagination-buttons');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'btn-page';
+    prevBtn.innerHTML = '‹';
+    prevBtn.disabled = currentPage <= 1;
+    prevBtn.addEventListener('click', () => {
+      if (state.logPagination.page > 1) {
+        state.logPagination.page--;
+        loadSearchLogs();
+      }
+    });
+    container.appendChild(prevBtn);
+
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+
+    if (endPage - startPage + 1 < maxButtons) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    if (startPage > 1) {
+      container.appendChild(createLogPageBtn(1, currentPage === 1));
+      if (startPage > 2) {
+        const ellipsis = document.createElement('span');
+        ellipsis.className = 'pagination-ellipsis';
+        ellipsis.textContent = '…';
+        container.appendChild(ellipsis);
+      }
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+      container.appendChild(createLogPageBtn(p, p === currentPage));
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        const ellipsis = document.createElement('span');
+        ellipsis.className = 'pagination-ellipsis';
+        ellipsis.textContent = '…';
+        container.appendChild(ellipsis);
+      }
+      container.appendChild(createLogPageBtn(totalPages, currentPage === totalPages));
+    }
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'btn-page';
+    nextBtn.innerHTML = '›';
+    nextBtn.disabled = currentPage >= totalPages;
+    nextBtn.addEventListener('click', () => {
+      if (state.logPagination.page < totalPages) {
+        state.logPagination.page++;
+        loadSearchLogs();
+      }
+    });
+    container.appendChild(nextBtn);
+  }
+
+  function createLogPageBtn(pageNum, isActive) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `btn-page ${isActive ? 'active' : ''}`;
+    btn.textContent = String(pageNum);
+    if (!isActive) {
+      btn.addEventListener('click', () => {
+        state.logPagination.page = pageNum;
+        loadSearchLogs();
+      });
+    }
+    return btn;
+  }
+
+  // Clear logs modal submit handler
+  async function handleConfirmClearLogs() {
+    const confirmBtn = document.getElementById('btn-confirm-clear-logs');
+    const spinner = document.getElementById('btn-clear-logs-spinner');
+    const btnText = document.getElementById('btn-clear-logs-text');
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (spinner) spinner.style.display = 'inline-block';
+    if (btnText) btnText.textContent = 'Clearing...';
+
+    const res = await apiFetch('/api/admin/search-logs', { method: 'DELETE' });
+
+    if (confirmBtn) confirmBtn.disabled = false;
+    if (spinner) spinner.style.display = 'none';
+    if (btnText) btnText.textContent = 'Permanently Clear Logs';
+
+    if (res && res.ok) {
+      showToast('Search activity logs have been cleared successfully.', 'success');
+      closeModal('modal-clear-logs');
+      loadSearchLogs();
+      loadDashboardStats();
+    } else {
+      showToast('Failed to clear search logs. Please try again.', 'error');
+    }
+  }
+
+  // Explicit Student Search with Automatic Credential Fetching
+  async function submitStudentSearch() {
+    const input = document.getElementById('student-search-input');
+    if (!input) return;
+    const query = input.value.trim();
+    if (!query) {
+      state.filters.search = '';
+      state.pagination.page = 1;
+      loadStudents();
+      return;
+    }
+
+    state.filters.search = query;
+    state.pagination.page = 1;
+
+    const thisReqId = ++state.searchRequestId;
+
+    const res = await apiFetch('/api/admin/search', {
+      method: 'POST',
+      body: {
+        query,
+        searchType: 'Admission Number'
+      }
+    });
+
+    if (thisReqId !== state.searchRequestId) return;
+
+    if (res && res.ok && res.data) {
+      const data = res.data;
+      if (data.updated) {
+        showToast(`Portal credentials automatically retrieved & saved for ${query}!`, 'success', 5000);
+      } else if (data.result === 'NOT_FOUND') {
+        showToast(`Student record for ${query} not found in database.`, 'info');
+      } else if (['API_ERROR', 'TIMEOUT', 'NETWORK_ERROR', 'INVALID_RESPONSE'].includes(data.result)) {
+        showToast(`Credential lookup status: ${data.result}. Existing student data preserved.`, 'warning');
+      }
+      loadStudents();
+      loadDashboardStats();
+    } else {
+      loadStudents();
+    }
+  }
+
+  // Explicit Universal Search with Automatic Credential Fetching
+  async function submitUniversalSearch() {
+    const input = document.getElementById('universal-search-input');
+    if (!input) return;
+    const query = input.value.trim();
+    if (!query) {
+      executeUniversalSearch('');
+      return;
+    }
+
+    const thisReqId = ++state.searchRequestId;
+    const searchType = state.universalSearchFilter;
+
+    const res = await apiFetch('/api/admin/search', {
+      method: 'POST',
+      body: {
+        query,
+        searchType
+      }
+    });
+
+    if (thisReqId !== state.searchRequestId) return;
+
+    if (res && res.ok && res.data) {
+      const data = res.data;
+      if (data.updated) {
+        showToast(`Portal credentials retrieved & saved for ${query}!`, 'success', 5000);
+        loadStudents();
+        loadDashboardStats();
+      }
+      executeUniversalSearch(query);
+    } else {
+      executeUniversalSearch(query);
+    }
+  }
+
+  // =========================================================================
   // Mobile Controls & Toolbar Handlers
   // =========================================================================
   function initMobileControls() {
@@ -1856,6 +2267,21 @@
         state.searchDebounceTimer = setTimeout(() => {
           loadStudents();
         }, 300);
+      });
+    }
+
+      studentSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitStudentSearch();
+        }
+      });
+    }
+
+    const submitStudentSearchBtn = document.getElementById('btn-student-search-submit');
+    if (submitStudentSearchBtn) {
+      submitStudentSearchBtn.addEventListener('click', () => {
+        submitStudentSearch();
       });
     }
 
@@ -1956,6 +2382,107 @@
         const sortFilter = document.getElementById('student-sort-filter');
         if (sortFilter) sortFilter.value = 'updated_desc';
         switchTab('students');
+      });
+    }
+
+    // View All Logs link on Overview
+    const linkAllLogs = document.getElementById('link-view-all-logs');
+    if (linkAllLogs) {
+      linkAllLogs.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab('logs');
+      });
+    }
+
+    // Refresh Logs button
+    const refreshLogsBtn = document.getElementById('btn-refresh-logs');
+    if (refreshLogsBtn) {
+      refreshLogsBtn.addEventListener('click', () => {
+        loadSearchLogs();
+        showToast('Search activity logs refreshed.', 'info');
+      });
+    }
+
+    // Search Logs Filter Toolbar
+    const logSearchInput = document.getElementById('log-search-input');
+    const logSearchClearBtn = document.getElementById('log-search-clear');
+    if (logSearchInput) {
+      logSearchInput.addEventListener('input', () => {
+        const val = logSearchInput.value.trim();
+        state.logFilters.search = val;
+        state.logPagination.page = 1;
+        if (logSearchClearBtn) logSearchClearBtn.style.display = val ? 'inline-flex' : 'none';
+
+        clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(() => {
+          loadSearchLogs();
+        }, 300);
+      });
+    }
+
+    if (logSearchClearBtn && logSearchInput) {
+      logSearchClearBtn.addEventListener('click', () => {
+        logSearchInput.value = '';
+        state.logFilters.search = '';
+        state.logPagination.page = 1;
+        logSearchClearBtn.style.display = 'none';
+        loadSearchLogs();
+        logSearchInput.focus();
+      });
+    }
+
+    const logResultFilter = document.getElementById('log-result-filter');
+    if (logResultFilter) {
+      logResultFilter.addEventListener('change', () => {
+        state.logFilters.result = logResultFilter.value;
+        state.logPagination.page = 1;
+        loadSearchLogs();
+      });
+    }
+
+    const logTypeFilter = document.getElementById('log-type-filter');
+    if (logTypeFilter) {
+      logTypeFilter.addEventListener('change', () => {
+        state.logFilters.searchType = logTypeFilter.value;
+        state.logPagination.page = 1;
+        loadSearchLogs();
+      });
+    }
+
+    const logDateFilter = document.getElementById('log-date-filter');
+    if (logDateFilter) {
+      logDateFilter.addEventListener('change', () => {
+        state.logFilters.date = logDateFilter.value;
+        state.logPagination.page = 1;
+        loadSearchLogs();
+      });
+    }
+
+    const resetLogFiltersBtn = document.getElementById('btn-reset-log-filters');
+    if (resetLogFiltersBtn) {
+      resetLogFiltersBtn.addEventListener('click', () => {
+        if (logSearchInput) logSearchInput.value = '';
+        if (logSearchClearBtn) logSearchClearBtn.style.display = 'none';
+        if (logResultFilter) logResultFilter.value = '';
+        if (logTypeFilter) logTypeFilter.value = '';
+        if (logDateFilter) logDateFilter.value = '';
+
+        state.logFilters.search = '';
+        state.logFilters.result = '';
+        state.logFilters.searchType = '';
+        state.logFilters.date = '';
+        state.logPagination.page = 1;
+
+        loadSearchLogs();
+      });
+    }
+
+    const logPaginationLimit = document.getElementById('log-pagination-limit');
+    if (logPaginationLimit) {
+      logPaginationLimit.addEventListener('change', () => {
+        state.logPagination.limit = parseInt(logPaginationLimit.value, 10) || 20;
+        state.logPagination.page = 1;
+        loadSearchLogs();
       });
     }
   }

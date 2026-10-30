@@ -95,9 +95,16 @@ test('Admin Frontend - index.html contains complete dashboard layout and require
   assert.ok(content.includes('filter-chip-btn') || content.includes('filter-chips'), 'Must have search filter chips');
   assert.ok(content.includes('universal-results-tbody'), 'Must have universal search results table');
 
+  // View 5: Search Logs
+  assert.ok(content.includes('id="view-logs"'), 'Must have search logs view');
+  assert.ok(content.includes('search-logs-table'), 'Must have search logs table');
+  assert.ok(content.includes('log-result-filter'), 'Must have search logs result filter');
+  assert.ok(content.includes('log-type-filter'), 'Must have search logs type filter');
+
   // Modals
   assert.ok(content.includes('modal-edit-student'), 'Must have Edit Student modal');
   assert.ok(content.includes('modal-delete-student'), 'Must have Delete Student modal');
+  assert.ok(content.includes('modal-clear-logs'), 'Must have Clear Search Logs modal');
 
   // Toast Container
   assert.ok(content.includes('toast-container'), 'Must have toast notification container');
@@ -161,6 +168,11 @@ test('Admin Frontend - admin.js implements complete SPA features and API endpoin
   // Universal search & toast
   assert.ok(js.includes('executeUniversalSearch'), 'Must implement universal search');
   assert.ok(js.includes('showToast'), 'Must provide toast notification helper');
+
+  // Search Logs & credential retrieval
+  assert.ok(js.includes('/api/admin/search-logs'), 'Must query /api/admin/search-logs');
+  assert.ok(js.includes('loadSearchLogs'), 'Must implement loadSearchLogs');
+  assert.ok(js.includes('/api/admin/search'), 'Must query /api/admin/search');
 });
 
 test('Admin Frontend - Integrity check: public/index.html and styles.css remain untouched', () => {

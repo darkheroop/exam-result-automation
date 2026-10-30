@@ -24,7 +24,9 @@ class AdminDbService {
     // Resilient In-Memory Fallback Stores
     this.memoryStudents = new Map(); // key: admission_number, value: student object
     this.memoryAdminSessions = new Map(); // key: token, value: session object
+    this.memorySearchLogs = []; // array of log objects
     this.nextStudentId = 1;
+    this.nextSearchLogId = 1;
 
     if (this.connectionString && neonClient) {
       try {
@@ -88,6 +90,26 @@ class AdminDbService {
 
         await this.sql`
           CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at);
+        `;
+
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS search_logs (
+            id BIGSERIAL PRIMARY KEY,
+            search_query TEXT NOT NULL,
+            search_type VARCHAR(64) NOT NULL,
+            result VARCHAR(64) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        `;
+
+        await this.sql`
+          CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs(created_at DESC);
+        `;
+        await this.sql`
+          CREATE INDEX IF NOT EXISTS idx_search_logs_result ON search_logs(result);
+        `;
+        await this.sql`
+          CREATE INDEX IF NOT EXISTS idx_search_logs_search_type ON search_logs(search_type);
         `;
 
         this.schemaInitialized = true;
@@ -865,6 +887,290 @@ class AdminDbService {
         // Suppress cleanup warning
       }
     }
+  }
+
+  /**
+   * Updates only username and password for a verified student admission number.
+   * Preserves all other student fields (name, phone, section, created_at).
+   */
+  async updateStudentCredentials(admissionNumber, { username = '', password = '' }) {
+    const cleanAdm = String(admissionNumber || '').trim();
+    if (!cleanAdm) throw new Error('Admission number is required to update credentials');
+    const cleanUser = String(username || '').trim();
+    const cleanPass = String(password || '').trim();
+
+    if (this.sql) {
+      try {
+        await this.ensureSchema();
+        const rows = await this.sql`
+          UPDATE managed_students
+          SET username = ${cleanUser},
+              password = ${cleanPass},
+              updated_at = NOW()
+          WHERE admission_number = ${cleanAdm}
+          RETURNING *;
+        `;
+        if (rows && rows.length > 0) {
+          const updated = this._formatStudent(rows[0]);
+          this.memoryStudents.set(cleanAdm, { ...updated });
+          return updated;
+        }
+        return null;
+      } catch (err) {
+        console.warn(`[Admin DB] updateStudentCredentials SQL error for ${cleanAdm}:`, err.message);
+        throw err;
+      }
+    }
+
+    const existing = this.memoryStudents.get(cleanAdm);
+    if (!existing) return null;
+    const updated = {
+      ...existing,
+      username: cleanUser,
+      password: cleanPass,
+      updated_at: new Date().toISOString()
+    };
+    this.memoryStudents.set(cleanAdm, updated);
+    return this._formatStudent(updated);
+  }
+
+  /**
+   * Records a student search operation into search_logs.
+   * Does NOT record student passwords or API keys.
+   */
+  async logSearch({ searchQuery, searchType = 'Admission Number', result = 'SYSTEM_ERROR' }) {
+    const cleanQuery = String(searchQuery || '').trim();
+    const cleanType = String(searchType || 'Admission Number').trim();
+    const cleanResult = String(result || 'SYSTEM_ERROR').trim().toUpperCase();
+
+    if (this.sql) {
+      try {
+        await this.ensureSchema();
+        const rows = await this.sql`
+          INSERT INTO search_logs (search_query, search_type, result, created_at)
+          VALUES (${cleanQuery}, ${cleanType}, ${cleanResult}, NOW())
+          RETURNING id, search_query, search_type, result, created_at;
+        `;
+        if (rows && rows.length > 0) {
+          const formatted = this._formatSearchLog(rows[0]);
+          this.memorySearchLogs.unshift(formatted);
+          return formatted;
+        }
+      } catch (err) {
+        console.warn('[Admin DB] logSearch SQL error, fallback to memory:', err.message);
+      }
+    }
+
+    const logEntry = {
+      id: this.nextSearchLogId++,
+      search_query: cleanQuery,
+      search_type: cleanType,
+      result: cleanResult,
+      created_at: new Date().toISOString()
+    };
+    this.memorySearchLogs.unshift(logEntry);
+    return logEntry;
+  }
+
+  /**
+   * Retrieves paginated search logs with filtering.
+   */
+  async listSearchLogs({ page = 1, limit = 20, search = '', result = '', searchType = '', date = '' } = {}) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageNum - 1) * limitNum;
+    const cleanSearch = String(search || '').trim().toLowerCase();
+    const cleanResult = String(result || '').trim().toUpperCase();
+    const cleanType = String(searchType || '').trim();
+    const cleanDate = String(date || '').trim();
+
+    if (this.sql) {
+      try {
+        await this.ensureSchema();
+        const conditions = [];
+        const params = [];
+        let pIdx = 1;
+
+        if (cleanSearch) {
+          conditions.push(`search_query ILIKE $${pIdx}`);
+          params.push(`%${cleanSearch}%`);
+          pIdx++;
+        }
+
+        if (cleanResult) {
+          conditions.push(`result = $${pIdx}`);
+          params.push(cleanResult);
+          pIdx++;
+        }
+
+        if (cleanType) {
+          conditions.push(`search_type ILIKE $${pIdx}`);
+          params.push(cleanType);
+          pIdx++;
+        }
+
+        if (cleanDate) {
+          conditions.push(`(created_at AT TIME ZONE 'Asia/Kolkata')::date = $${pIdx}::date`);
+          params.push(cleanDate);
+          pIdx++;
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const countQuery = `SELECT COUNT(*) AS total FROM search_logs ${whereClause};`;
+        const countRows = await this.sql.query(countQuery, params);
+        const total = parseInt(countRows[0]?.total || 0, 10);
+
+        const listQuery = `
+          SELECT id, search_query, search_type, result, created_at
+          FROM search_logs
+          ${whereClause}
+          ORDER BY created_at DESC, id DESC
+          LIMIT $${pIdx} OFFSET $${pIdx + 1};
+        `;
+        const rows = await this.sql.query(listQuery, [...params, limitNum, offset]);
+
+        return {
+          logs: rows.map(r => this._formatSearchLog(r)),
+          total,
+          page: pageNum,
+          totalPages: Math.ceil(total / limitNum) || 1,
+          limit: limitNum
+        };
+      } catch (err) {
+        console.warn('[Admin DB] listSearchLogs error, fallback to memory:', err.message);
+      }
+    }
+
+    // Memory fallback
+    let all = [...this.memorySearchLogs];
+
+    if (cleanSearch) {
+      all = all.filter(l => (l.search_query || '').toLowerCase().includes(cleanSearch));
+    }
+
+    if (cleanResult) {
+      all = all.filter(l => (l.result || '').toUpperCase() === cleanResult);
+    }
+
+    if (cleanType) {
+      all = all.filter(l => (l.search_type || '').toLowerCase() === cleanType.toLowerCase());
+    }
+
+    if (cleanDate) {
+      all = all.filter(l => {
+        if (!l.created_at) return false;
+        const d = new Date(l.created_at);
+        const istDateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        return istDateStr === cleanDate;
+      });
+    }
+
+    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const total = all.length;
+    const paginated = all.slice(offset, offset + limitNum).map(l => this._formatSearchLog(l));
+
+    return {
+      logs: paginated,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+      limit: limitNum
+    };
+  }
+
+  /**
+   * Clears all search activity logs.
+   * NEVER deletes student records.
+   */
+  async clearSearchLogs() {
+    this.memorySearchLogs = [];
+
+    if (this.sql) {
+      try {
+        await this.ensureSchema();
+        await this.sql`DELETE FROM search_logs;`;
+        return true;
+      } catch (err) {
+        console.warn('[Admin DB] clearSearchLogs error:', err.message);
+        throw err;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Retrieves summary statistics from the search_logs table.
+   */
+  async getSearchLogStats() {
+    if (this.sql) {
+      try {
+        await this.ensureSchema();
+        const rows = await this.sql`
+          SELECT 
+            COUNT(*) AS total_searches,
+            COUNT(*) FILTER (WHERE result = 'SUCCESS') AS successful_lookups,
+            COUNT(*) FILTER (WHERE result IN ('API_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'NETWORK_ERROR')) AS api_errors,
+            COUNT(*) FILTER (WHERE result = 'NOT_FOUND') AS not_found,
+            COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date) AS searches_today
+          FROM search_logs;
+        `;
+        if (rows && rows.length > 0) {
+          const r = rows[0];
+          return {
+            totalSearches: parseInt(r.total_searches || 0, 10),
+            successfulLookups: parseInt(r.successful_lookups || 0, 10),
+            apiErrors: parseInt(r.api_errors || 0, 10),
+            studentsNotFound: parseInt(r.not_found || 0, 10),
+            searchesToday: parseInt(r.searches_today || 0, 10)
+          };
+        }
+      } catch (err) {
+        console.warn('[Admin DB] getSearchLogStats error, fallback to memory:', err.message);
+      }
+    }
+
+    // Memory stats
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    let totalSearches = this.memorySearchLogs.length;
+    let successfulLookups = 0;
+    let apiErrors = 0;
+    let studentsNotFound = 0;
+    let searchesToday = 0;
+
+    for (const log of this.memorySearchLogs) {
+      const res = (log.result || '').toUpperCase();
+      if (res === 'SUCCESS') successfulLookups++;
+      if (['API_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'NETWORK_ERROR'].includes(res)) apiErrors++;
+      if (res === 'NOT_FOUND') studentsNotFound++;
+      if (log.created_at) {
+        const dStr = new Date(log.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        if (dStr === todayStr) searchesToday++;
+      }
+    }
+
+    return {
+      totalSearches,
+      successfulLookups,
+      apiErrors,
+      studentsNotFound,
+      searchesToday
+    };
+  }
+
+  /**
+   * Formats a search log object.
+   */
+  _formatSearchLog(l) {
+    if (!l) return null;
+    return {
+      id: Number(l.id),
+      search_query: l.search_query || '',
+      search_type: l.search_type || 'Admission Number',
+      result: (l.result || 'SYSTEM_ERROR').toUpperCase(),
+      created_at: l.created_at ? new Date(l.created_at).toISOString() : new Date().toISOString()
+    };
   }
 
   /**
