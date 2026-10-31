@@ -377,6 +377,121 @@ class AdminDbService {
   }
 
   /**
+   * Retrieves all students matching search, section, and credential filters,
+   * sorted as specified, without pagination limits (for export).
+   */
+  async getStudentsForExport({ search = '', section = '', credential = '', sortBy = 'student_name', sortOrder = 'ASC' } = {}) {
+    const cleanSearch = String(search || '').trim().toLowerCase();
+    const cleanSection = String(section || '').trim();
+    const cleanCredential = String(credential || '').trim().toLowerCase();
+
+    const allowedSortFields = ['id', 'student_name', 'name', 'admission_number', 'phone_number', 'portal_username', 'username', 'section', 'created_at', 'updated_at'];
+    let sortField = allowedSortFields.includes(sortBy) ? sortBy : 'student_name';
+    if (sortBy === 'name') sortField = 'student_name';
+    if (sortBy === 'username') sortField = 'username';
+    if (sortBy === 'adm') sortField = 'admission_number';
+    if (sortBy === 'updated') sortField = 'updated_at';
+    const sortDirection = String(sortOrder).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+
+        const conditions = [];
+        const params = [];
+        let pIndex = 1;
+
+        if (cleanSearch) {
+          conditions.push(`(
+            student_name ILIKE $${pIndex} OR 
+            admission_number ILIKE $${pIndex} OR 
+            phone_number ILIKE $${pIndex} OR 
+            username ILIKE $${pIndex}
+          )`);
+          params.push(`%${cleanSearch}%`);
+          pIndex++;
+        }
+
+        if (cleanSection) {
+          conditions.push(`(1=1)`);
+        }
+
+        if (cleanCredential === 'complete' || cleanCredential === 'with_credentials') {
+          conditions.push(`(username IS NOT NULL AND username <> '' AND password IS NOT NULL AND password <> '')`);
+        } else if (cleanCredential === 'without_credentials' || cleanCredential === 'missing') {
+          conditions.push(`(username IS NULL OR username = '' OR password IS NULL OR password = '')`);
+        } else if (cleanCredential === 'missing_username') {
+          conditions.push(`(username IS NULL OR username = '')`);
+        } else if (cleanCredential === 'missing_password') {
+          conditions.push(`(password IS NULL OR password = '')`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const listQuery = `
+          SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at
+          FROM students
+          ${whereClause}
+          ORDER BY ${sortField} ${sortDirection}, id ASC;
+        `;
+        const students = await sql.query(listQuery, params);
+
+        return students.map(s => this._formatStudent(s));
+      } catch (err) {
+        console.warn('[Admin DB] getStudentsForExport query error, falling back to memory:', err.message);
+      }
+    }
+
+    // Memory fallback
+    let all = Array.from(this.memoryStudents.values());
+
+    if (cleanSearch) {
+      all = all.filter(s => {
+        const sName = (s.student_name || s.name || '').toLowerCase();
+        const sAdm = (s.admission_number || '').toLowerCase();
+        const sPhone = (s.phone_number || '').toLowerCase();
+        const sUser = (s.portal_username || s.username || '').toLowerCase();
+        return sName.includes(cleanSearch) || sAdm.includes(cleanSearch) || sPhone.includes(cleanSearch) || sUser.includes(cleanSearch);
+      });
+    }
+
+    if (cleanSection) {
+      all = all.filter(s => s.section && s.section.toLowerCase() === cleanSection.toLowerCase());
+    }
+
+    if (cleanCredential === 'complete' || cleanCredential === 'with_credentials') {
+      all = all.filter(s => (s.portal_username || s.username) && (s.portal_password || s.password));
+    } else if (cleanCredential === 'without_credentials' || cleanCredential === 'missing') {
+      all = all.filter(s => !(s.portal_username || s.username) || !(s.portal_password || s.password));
+    } else if (cleanCredential === 'missing_username') {
+      all = all.filter(s => !(s.portal_username || s.username));
+    } else if (cleanCredential === 'missing_password') {
+      all = all.filter(s => !(s.portal_password || s.password));
+    }
+
+    // Sort
+    all.sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+
+      if (sortField === 'id') {
+        valA = Number(valA);
+        valB = Number(valB);
+        return sortDirection === 'DESC' ? valB - valA : valA - valB;
+      }
+
+      valA = String(valA || '').toLowerCase();
+      valB = String(valB || '').toLowerCase();
+      if (valA < valB) return sortDirection === 'DESC' ? 1 : -1;
+      if (valA > valB) return sortDirection === 'DESC' ? -1 : 1;
+      return 0;
+    });
+
+    return all.map(s => this._formatStudent(s));
+  }
+
+  /**
    * Retrieves a student by their ID.
    */
   async getStudentById(id) {

@@ -844,6 +844,100 @@
   }
 
   // =========================================================================
+  // Student Export to Excel (.xlsx)
+  // =========================================================================
+  async function exportStudents() {
+    const exportBtn = document.getElementById('btn-export-students');
+    const origHtml = exportBtn ? exportBtn.innerHTML : '';
+    if (exportBtn) {
+      exportBtn.disabled = true;
+      exportBtn.style.opacity = '0.7';
+      exportBtn.innerHTML = `
+        <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+        <span>Exporting...</span>
+      `;
+    }
+
+    showToast('Generating Excel export...', 'info');
+
+    try {
+      const { search, section, credential, sort } = state.filters;
+      const queryParams = new URLSearchParams({
+        search: search || '',
+        section: section || '',
+        credential: credential || '',
+        sort: sort || 'name_asc'
+      });
+
+      const token = localStorage.getItem('admin_token');
+      const headers = {
+        'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+
+      const response = await fetch(`/api/admin/students/export?${queryParams.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        window.location.href = '/admin/login';
+        return;
+      }
+
+      if (!response.ok) {
+        let errMsg = 'Failed to export students.';
+        try {
+          const errData = await response.json();
+          if (errData && errData.error && errData.error.message) {
+            errMsg = errData.error.message;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      // Read filename from Content-Disposition header if available
+      let filename = `Student_Records_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const disposition = response.headers.get('content-disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^";]+)"?/);
+        if (match && match[1]) {
+          filename = match[1].trim();
+        }
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.style.display = 'none';
+      downloadLink.href = blobUrl;
+      downloadLink.download = filename;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+
+      setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+        if (downloadLink.parentNode) {
+          downloadLink.parentNode.removeChild(downloadLink);
+        }
+      }, 1000);
+
+      showToast('Student records exported successfully.', 'success');
+    } catch (err) {
+      showToast(`Export error: ${err.message}`, 'error');
+    } finally {
+      if (exportBtn) {
+        exportBtn.disabled = false;
+        exportBtn.style.opacity = '';
+        exportBtn.innerHTML = origHtml;
+      }
+    }
+  }
+
+  // =========================================================================
   // Modals System (Edit, Add, Delete)
   // =========================================================================
   function openModal(modalId) {
@@ -2307,6 +2401,12 @@
     const headerUploadExcelBtn = document.getElementById('btn-header-upload-excel');
     if (headerUploadExcelBtn) {
       headerUploadExcelBtn.addEventListener('click', () => switchTab('upload'));
+    }
+
+    // Export Students Button in Student Management
+    const exportStudentsBtn = document.getElementById('btn-export-students');
+    if (exportStudentsBtn) {
+      exportStudentsBtn.addEventListener('click', exportStudents);
     }
 
     // Student Search Input

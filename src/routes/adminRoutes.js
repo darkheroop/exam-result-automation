@@ -7,6 +7,7 @@ const { defaultAdminAuthService, requireAdminAuth } = require('../services/admin
 const { defaultAdminDbService } = require('../services/adminDbService');
 const { defaultExcelImportService } = require('../services/excelImportService');
 const { defaultAdminSearchService } = require('../services/adminSearchService');
+const { generateStudentsExportWorkbook, getExportFilename } = require('../services/excelExportService');
 
 const router = express.Router();
 
@@ -315,6 +316,47 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
       success: true,
       ...result
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/admin/students/export
+ * Exports student directory to an Excel (.xlsx) file, respecting active search, filters, and sorting.
+ */
+router.get('/students/export', requireAdminAuth, async (req, res, next) => {
+  try {
+    const { search, section, credential, sortBy, sortOrder, sort, filter } = req.query;
+
+    let effSortBy = sortBy || 'name';
+    let effSortOrder = sortOrder || 'ASC';
+
+    if (sort) {
+      if (sort === 'name_asc') { effSortBy = 'name'; effSortOrder = 'ASC'; }
+      else if (sort === 'name_desc') { effSortBy = 'name'; effSortOrder = 'DESC'; }
+      else if (sort === 'adm_asc') { effSortBy = 'admission_number'; effSortOrder = 'ASC'; }
+      else if (sort === 'updated_desc') { effSortBy = 'updated_at'; effSortOrder = 'DESC'; }
+    }
+
+    const effCredential = credential || filter;
+
+    const students = await defaultAdminDbService.getStudentsForExport({
+      search,
+      section,
+      credential: effCredential,
+      sortBy: effSortBy,
+      sortOrder: effSortOrder
+    });
+
+    const buffer = generateStudentsExportWorkbook(students);
+    const filename = getExportFilename(new Date());
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
+    return res.send(buffer);
   } catch (err) {
     return next(err);
   }
