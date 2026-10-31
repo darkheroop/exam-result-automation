@@ -1341,6 +1341,102 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       MODAL: Export Students Selection Modal
+       ============================================================ -->
+  <div id="modal-export-students" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-export-title">
+    <div class="modal-dialog" style="max-width: 520px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="modal-export-title">Export Student Records</h3>
+          <p>Choose which student records to export into an Excel (.xlsx) file.</p>
+        </div>
+        <button type="button" class="btn-modal-close" id="btn-close-export-modal" data-close-modal="modal-export-students" aria-label="Close dialog">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div id="export-search-notice" class="export-notice-banner" style="display: none; margin-bottom: 1rem; padding: 0.65rem 0.85rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: 0.825rem; color: #166534;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; vertical-align: middle; margin-right: 4px;">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span id="export-search-notice-text">Universal search is active and will filter exported records.</span>
+        </div>
+
+        <div class="export-options-list">
+          <!-- Option 1: All Students -->
+          <label class="export-option-card active" for="export-opt-all">
+            <input type="radio" id="export-opt-all" name="exportOption" value="all" checked>
+            <div class="export-option-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div class="export-option-content">
+              <div class="export-option-title">1. All Students</div>
+              <div class="export-option-desc">Export every student record from the database.</div>
+              <span class="export-filename-badge">All_Students.xlsx</span>
+            </div>
+          </label>
+
+          <!-- Option 2: Students With Credentials -->
+          <label class="export-option-card" for="export-opt-with">
+            <input type="radio" id="export-opt-with" name="exportOption" value="with_credentials">
+            <div class="export-option-icon icon-success">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <div class="export-option-content">
+              <div class="export-option-title">2. Students With Credentials</div>
+              <div class="export-option-desc">Export only students whose username and password are both present.</div>
+              <span class="export-filename-badge">Students_With_Credentials.xlsx</span>
+            </div>
+          </label>
+
+          <!-- Option 3: Students Without Credentials -->
+          <label class="export-option-card" for="export-opt-without">
+            <input type="radio" id="export-opt-without" name="exportOption" value="without_credentials">
+            <div class="export-option-icon icon-warning">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div class="export-option-content">
+              <div class="export-option-title">3. Students Without Credentials</div>
+              <div class="export-option-desc">Export students where either username or password is missing or empty.</div>
+              <span class="export-filename-badge">Students_Without_Credentials.xlsx</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-export-modal" data-close-modal="modal-export-students">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-confirm-export">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span id="btn-confirm-export-text">Export & Download</span>
+          <span id="btn-confirm-export-spinner" class="spinner" style="display: none; width: 14px; height: 14px; border-width: 2px;" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 

@@ -3,15 +3,20 @@
 const xlsx = require('xlsx');
 
 /**
- * Returns a standardized filename for the student export using the current or given date:
- * e.g. Student_Records_2026-10-31.xlsx
+ * Returns a standardized filename for the student export based on filter option:
+ * - 'all' -> All_Students.xlsx
+ * - 'with_credentials' -> Students_With_Credentials.xlsx
+ * - 'without_credentials' -> Students_Without_Credentials.xlsx
  */
-function getExportFilename(date = new Date()) {
-  const d = date instanceof Date && !isNaN(date) ? date : new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `Student_Records_${yyyy}-${mm}-${dd}.xlsx`;
+function getExportFilename(exportFilter = 'all') {
+  const cleanFilter = String(exportFilter || 'all').toLowerCase().trim();
+  if (cleanFilter === 'with_credentials' || cleanFilter === 'complete') {
+    return 'Students_With_Credentials.xlsx';
+  }
+  if (cleanFilter === 'without_credentials' || cleanFilter === 'missing') {
+    return 'Students_Without_Credentials.xlsx';
+  }
+  return 'All_Students.xlsx';
 }
 
 /**

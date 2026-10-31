@@ -324,10 +324,14 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
 /**
  * GET /api/admin/students/export
  * Exports student directory to an Excel (.xlsx) file, respecting active search, filters, and sorting.
+ * Supports export options:
+ * - 'all' -> All_Students.xlsx
+ * - 'with_credentials' -> Students_With_Credentials.xlsx
+ * - 'without_credentials' -> Students_Without_Credentials.xlsx
  */
 router.get('/students/export', requireAdminAuth, async (req, res, next) => {
   try {
-    const { search, section, credential, sortBy, sortOrder, sort, filter } = req.query;
+    const { search, section, credential, sortBy, sortOrder, sort, filter, exportFilter } = req.query;
 
     let effSortBy = sortBy || 'name';
     let effSortOrder = sortOrder || 'ASC';
@@ -339,7 +343,14 @@ router.get('/students/export', requireAdminAuth, async (req, res, next) => {
       else if (sort === 'updated_desc') { effSortBy = 'updated_at'; effSortOrder = 'DESC'; }
     }
 
-    const effCredential = credential || filter;
+    // Determine the export filter option: 'all', 'with_credentials', or 'without_credentials'
+    const chosenExportFilter = String(exportFilter || credential || filter || 'all').toLowerCase().trim();
+    let effCredential = '';
+    if (chosenExportFilter === 'with_credentials' || chosenExportFilter === 'complete') {
+      effCredential = 'with_credentials';
+    } else if (chosenExportFilter === 'without_credentials' || chosenExportFilter === 'missing') {
+      effCredential = 'without_credentials';
+    }
 
     const students = await defaultAdminDbService.getStudentsForExport({
       search,
@@ -350,7 +361,7 @@ router.get('/students/export', requireAdminAuth, async (req, res, next) => {
     });
 
     const buffer = generateStudentsExportWorkbook(students);
-    const filename = getExportFilename(new Date());
+    const filename = getExportFilename(chosenExportFilter);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

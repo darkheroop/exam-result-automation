@@ -2497,3 +2497,93 @@ mark.search-highlight {
   color: var(--rose-600);
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
+
+/* ==========================================================================
+   Export Students Selection Dialog
+   ========================================================================== */
+.export-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.export-option-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-lg);
+  background: var(--slate-50, #f8fafc);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.export-option-card:hover {
+  border-color: var(--primary-400, #818cf8);
+  background: #ffffff;
+}
+
+.export-option-card.active,
+.export-option-card:has(input:checked) {
+  border-color: var(--primary-600, #4f46e5);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+}
+
+.export-option-card input[type="radio"] {
+  margin-top: 0.25rem;
+  accent-color: var(--primary-600, #4f46e5);
+  cursor: pointer;
+}
+
+.export-option-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: #eef2ff;
+  color: #4f46e5;
+  flex-shrink: 0;
+}
+
+.export-option-icon.icon-success {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.export-option-icon.icon-warning {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.export-option-content {
+  flex: 1;
+}
+
+.export-option-title {
+  font-size: 0.925rem;
+  font-weight: 700;
+  color: var(--slate-900);
+  margin-bottom: 0.2rem;
+}
+
+.export-option-desc {
+  font-size: 0.8rem;
+  color: var(--slate-500);
+  line-height: 1.35;
+  margin-bottom: 0.35rem;
+}
+
+.export-filename-badge {
+  display: inline-block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.725rem;
+  background: var(--slate-100);
+  color: var(--slate-700);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--slate-200);
+}

@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const xlsx = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 const app = require('../src/app');
 const { defaultAdminDbService } = require('../src/services/adminDbService');
 const { defaultAdminAuthService } = require('../src/services/adminAuthService');
@@ -71,14 +73,17 @@ test('Admin Export - Security: Unauthenticated request returns 401', async () =>
   }
 });
 
-test('Admin Export - Full Lifecycle: Filtering, Sorting, Leading Zeros & Excel Formatting', async () => {
+test('Admin Export - Three Options: All Students, With Credentials, and Without Credentials', async () => {
   const { server, url } = await startTestServer();
   try {
     // 1. Authenticate to obtain admin token
     const token = await defaultAdminAuthService.createSession('inexpert_trifler');
 
-    // 2. Clear or prepare specific seed student records in database service
-    // We add distinct students to test sorting, filters, and leading zeros
+    // 2. Prepare seed students:
+    // - Both credentials
+    // - Missing both
+    // - Missing password only (has username only)
+    // - Missing username only (has password only)
     const testSeed = [
       {
         name: 'Aaron Aaronson',
@@ -101,15 +106,31 @@ test('Admin Export - Full Lifecycle: Filtering, Sorting, Leading Zeros & Excel F
         admission_number: '2023CS002',
         phone_number: '9123456781',
         section: 'IT-A',
-        username: '',                   // Empty credentials
+        username: '',                   // Empty credentials (both missing)
         password: ''
+      },
+      {
+        name: 'David UsernameOnly',
+        admission_number: '2023CS010',
+        phone_number: '9123456782',
+        section: 'IT-A',
+        username: 'david_user_only',    // Has username but missing password
+        password: ''
+      },
+      {
+        name: 'Elena PasswordOnly',
+        admission_number: '2023CS011',
+        phone_number: '9123456783',
+        section: 'CSE-B',
+        username: '',                   // Missing username but has password
+        password: 'elena_pass_only'
       },
       {
         name: 'Zack Snyder',
         admission_number: '0098765432', // Leading zeros
         phone_number: '0112233445',     // Leading zero
         section: 'ECE-A',
-        username: '',                   // Empty credentials
+        username: '',                   // Empty credentials (both missing)
         password: ''
       }
     ];
@@ -123,16 +144,15 @@ test('Admin Export - Full Lifecycle: Filtering, Sorting, Leading Zeros & Excel F
     };
 
     // ------------------------------------------------------------------------
-    // Scenario 1: Export ALL students without filters
+    // Option 1: ALL STUDENTS (All_Students.xlsx)
     // ------------------------------------------------------------------------
-    const resAll = await requestBuffer(`${url}/api/admin/students/export`, { headers: authHeaders });
+    const resAll = await requestBuffer(`${url}/api/admin/students/export?exportFilter=all`, { headers: authHeaders });
     assert.equal(resAll.statusCode, 200, 'Authenticated export must return 200');
     assert.ok(resAll.headers['content-type'].includes('spreadsheetml.sheet'), 'Must return xlsx mime type');
-    assert.ok(resAll.headers['content-disposition'].includes('Student_Records_'), 'Must contain proper filename in header');
-    assert.ok(resAll.headers['content-disposition'].endsWith('.xlsx"'), 'Must have .xlsx extension');
+    assert.ok(resAll.headers['content-disposition'].includes('filename="All_Students.xlsx"'), 'Filename must be All_Students.xlsx');
 
     const parsedAll = parseWorkbook(resAll.buffer);
-    assert.ok(parsedAll.records.length >= 4, 'Must contain all matching student records');
+    assert.ok(parsedAll.records.length >= 6, 'Must contain all matching student records');
 
     // Verify exact 5 column headings
     const headerRow = parsedAll.aoa[0];
@@ -150,110 +170,136 @@ test('Admin Export - Full Lifecycle: Filtering, Sorting, Leading Zeros & Excel F
     assert.ok(!headerRow.includes('updated_at'), 'Updated timestamp must not be exported');
     assert.ok(!headerRow.includes('section'), 'Section must not be exported in the 5 fields');
 
-    // ------------------------------------------------------------------------
-    // Scenario 2: Verify Leading Zeros & Empty Credentials in Exported Data
-    // ------------------------------------------------------------------------
-    const aaronRecord = parsedAll.records.find(r => r['Student Name'] === 'Aaron Aaronson');
-    assert.ok(aaronRecord, 'Aaron record must be present');
-    assert.equal(aaronRecord['Admission Number'], '0012345678', 'Leading zeros in admission number must be preserved as string');
-    assert.equal(aaronRecord['Phone Number'], '0987654321', 'Leading zeros in phone number must be preserved as string');
-    assert.equal(aaronRecord['Username'], 'aaron_user', 'Username must be exported');
-    assert.equal(aaronRecord['Password'], 'aaronPassword123', 'Password must be exported for authenticated admin');
-
-    const charlieRecord = parsedAll.records.find(r => r['Student Name'] === 'Charlie Chaplin');
-    assert.ok(charlieRecord, 'Charlie record must be present');
-    assert.equal(charlieRecord['Username'], '', 'Empty username must be exported as empty cell');
-    assert.equal(charlieRecord['Password'], '', 'Empty password must be exported as empty cell');
+    // Verify Leading Zeros in Aaron's record
+    const aaronAll = parsedAll.records.find(r => r['Student Name'] === 'Aaron Aaronson');
+    assert.ok(aaronAll);
+    assert.equal(aaronAll['Admission Number'], '0012345678', 'Leading zeros preserved');
+    assert.equal(aaronAll['Phone Number'], '0987654321', 'Leading zeros preserved');
 
     // ------------------------------------------------------------------------
-    // Scenario 3: Universal Search Filter (e.g. ?search=Bob)
+    // Option 2: STUDENTS WITH CREDENTIALS (Students_With_Credentials.xlsx)
+    // Must only include students where both username AND password are present
     // ------------------------------------------------------------------------
-    const resSearch = await requestBuffer(`${url}/api/admin/students/export?search=Bob`, { headers: authHeaders });
-    assert.equal(resSearch.statusCode, 200);
-    const parsedSearch = parseWorkbook(resSearch.buffer);
-    assert.equal(parsedSearch.records.length, 1, 'Search for "Bob" must return exactly 1 record');
-    assert.equal(parsedSearch.records[0]['Student Name'], 'Bob Builder');
+    const resWith = await requestBuffer(`${url}/api/admin/students/export?exportFilter=with_credentials`, { headers: authHeaders });
+    assert.equal(resWith.statusCode, 200);
+    assert.ok(resWith.headers['content-disposition'].includes('filename="Students_With_Credentials.xlsx"'), 'Filename must be Students_With_Credentials.xlsx');
 
-    // Search by 10-digit admission number with leading zeros
-    const resAdmSearch = await requestBuffer(`${url}/api/admin/students/export?search=0012345678`, { headers: authHeaders });
-    assert.equal(resAdmSearch.statusCode, 200);
-    const parsedAdmSearch = parseWorkbook(resAdmSearch.buffer);
-    assert.equal(parsedAdmSearch.records.length, 1);
-    assert.equal(parsedAdmSearch.records[0]['Student Name'], 'Aaron Aaronson');
+    const parsedWith = parseWorkbook(resWith.buffer);
 
-    // ------------------------------------------------------------------------
-    // Scenario 4: Credential Filter - With Credentials
-    // ------------------------------------------------------------------------
-    const resWithCreds = await requestBuffer(`${url}/api/admin/students/export?credential=with_credentials`, { headers: authHeaders });
-    assert.equal(resWithCreds.statusCode, 200);
-    const parsedWithCreds = parseWorkbook(resWithCreds.buffer);
-    parsedWithCreds.records.forEach(r => {
+    // Verify all records have both username AND password
+    parsedWith.records.forEach(r => {
       assert.ok(r['Username'] && r['Username'].length > 0, `Record ${r['Student Name']} must have username`);
       assert.ok(r['Password'] && r['Password'].length > 0, `Record ${r['Student Name']} must have password`);
     });
-    assert.ok(parsedWithCreds.records.some(r => r['Student Name'] === 'Aaron Aaronson'));
-    assert.ok(!parsedWithCreds.records.some(r => r['Student Name'] === 'Charlie Chaplin'));
-    assert.ok(!parsedWithCreds.records.some(r => r['Student Name'] === 'Zack Snyder'));
+
+    // Both Aaron and Bob must be present
+    assert.ok(parsedWith.records.some(r => r['Student Name'] === 'Aaron Aaronson'));
+    assert.ok(parsedWith.records.some(r => r['Student Name'] === 'Bob Builder'));
+
+    // Partial and missing credential students must NOT be present
+    assert.ok(!parsedWith.records.some(r => r['Student Name'] === 'Charlie Chaplin'), 'Charlie (neither) must not appear in with_credentials');
+    assert.ok(!parsedWith.records.some(r => r['Student Name'] === 'David UsernameOnly'), 'David (username only) must not appear in with_credentials');
+    assert.ok(!parsedWith.records.some(r => r['Student Name'] === 'Elena PasswordOnly'), 'Elena (password only) must not appear in with_credentials');
+    assert.ok(!parsedWith.records.some(r => r['Student Name'] === 'Zack Snyder'), 'Zack (neither) must not appear in with_credentials');
 
     // ------------------------------------------------------------------------
-    // Scenario 5: Credential Filter - Without Credentials
+    // Option 3: STUDENTS WITHOUT CREDENTIALS (Students_Without_Credentials.xlsx)
+    // Must include students where either username OR password is missing/empty
     // ------------------------------------------------------------------------
-    const resWithoutCreds = await requestBuffer(`${url}/api/admin/students/export?credential=without_credentials`, { headers: authHeaders });
-    assert.equal(resWithoutCreds.statusCode, 200);
-    const parsedWithoutCreds = parseWorkbook(resWithoutCreds.buffer);
-    parsedWithoutCreds.records.forEach(r => {
-      assert.ok(!r['Username'] || !r['Password'], `Record ${r['Student Name']} must have empty credentials`);
+    const resWithout = await requestBuffer(`${url}/api/admin/students/export?exportFilter=without_credentials`, { headers: authHeaders });
+    assert.equal(resWithout.statusCode, 200);
+    assert.ok(resWithout.headers['content-disposition'].includes('filename="Students_Without_Credentials.xlsx"'), 'Filename must be Students_Without_Credentials.xlsx');
+
+    const parsedWithout = parseWorkbook(resWithout.buffer);
+
+    // Verify all records have at least one missing credential
+    parsedWithout.records.forEach(r => {
+      const hasBoth = Boolean(r['Username'] && r['Password']);
+      assert.equal(hasBoth, false, `Record ${r['Student Name']} must have at least one credential missing`);
     });
-    assert.ok(parsedWithoutCreds.records.some(r => r['Student Name'] === 'Charlie Chaplin'));
-    assert.ok(parsedWithoutCreds.records.some(r => r['Student Name'] === 'Zack Snyder'));
-    assert.ok(!parsedWithoutCreds.records.some(r => r['Student Name'] === 'Aaron Aaronson'));
+
+    // Charlie (missing both) must be present
+    assert.ok(parsedWithout.records.some(r => r['Student Name'] === 'Charlie Chaplin'));
+    // David (has username only) must be present
+    const davidRec = parsedWithout.records.find(r => r['Student Name'] === 'David UsernameOnly');
+    assert.ok(davidRec, 'David (username only) must appear in without_credentials');
+    assert.equal(davidRec['Username'], 'david_user_only');
+    assert.equal(davidRec['Password'], '', 'Missing password must be empty cell');
+
+    // Elena (has password only) must be present
+    const elenaRec = parsedWithout.records.find(r => r['Student Name'] === 'Elena PasswordOnly');
+    assert.ok(elenaRec, 'Elena (password only) must appear in without_credentials');
+    assert.equal(elenaRec['Username'], '', 'Missing username must be empty cell');
+    assert.equal(elenaRec['Password'], 'elena_pass_only');
+
+    // Zack (missing both) must be present
+    assert.ok(parsedWithout.records.some(r => r['Student Name'] === 'Zack Snyder'));
+
+    // Aaron and Bob (both credentials present) must NOT be present
+    assert.ok(!parsedWithout.records.some(r => r['Student Name'] === 'Aaron Aaronson'), 'Aaron (both present) must not appear in without_credentials');
+    assert.ok(!parsedWithout.records.some(r => r['Student Name'] === 'Bob Builder'), 'Bob (both present) must not appear in without_credentials');
 
     // ------------------------------------------------------------------------
-    // Scenario 6: Sorting - A-Z (name_asc) and Z-A (name_desc)
+    // Scenario 4: Universal Search combined with Export Filter & Sorting
     // ------------------------------------------------------------------------
-    const resSortAsc = await requestBuffer(`${url}/api/admin/students/export?sort=name_asc`, { headers: authHeaders });
+    // Search "Chaplin" with without_credentials
+    const resSearchWithout = await requestBuffer(`${url}/api/admin/students/export?search=Chaplin&exportFilter=without_credentials`, { headers: authHeaders });
+    assert.equal(resSearchWithout.statusCode, 200);
+    const parsedSearchWithout = parseWorkbook(resSearchWithout.buffer);
+    assert.equal(parsedSearchWithout.records.length, 1);
+    assert.equal(parsedSearchWithout.records[0]['Student Name'], 'Charlie Chaplin');
+
+    // Search "Bob" with without_credentials -> should return 0 records because Bob has both credentials
+    const resSearchBobWithout = await requestBuffer(`${url}/api/admin/students/export?search=Bob&exportFilter=without_credentials`, { headers: authHeaders });
+    assert.equal(resSearchBobWithout.statusCode, 200);
+    const parsedSearchBobWithout = parseWorkbook(resSearchBobWithout.buffer);
+    assert.equal(parsedSearchBobWithout.records.length, 0, 'Bob has both credentials so without_credentials must return 0 records');
+
+    // Alphabetical Sorting in All Students
+    const resSortAsc = await requestBuffer(`${url}/api/admin/students/export?exportFilter=all&sort=name_asc`, { headers: authHeaders });
     assert.equal(resSortAsc.statusCode, 200);
     const parsedSortAsc = parseWorkbook(resSortAsc.buffer);
     const namesAsc = parsedSortAsc.records.map(r => r['Student Name']);
-    // Verify names are in ascending order
     for (let i = 0; i < namesAsc.length - 1; i++) {
       assert.ok(namesAsc[i].localeCompare(namesAsc[i + 1]) <= 0, `Ascending sort: ${namesAsc[i]} <= ${namesAsc[i + 1]}`);
     }
 
-    const resSortDesc = await requestBuffer(`${url}/api/admin/students/export?sort=name_desc`, { headers: authHeaders });
+    const resSortDesc = await requestBuffer(`${url}/api/admin/students/export?exportFilter=all&sort=name_desc`, { headers: authHeaders });
     assert.equal(resSortDesc.statusCode, 200);
     const parsedSortDesc = parseWorkbook(resSortDesc.buffer);
     const namesDesc = parsedSortDesc.records.map(r => r['Student Name']);
-    // Verify names are in descending order
     for (let i = 0; i < namesDesc.length - 1; i++) {
       assert.ok(namesDesc[i].localeCompare(namesDesc[i + 1]) >= 0, `Descending sort: ${namesDesc[i]} >= ${namesDesc[i + 1]}`);
     }
-
-    // ------------------------------------------------------------------------
-    // Scenario 7: Combined Search + Filters + Sorting
-    // ------------------------------------------------------------------------
-    // Search "Aar" with credentials and name_asc
-    const resCombined = await requestBuffer(`${url}/api/admin/students/export?search=Aar&credential=with_credentials&sort=name_asc`, { headers: authHeaders });
-    assert.equal(resCombined.statusCode, 200);
-    const parsedCombined = parseWorkbook(resCombined.buffer);
-    assert.equal(parsedCombined.records.length, 1);
-    assert.equal(parsedCombined.records[0]['Student Name'], 'Aaron Aaronson');
 
   } finally {
     server.close();
   }
 });
 
-test('Admin Export - UI Components & Scripts: Button exists and is properly wired', () => {
-  const fs = require('fs');
-  const path = require('path');
-
+test('Admin Export - UI Components & Scripts: Selection Dialog Modal & Three Options', () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../public/admin/index.html'), 'utf8');
-  assert.ok(html.includes('id="btn-export-students"'), 'index.html must contain btn-export-students');
-  assert.ok(html.includes('Export Students'), 'Button text must be Export Students');
 
+  // Verify modal dialog structure
+  assert.ok(html.includes('id="modal-export-students"'), 'Must contain modal-export-students dialog');
+  assert.ok(html.includes('Export Student Records'), 'Must contain dialog title');
+
+  // Verify the three filter options
+  assert.ok(html.includes('value="all"'), 'Must have All Students option');
+  assert.ok(html.includes('All_Students.xlsx'), 'Must display All_Students.xlsx badge');
+
+  assert.ok(html.includes('value="with_credentials"'), 'Must have With Credentials option');
+  assert.ok(html.includes('Students_With_Credentials.xlsx'), 'Must display Students_With_Credentials.xlsx badge');
+
+  assert.ok(html.includes('value="without_credentials"'), 'Must have Without Credentials option');
+  assert.ok(html.includes('Students_Without_Credentials.xlsx'), 'Must display Students_Without_Credentials.xlsx badge');
+
+  assert.ok(html.includes('id="btn-confirm-export"'), 'Must have confirmation download button');
+
+  // Verify JavaScript handler
   const js = fs.readFileSync(path.resolve(__dirname, '../public/admin/admin.js'), 'utf8');
-  assert.ok(js.includes('exportStudents'), 'admin.js must implement exportStudents');
-  assert.ok(js.includes('/api/admin/students/export'), 'admin.js must call /api/admin/students/export');
-  assert.ok(js.includes('btn-export-students'), 'admin.js must bind btn-export-students');
+  assert.ok(js.includes('openExportModal'), 'admin.js must implement openExportModal');
+  assert.ok(js.includes('executeStudentExport'), 'admin.js must implement executeStudentExport');
+  assert.ok(js.includes('exportFilter'), 'admin.js must send exportFilter query param');
+  assert.ok(js.includes('btn-confirm-export'), 'admin.js must bind confirm export button');
 });

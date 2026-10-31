@@ -335,9 +335,17 @@ class AdminDbService {
     }
 
     if (cleanCredential === 'complete' || cleanCredential === 'with_credentials') {
-      all = all.filter(s => (s.portal_username || s.username) && (s.portal_password || s.password));
+      all = all.filter(s => {
+        const u = String(s.portal_username || s.username || '').trim();
+        const p = String(s.portal_password || s.password || '').trim();
+        return u.length > 0 && p.length > 0;
+      });
     } else if (cleanCredential === 'without_credentials' || cleanCredential === 'missing') {
-      all = all.filter(s => !(s.portal_username || s.username) || !(s.portal_password || s.password));
+      all = all.filter(s => {
+        const u = String(s.portal_username || s.username || '').trim();
+        const p = String(s.portal_password || s.password || '').trim();
+        return u.length === 0 || p.length === 0;
+      });
     } else if (cleanCredential === 'missing_username') {
       all = all.filter(s => !(s.portal_username || s.username));
     } else if (cleanCredential === 'missing_password') {
@@ -461,9 +469,17 @@ class AdminDbService {
     }
 
     if (cleanCredential === 'complete' || cleanCredential === 'with_credentials') {
-      all = all.filter(s => (s.portal_username || s.username) && (s.portal_password || s.password));
+      all = all.filter(s => {
+        const u = String(s.portal_username || s.username || '').trim();
+        const p = String(s.portal_password || s.password || '').trim();
+        return u.length > 0 && p.length > 0;
+      });
     } else if (cleanCredential === 'without_credentials' || cleanCredential === 'missing') {
-      all = all.filter(s => !(s.portal_username || s.username) || !(s.portal_password || s.password));
+      all = all.filter(s => {
+        const u = String(s.portal_username || s.username || '').trim();
+        const p = String(s.portal_password || s.password || '').trim();
+        return u.length === 0 || p.length === 0;
+      });
     } else if (cleanCredential === 'missing_username') {
       all = all.filter(s => !(s.portal_username || s.username));
     } else if (cleanCredential === 'missing_password') {

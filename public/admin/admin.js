@@ -844,29 +844,66 @@
   }
 
   // =========================================================================
-  // Student Export to Excel (.xlsx)
+  // Student Export to Excel (.xlsx) - Three Filter Options
   // =========================================================================
-  async function exportStudents() {
-    const exportBtn = document.getElementById('btn-export-students');
-    const origHtml = exportBtn ? exportBtn.innerHTML : '';
-    if (exportBtn) {
-      exportBtn.disabled = true;
-      exportBtn.style.opacity = '0.7';
-      exportBtn.innerHTML = `
-        <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
-        <span>Exporting...</span>
-      `;
+  function openExportModal() {
+    const searchNotice = document.getElementById('export-search-notice');
+    const searchNoticeText = document.getElementById('export-search-notice-text');
+    const searchVal = String(state.filters.search || '').trim();
+
+    if (searchNotice && searchNoticeText) {
+      if (searchVal) {
+        searchNoticeText.textContent = `Universal search "${searchVal}" is active and will filter exported records.`;
+        searchNotice.style.display = 'block';
+      } else {
+        searchNotice.style.display = 'none';
+      }
     }
+
+    // Default to 'all' or preserve radio
+    const radioAll = document.getElementById('export-opt-all');
+    if (radioAll) radioAll.checked = true;
+    updateExportOptionCardActive();
+
+    openModal('modal-export-students');
+  }
+
+  function updateExportOptionCardActive() {
+    document.querySelectorAll('.export-option-card').forEach(card => {
+      const radio = card.querySelector('input[type="radio"]');
+      if (radio && radio.checked) {
+        card.classList.add('active');
+      } else {
+        card.classList.remove('active');
+      }
+    });
+  }
+
+  async function executeStudentExport(filterOption = null) {
+    let chosenOption = filterOption;
+    if (!chosenOption) {
+      const checkedRadio = document.querySelector('input[name="exportOption"]:checked');
+      chosenOption = checkedRadio ? checkedRadio.value : 'all';
+    }
+
+    const confirmBtn = document.getElementById('btn-confirm-export');
+    const confirmText = document.getElementById('btn-confirm-export-text');
+    const confirmSpinner = document.getElementById('btn-confirm-export-spinner');
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmSpinner) confirmSpinner.style.display = 'inline-block';
+    if (confirmText) confirmText.textContent = 'Generating...';
 
     showToast('Generating Excel export...', 'info');
 
     try {
-      const { search, section, credential, sort } = state.filters;
+      const { search, section, sort } = state.filters;
       const queryParams = new URLSearchParams({
         search: search || '',
         section: section || '',
-        credential: credential || '',
-        sort: sort || 'name_asc'
+        sort: sort || 'name_asc',
+        exportFilter: chosenOption,
+        credential: chosenOption === 'all' ? '' : chosenOption
       });
 
       const token = localStorage.getItem('admin_token');
@@ -900,7 +937,11 @@
       }
 
       // Read filename from Content-Disposition header if available
-      let filename = `Student_Records_${new Date().toISOString().split('T')[0]}.xlsx`;
+      let defaultName = 'All_Students.xlsx';
+      if (chosenOption === 'with_credentials') defaultName = 'Students_With_Credentials.xlsx';
+      if (chosenOption === 'without_credentials') defaultName = 'Students_Without_Credentials.xlsx';
+
+      let filename = defaultName;
       const disposition = response.headers.get('content-disposition');
       if (disposition && disposition.includes('filename=')) {
         const match = disposition.match(/filename="?([^";]+)"?/);
@@ -925,16 +966,23 @@
         }
       }, 1000);
 
-      showToast('Student records exported successfully.', 'success');
+      closeModal('modal-export-students');
+      showToast(`Export downloaded: ${filename}`, 'success');
     } catch (err) {
       showToast(`Export error: ${err.message}`, 'error');
     } finally {
-      if (exportBtn) {
-        exportBtn.disabled = false;
-        exportBtn.style.opacity = '';
-        exportBtn.innerHTML = origHtml;
-      }
+      if (confirmBtn) confirmBtn.disabled = false;
+      if (confirmSpinner) confirmSpinner.style.display = 'none';
+      if (confirmText) confirmText.textContent = 'Export & Download';
     }
+  }
+
+  // Alias for backward compatibility
+  function exportStudents(filterOption = null) {
+    if (filterOption && typeof filterOption === 'string') {
+      return executeStudentExport(filterOption);
+    }
+    openExportModal();
   }
 
   // =========================================================================
@@ -2406,8 +2454,30 @@
     // Export Students Button in Student Management
     const exportStudentsBtn = document.getElementById('btn-export-students');
     if (exportStudentsBtn) {
-      exportStudentsBtn.addEventListener('click', exportStudents);
+      exportStudentsBtn.addEventListener('click', () => openExportModal());
     }
+
+    // Export Confirmation & Options Selection
+    const confirmExportBtn = document.getElementById('btn-confirm-export');
+    if (confirmExportBtn) {
+      confirmExportBtn.addEventListener('click', () => executeStudentExport());
+    }
+
+    document.querySelectorAll('.export-option-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+        updateExportOptionCardActive();
+      });
+      card.addEventListener('dblclick', () => {
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) {
+          radio.checked = true;
+          updateExportOptionCardActive();
+          executeStudentExport(radio.value);
+        }
+      });
+    });
 
     // Student Search Input
     const studentSearchInput = document.getElementById('student-search-input');
