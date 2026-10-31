@@ -7,6 +7,7 @@ const config = require('../config');
 const { validateStudentNumber } = require('../services/credentialService');
 const { defaultSessionManager } = require('../services/sessionManager');
 const { defaultAutomationService } = require('../services/automationService');
+const { defaultAdminDbService } = require('../services/adminDbService');
 
 const router = express.Router();
 
@@ -403,6 +404,42 @@ router.get('/metrics', async (req, res, next) => {
     res.json({
       success: true,
       data: defaultAutomationService.getMetrics()
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/automation/students/search
+ * (Also aliased as GET /api/students/search and GET /api/public/students/search in app.js)
+ * Dedicated public universal student search endpoint.
+ * Returns strictly { student_name, admission_number, phone_number }.
+ * Zero exposure of credentials, database IDs, or timestamps.
+ * Does NOT invoke credential lookup API or student portal logins.
+ */
+router.get('/students/search', async (req, res, next) => {
+  try {
+    const rawQuery = req.query.q || req.query.query || req.query.search || '';
+    const query = String(rawQuery || '').trim();
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 50, 100));
+
+    if (!query) {
+      return res.json({
+        success: true,
+        query: '',
+        count: 0,
+        students: []
+      });
+    }
+
+    const students = await defaultAdminDbService.searchPublicStudents(query, limit);
+
+    return res.json({
+      success: true,
+      query,
+      count: students.length,
+      students
     });
   } catch (err) {
     next(err);

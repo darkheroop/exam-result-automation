@@ -508,6 +508,76 @@ class AdminDbService {
   }
 
   /**
+   * Dedicated Public Universal Student Search
+   * Allows public users to find basic directory info (student_name, admission_number, phone_number).
+   * STRICT SECURITY & PRIVACY GUARANTEES:
+   * - NEVER queries, selects, or returns username, password, id, created_at, or updated_at.
+   * - Executes parameterized read-only queries against the students table.
+   * - Does NOT trigger credential lookup API or student portal logins.
+   * - Preserves leading zeros on admission and phone numbers.
+   */
+  async searchPublicStudents(query, limit = 50) {
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return [];
+    }
+
+    const cleanQuery = query.trim();
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
+
+    const sql = this.getSql();
+    if (sql) {
+      try {
+        await this.ensureSchema();
+        const searchPattern = `%${cleanQuery}%`;
+        const rows = await sql.query(
+          `SELECT student_name, admission_number, phone_number
+           FROM students
+           WHERE (
+             student_name ILIKE $1 OR 
+             admission_number ILIKE $1 OR 
+             phone_number ILIKE $1
+           )
+           ORDER BY student_name ASC
+           LIMIT $2;`,
+          [searchPattern, safeLimit]
+        );
+
+        return (rows || []).map(r => ({
+          student_name: String(r.student_name || '').trim(),
+          admission_number: String(r.admission_number || '').trim(),
+          phone_number: String(r.phone_number || '').trim()
+        }));
+      } catch (err) {
+        console.warn('[Admin DB] searchPublicStudents query error, falling back to memory:', err.message);
+      }
+    }
+
+    // Resilient in-memory fallback
+    const lowerQuery = cleanQuery.toLowerCase();
+    const matches = [];
+    for (const s of this.memoryStudents.values()) {
+      const name = String(s.student_name || s.name || '').trim();
+      const adm = String(s.admission_number || '').trim();
+      const phone = String(s.phone_number || '').trim();
+
+      if (
+        name.toLowerCase().includes(lowerQuery) ||
+        adm.toLowerCase().includes(lowerQuery) ||
+        phone.toLowerCase().includes(lowerQuery)
+      ) {
+        matches.push({
+          student_name: name,
+          admission_number: adm,
+          phone_number: phone
+        });
+      }
+    }
+
+    matches.sort((a, b) => a.student_name.localeCompare(b.student_name));
+    return matches.slice(0, safeLimit);
+  }
+
+  /**
    * Retrieves a student by their ID.
    */
   async getStudentById(id) {

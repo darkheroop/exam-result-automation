@@ -173,6 +173,102 @@
           <button id="errorRetryBtn" class="btn btn-secondary btn-sm">Try Again</button>
         </div>
       </div>
+
+      <!-- PUBLIC UNIVERSAL STUDENT SEARCH SECTION -->
+      <section id="searchStudentsSection" class="card public-directory-card" aria-label="Student Directory Search">
+        <div class="directory-header">
+          <div class="directory-title-wrap">
+            <div class="directory-icon-badge">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <div>
+              <h2 class="directory-title">Search Students</h2>
+              <p class="directory-subtitle">Look up student registration and contact numbers across the directory.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="directory-search-bar">
+          <div class="directory-input-wrapper">
+            <svg class="search-lens-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              id="publicStudentSearchInput"
+              class="form-input directory-search-input"
+              placeholder="Search by student name, phone number or admission number..."
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search by student name, phone number or admission number"
+            />
+            <button
+              type="button"
+              id="publicStudentSearchClearBtn"
+              class="directory-clear-btn hidden"
+              title="Clear search"
+              aria-label="Clear search"
+            >×</button>
+          </div>
+          <button type="button" id="publicStudentSearchSubmitBtn" class="btn btn-primary directory-submit-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            Search
+          </button>
+        </div>
+
+        <!-- Initial Prompt State (Shown when search box is empty) -->
+        <div id="publicSearchPromptState" class="directory-status-box prompt-box">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>Enter a student name, phone number, or admission number to search.</span>
+        </div>
+
+        <!-- Loading State -->
+        <div id="publicSearchLoadingState" class="directory-status-box loading-box hidden">
+          <div class="spinner-sm"></div>
+          <span>Searching student records...</span>
+        </div>
+
+        <!-- Empty Results State -->
+        <div id="publicSearchEmptyState" class="directory-status-box empty-box hidden">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+          <span class="empty-state-text">No matching students found.</span>
+        </div>
+
+        <!-- Results Table Container -->
+        <div id="publicSearchResultsContainer" class="directory-results-container hidden">
+          <div class="directory-results-meta">
+            <span id="publicSearchResultsCountText" class="results-count-text">Found 0 students</span>
+            <span class="results-hint-text">Click any phone number to fill the result search box above.</span>
+          </div>
+          <div class="directory-table-responsive">
+            <table class="directory-table">
+              <thead>
+                <tr>
+                  <th scope="col">Student Name</th>
+                  <th scope="col">Admission Number</th>
+                  <th scope="col">Phone Number</th>
+                </tr>
+              </thead>
+              <tbody id="publicSearchResultsTableBody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </section>
 
     <!-- SECTION 2: RESULTS VIEWING SCREEN -->

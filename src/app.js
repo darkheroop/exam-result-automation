@@ -64,6 +64,12 @@ app.post('/api/result', (req, res, next) => {
   return automationRoutes(req, res, next);
 });
 
+// Dedicated Public Universal Student Search Aliases
+app.get(['/api/students/search', '/api/public/students/search'], (req, res, next) => {
+  req.url = '/students/search';
+  return automationRoutes(req, res, next);
+});
+
 // Serve Frontend Static Assets
 app.use(express.static(path.resolve(__dirname, '../public')));
 app.use('/admin', express.static(path.resolve(__dirname, '../public/admin')));

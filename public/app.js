@@ -962,4 +962,205 @@
   });
 
   updateClearButton();
+
+  // ============================================================================
+  // Public Universal Student Search (Search Students Section)
+  // ============================================================================
+  function initPublicUniversalSearch() {
+    const searchInput = document.getElementById('publicStudentSearchInput');
+    const clearBtn = document.getElementById('publicStudentSearchClearBtn');
+    const submitBtn = document.getElementById('publicStudentSearchSubmitBtn');
+    const promptState = document.getElementById('publicSearchPromptState');
+    const loadingState = document.getElementById('publicSearchLoadingState');
+    const emptyState = document.getElementById('publicSearchEmptyState');
+    const resultsContainer = document.getElementById('publicSearchResultsContainer');
+    const resultsTableBody = document.getElementById('publicSearchResultsTableBody');
+    const resultsCountText = document.getElementById('publicSearchResultsCountText');
+
+    if (!searchInput) return;
+
+    let debounceTimer = null;
+    let activeSearchController = null;
+    let latestQuery = '';
+
+    function updateSearchClearBtn() {
+      if (clearBtn) {
+        if (searchInput.value.trim().length > 0) {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+      }
+    }
+
+    function resetSearchUI() {
+      if (activeSearchController) {
+        activeSearchController.abort();
+        activeSearchController = null;
+      }
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      latestQuery = '';
+      if (resultsTableBody) resultsTableBody.innerHTML = '';
+      if (resultsContainer) resultsContainer.classList.add('hidden');
+      if (loadingState) loadingState.classList.add('hidden');
+      if (emptyState) emptyState.classList.add('hidden');
+      if (promptState) promptState.classList.remove('hidden');
+      updateSearchClearBtn();
+    }
+
+    async function executeSearch(immediateQuery = null) {
+      const query = (immediateQuery !== null ? immediateQuery : searchInput.value).trim();
+      updateSearchClearBtn();
+
+      // If empty query: do not show all students by default, prompt the user
+      if (!query) {
+        resetSearchUI();
+        return;
+      }
+
+      latestQuery = query;
+
+      // Abort previous in-flight request
+      if (activeSearchController) {
+        activeSearchController.abort();
+      }
+      activeSearchController = new AbortController();
+
+      // UI states
+      if (promptState) promptState.classList.add('hidden');
+      if (emptyState) emptyState.classList.add('hidden');
+      if (resultsContainer) resultsContainer.classList.add('hidden');
+      if (loadingState) loadingState.classList.remove('hidden');
+
+      try {
+        const response = await fetch(`/api/students/search?q=${encodeURIComponent(query)}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: activeSearchController.signal
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Prevent race condition if another query started
+        if (query !== latestQuery) return;
+
+        if (loadingState) loadingState.classList.add('hidden');
+
+        const students = Array.isArray(data.students) ? data.students : [];
+
+        if (students.length === 0) {
+          if (emptyState) emptyState.classList.remove('hidden');
+          if (resultsContainer) resultsContainer.classList.add('hidden');
+          return;
+        }
+
+        // Render results
+        if (resultsCountText) {
+          resultsCountText.textContent = `Found ${students.length} student${students.length === 1 ? '' : 's'}`;
+        }
+
+        if (resultsTableBody) {
+          resultsTableBody.innerHTML = students.map(student => {
+            const safeName = escapeHtml(student.student_name || '—');
+            const safeAdm = escapeHtml(student.admission_number || '—');
+            const safePhone = escapeHtml(student.phone_number || '—');
+
+            return `
+              <tr>
+                <td class="student-name-cell">${safeName}</td>
+                <td><span class="admission-badge">${safeAdm}</span></td>
+                <td>
+                  <button type="button" class="phone-action-btn" data-phone="${safePhone}" title="Click to use this phone number for result search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                    <span>${safePhone}</span>
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+
+          // Attach phone number click handlers to fill main studentNumberInput
+          resultsTableBody.querySelectorAll('.phone-action-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              const phone = btn.getAttribute('data-phone');
+              if (phone && phone !== '—') {
+                if (studentNumberInput) {
+                  studentNumberInput.value = phone;
+                  updateClearButton();
+                  clearInputError();
+                  studentNumberInput.focus();
+                  // Smoothly scroll to main search form
+                  const introCard = document.querySelector('.intro-card');
+                  if (introCard) {
+                    introCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }
+              }
+            });
+          });
+        }
+
+        if (resultsContainer) resultsContainer.classList.remove('hidden');
+
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        if (loadingState) loadingState.classList.add('hidden');
+        if (emptyState) {
+          emptyState.classList.remove('hidden');
+          const emptyTextEl = emptyState.querySelector('.empty-state-text');
+          if (emptyTextEl) emptyTextEl.textContent = 'No matching students found.';
+        }
+      }
+    }
+
+    // Event listeners
+    searchInput.addEventListener('input', () => {
+      updateSearchClearBtn();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      const query = searchInput.value.trim();
+      if (!query) {
+        resetSearchUI();
+        return;
+      }
+      debounceTimer = setTimeout(() => {
+        executeSearch();
+      }, 250);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        executeSearch();
+      }
+    });
+
+    if (submitBtn) {
+      submitBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        executeSearch();
+      });
+    }
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        resetSearchUI();
+        searchInput.focus();
+      });
+    }
+  }
+
+  initPublicUniversalSearch();
 })();

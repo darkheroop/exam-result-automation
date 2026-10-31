@@ -2125,3 +2125,320 @@ body {
     print-color-adjust: exact !important;
   }
 }
+
+/* ============================================================================
+   Public Universal Student Search Section
+   ============================================================================ */
+.public-directory-card {
+  margin-top: 2rem;
+  background-color: var(--bg-card, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.75rem;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.public-directory-card:hover {
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08));
+}
+
+.directory-header {
+  margin-bottom: 1.25rem;
+}
+
+.directory-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.directory-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md, 8px);
+  background-color: #eff6ff;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.directory-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main, #0f172a);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.directory-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted, #64748b);
+  margin: 0.25rem 0 0 0;
+}
+
+.directory-search-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.directory-input-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.search-lens-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-muted, #94a3b8);
+  pointer-events: none;
+}
+
+.directory-search-input {
+  width: 100%;
+  padding-left: 2.75rem;
+  padding-right: 2.5rem;
+  height: 46px;
+  font-size: 0.95rem;
+  border-radius: var(--radius-md, 8px);
+  border: 1.5px solid var(--border, #cbd5e1);
+  background-color: var(--bg-card, #ffffff);
+  color: var(--text-main, #0f172a);
+  transition: all 0.15s ease-in-out;
+}
+
+.directory-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.directory-clear-btn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.directory-clear-btn:hover {
+  color: #1e293b;
+  background-color: #f1f5f9;
+}
+
+.directory-submit-btn {
+  height: 46px;
+  padding: 0 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: var(--radius-md, 8px);
+  white-space: nowrap;
+}
+
+/* Status / Prompt Boxes */
+.directory-status-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2.25rem 1.5rem;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.925rem;
+  text-align: center;
+}
+
+.directory-status-box.prompt-box {
+  background-color: #f8fafc;
+  border: 1px dashed var(--border, #cbd5e1);
+  color: var(--text-muted, #64748b);
+}
+
+.directory-status-box.prompt-box svg {
+  color: #94a3b8;
+}
+
+.directory-status-box.loading-box {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+.directory-status-box.empty-box {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.directory-status-box.empty-box svg {
+  color: #ef4444;
+}
+
+.empty-state-text {
+  font-weight: 600;
+}
+
+/* Results Container */
+.directory-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.directory-results-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 0.5rem 0.25rem;
+}
+
+.results-count-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main, #334155);
+}
+
+.results-hint-text {
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+}
+
+.directory-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+}
+
+.directory-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.directory-table thead tr {
+  background-color: #f8fafc;
+  border-bottom: 2px solid var(--border, #e2e8f0);
+}
+
+.directory-table th {
+  padding: 0.85rem 1.15rem;
+  font-weight: 700;
+  font-size: 0.825rem;
+  color: var(--text-muted, #475569);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.directory-table td {
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  color: var(--text-main, #0f172a);
+  vertical-align: middle;
+}
+
+.directory-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.directory-table tbody tr:hover td {
+  background-color: #f8fafc;
+}
+
+.student-name-cell {
+  font-weight: 600;
+  color: var(--text-main, #0f172a);
+}
+
+.admission-badge {
+  display: inline-block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+  background-color: #f1f5f9;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.phone-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2563eb;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  text-decoration: none;
+}
+
+.phone-action-btn:hover {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.phone-action-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .public-directory-card {
+    padding: 1.25rem 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .directory-search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .directory-submit-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .directory-results-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .directory-table th,
+  .directory-table td {
+    padding: 0.75rem 0.85rem;
+    font-size: 0.85rem;
+  }
+}
