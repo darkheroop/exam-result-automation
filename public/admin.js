@@ -367,6 +367,18 @@
       }
     });
 
+    const pageTitleEl = document.getElementById('topbar-page-title');
+    if (pageTitleEl) {
+      const shortTitles = {
+        overview: 'Overview',
+        students: 'Students',
+        upload: 'Excel Upload',
+        logs: 'Search Logs',
+        exceptions: 'Exceptions'
+      };
+      pageTitleEl.textContent = shortTitles[tabId] || 'Dashboard';
+    }
+
     const breadcrumb = document.getElementById('breadcrumb-current-tab');
     if (breadcrumb) {
       const titles = {
@@ -392,9 +404,39 @@
     closeMobileSidebar();
   }
 
-  
-  
-  
+  function animateCount(el, target, duration = 650) {
+    if (!el) return;
+    const num = Number(target) || 0;
+    const rawCurrent = el.textContent ? el.textContent.replace(/[^0-9]/g, '') : '';
+    const start = parseInt(rawCurrent, 10) || 0;
+    if (start === num) {
+      el.textContent = num.toLocaleString();
+      return;
+    }
+    const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + (num - start) * easeOut);
+      el.textContent = current.toLocaleString();
+      if (progress < 1) {
+        if (typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(step);
+        } else {
+          setTimeout(() => step(Date.now()), 16);
+        }
+      } else {
+        el.textContent = num.toLocaleString();
+      }
+    }
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(step);
+    } else {
+      el.textContent = num.toLocaleString();
+    }
+  }
+
   async function loadDashboardStats() {
     const [resStats, resSearchStats] = await Promise.all([
       apiFetch('/api/admin/stats'),
@@ -436,7 +478,7 @@
     state.searchStats = { ...state.searchStats, ...stats };
     const setText = (id, val) => {
       const el = document.getElementById(id);
-      if (el) el.textContent = Number(val || 0).toLocaleString();
+      if (el) animateCount(el, val || 0);
     };
 
     const total = stats.totalSearches || 0;
@@ -449,7 +491,23 @@
     setText('stat-students-not-found', stats.studentsNotFound || 0);
     setText('stat-searches-today', stats.searchesToday || 0);
 
-    
+    setText('stat-total-searches-pill', total);
+    setText('stat-successful-lookups-pill', success);
+    setText('stat-mini-total-searches', total);
+    setText('stat-mini-success-rate', success);
+
+    const engineCount = document.getElementById('engine-searches-count');
+    if (engineCount) animateCount(engineCount, stats.searchesToday || total || 0);
+
+    const ringFill = document.getElementById('radial-ring-fill');
+    if (ringFill) {
+      const maxVal = Math.max(50, total);
+      const progress = Math.min(1, (stats.searchesToday || total || 1) / maxVal);
+      const circumference = 314.16;
+      const offset = circumference - (circumference * progress * 0.85);
+      ringFill.style.strokeDashoffset = String(offset);
+    }
+
     setText('logs-view-total-searches', total);
     setText('logs-view-success-searches', success);
     setText('logs-view-failed-searches', failed);
@@ -461,7 +519,7 @@
 
     const setText = (id, val) => {
       const el = document.getElementById(id);
-      if (el) el.textContent = Number(val || 0).toLocaleString();
+      if (el) animateCount(el, val || 0);
     };
 
     setText('stat-total-students', data.totalStudents || 0);
@@ -470,6 +528,29 @@
     setText('stat-without-usernames', data.studentsWithoutUsername || 0);
     setText('stat-with-passwords', data.studentsWithPassword || 0);
     setText('stat-without-passwords', data.studentsWithoutPassword || 0);
+    setText('stat-mini-missing', data.studentsWithoutPassword || 0);
+
+    const total = Number(data.totalStudents || 0);
+    const withUser = Number(data.studentsWithUsername || 0);
+    const withPass = Number(data.studentsWithPassword || 0);
+    const complete = Math.min(withUser, withPass);
+    const pending = Math.max(0, withUser - withPass);
+    const missing = Math.max(0, total - withUser);
+
+    const pctComplete = total > 0 ? Math.round((complete / total) * 100) : 0;
+    const pctPending = total > 0 ? Math.round((pending / total) * 100) : 0;
+    const pctMissing = total > 0 ? Math.round((missing / total) * 100) : 0;
+
+    const barComplete = document.getElementById('health-bar-complete');
+    if (barComplete) barComplete.style.width = `${pctComplete}%`;
+    const barPending = document.getElementById('health-bar-pending');
+    if (barPending) barPending.style.width = `${pctPending}%`;
+    const barMissing = document.getElementById('health-bar-missing');
+    if (barMissing) barMissing.style.width = `${pctMissing}%`;
+
+    setText('health-count-complete', complete);
+    setText('health-count-pending', pending);
+    setText('health-count-missing', missing);
 
     
     const breakdownBadge = document.getElementById('section-breakdown-count-badge');
@@ -3232,9 +3313,126 @@
     if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', handleConfirmDeleteException);
   }
 
-  
-  
-  
+  function initMotionAndInteractions() {
+    function updateLiveClockAndGreeting() {
+      const now = new Date();
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+      const dayName = days[now.getDay()];
+      const shortDay = shortDays[now.getDay()];
+      const dateNum = now.getDate();
+      const monthName = months[now.getMonth()];
+      const year = now.getFullYear();
+
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'pm' : 'am';
+      const hours12 = hours % 12 || 12;
+      const timeFormatted = `${hours12}:${minutes} ${ampm}`;
+
+      const clockEl = document.getElementById('topbar-live-clock');
+      if (clockEl) {
+        clockEl.textContent = `${shortDay}, ${timeFormatted}`;
+      }
+
+      const liveDateEl = document.getElementById('hero-live-date');
+      if (liveDateEl) {
+        liveDateEl.textContent = `Updated ${timeFormatted} · ${dayName}, ${dateNum} ${monthName} ${year}`;
+      }
+
+      const greetingEl = document.getElementById('hero-greeting');
+      if (greetingEl) {
+        let greeting = 'Good afternoon';
+        if (hours < 12) {
+          greeting = 'Good morning';
+        } else if (hours >= 17) {
+          greeting = 'Good evening';
+        }
+        greetingEl.innerHTML = `${greeting}, <span id="overview-username">${escapeHtml(state.currentUser.username || 'inexpert_trifler')}</span>`;
+      }
+    }
+
+    updateLiveClockAndGreeting();
+    setInterval(updateLiveClockAndGreeting, 1000);
+
+    document.querySelectorAll('.glow-card').forEach(card => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        card.style.setProperty('--mouse-x', `${x}px`);
+        card.style.setProperty('--mouse-y', `${y}px`);
+
+        if (card.hasAttribute('data-tilt')) {
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+          const rotateX = ((y - centerY) / centerY) * -5;
+          const rotateY = ((x - centerX) / centerX) * 5;
+          card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-2px)`;
+        }
+      });
+
+      card.addEventListener('mouseleave', () => {
+        if (card.hasAttribute('data-tilt')) {
+          card.style.transform = '';
+        }
+      });
+    });
+
+    const heroBtn = document.getElementById('btn-hero-action');
+    if (heroBtn) {
+      heroBtn.addEventListener('click', () => {
+        switchTab('students');
+        setTimeout(() => {
+          const sInput = document.getElementById('student-search-input');
+          if (sInput) sInput.focus();
+        }, 50);
+      });
+    }
+
+    const middleSearchBtn = document.getElementById('btn-middle-open-search');
+    if (middleSearchBtn) {
+      middleSearchBtn.addEventListener('click', () => {
+        switchTab('students');
+        setTimeout(() => {
+          const sInput = document.getElementById('student-search-input');
+          if (sInput) sInput.focus();
+        }, 50);
+      });
+    }
+
+    const topbarSearch = document.getElementById('topbar-search-input');
+    if (topbarSearch) {
+      topbarSearch.addEventListener('input', () => {
+        const val = topbarSearch.value.trim();
+        const sInput = document.getElementById('student-search-input');
+        if (sInput) sInput.value = val;
+        state.filters.search = val;
+        state.pagination.page = 1;
+        if (state.activeTab !== 'students') {
+          switchTab('students');
+        }
+        clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(() => {
+          loadStudents();
+        }, 250);
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const topbarSearchEl = document.getElementById('topbar-search-input');
+        if (topbarSearchEl) {
+          topbarSearchEl.focus();
+          topbarSearchEl.select();
+        }
+      }
+    });
+  }
+
   async function initApp() {
     initRouting();
     initMobileControls();
@@ -3243,6 +3441,7 @@
     initExcelUpload();
     initUniversalSearch();
     initExceptionHandlers();
+    initMotionAndInteractions();
 
     const isAuthenticated = await checkAuthSession();
     if (isAuthenticated) {
