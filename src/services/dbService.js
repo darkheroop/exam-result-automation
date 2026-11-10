@@ -7,7 +7,7 @@ try {
   const { neon } = require('@neondatabase/serverless');
   neonClient = neon;
 } catch (err) {
-  // @neondatabase/serverless optional load
+  
 }
 
 class DbService {
@@ -18,7 +18,7 @@ class DbService {
     this.schemaPromise = null;
     this.isNeonActive = false;
 
-    // Resilient In-Memory Fallback Cache & Stores
+    
     this.memoryCache = new Map();
     this.memorySessions = new Map();
     this.memoryLogs = [];
@@ -56,9 +56,7 @@ class DbService {
     return null;
   }
 
-  /**
-   * Automatically initializes the required Neon database schema.
-   */
+   
   async ensureSchema() {
     const sql = this.getSql();
     if (!sql || this.schemaInitialized) return true;
@@ -137,10 +135,7 @@ class DbService {
     return this.schemaPromise;
   }
 
-  /**
-   * Retrieves cached student marksheet result.
-   * Returns normalized result if found and not expired.
-   */
+   
   async getCachedResult(studentNumber) {
     const cleanNum = String(studentNumber || '').trim();
     if (!cleanNum) return null;
@@ -167,7 +162,7 @@ class DbService {
       }
     }
 
-    // Memory fallback
+    
     const memEntry = this.memoryCache.get(cleanNum);
     if (memEntry && memEntry.expiresAt > Date.now()) {
       return memEntry.data;
@@ -175,9 +170,7 @@ class DbService {
     return null;
   }
 
-  /**
-   * Stores normalized student examination result in cache.
-   */
+   
   async setCachedResult(studentNumber, normalizedResult, ttlDays = 7) {
     const cleanNum = String(studentNumber || '').trim();
     if (!cleanNum || !normalizedResult) return false;
@@ -197,7 +190,7 @@ class DbService {
     const creditsEarned = String(student.creditsEarned || '');
     const publishedOn = String(student.publishedOn || '');
 
-    // Memory cache
+    
     this.memoryCache.set(cleanNum, {
       data: normalizedResult,
       expiresAt: Date.now() + (ttlDays * 24 * 60 * 60 * 1000)
@@ -244,13 +237,11 @@ class DbService {
     return true;
   }
 
-  /**
-   * Persists durable session in Neon database.
-   */
+   
   async saveSession(session) {
     if (!session || !session.sessionId) return false;
 
-    // Memory fallback update
+    
     this.memorySessions.set(session.sessionId, { ...session });
 
     const sql = this.getSql();
@@ -288,9 +279,7 @@ class DbService {
     return true;
   }
 
-  /**
-   * Retrieves durable session from Neon database.
-   */
+   
   async getSession(sessionId, sessionToken) {
     if (!sessionId) return null;
 
@@ -308,7 +297,7 @@ class DbService {
         if (rows && rows.length > 0) {
           const row = rows[0];
           if (sessionToken && row.session_token !== sessionToken) {
-            return null; // Invalid token
+            return null; 
           }
           return {
             sessionId: row.session_id,
@@ -330,7 +319,7 @@ class DbService {
       }
     }
 
-    // Memory fallback
+    
     const memSession = this.memorySessions.get(sessionId);
     if (memSession) {
       if (sessionToken && memSession.sessionToken !== sessionToken) return null;
@@ -340,9 +329,7 @@ class DbService {
     return null;
   }
 
-  /**
-   * Deletes session from database.
-   */
+   
   async deleteSession(sessionId) {
     if (!sessionId) return false;
     this.memorySessions.delete(sessionId);
@@ -361,9 +348,7 @@ class DbService {
     return true;
   }
 
-  /**
-   * Logs a student search query for analytics & audit tracking.
-   */
+   
   async logSearch({ studentNumber, cacheHit = false, responseTimeMs = 0, status = 'SUCCESS', errorCode = null }) {
     const cleanNum = String(studentNumber || '').trim();
     if (!cleanNum) return;
@@ -390,14 +375,12 @@ class DbService {
           );
         `;
       } catch (err) {
-        // Suppress audit logging error so it never blocks user experience
+        
       }
     }
   }
 
-  /**
-   * Reports health & connectivity status of database.
-   */
+   
   async getHealth() {
     const sql = this.getSql();
     if (!sql) {

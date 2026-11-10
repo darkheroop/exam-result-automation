@@ -7,7 +7,7 @@ try {
   const { neon } = require('@neondatabase/serverless');
   neonClient = neon;
 } catch (err) {
-  // @neondatabase/serverless optional load
+  
 }
 
 class AdminDbService {
@@ -18,14 +18,22 @@ class AdminDbService {
     this.schemaPromise = null;
     this.isNeonActive = false;
 
-    // Resilient In-Memory Fallback Stores
-    this.memoryStudents = new Map(); // key: admission_number, value: student object
-    this.memoryAdminSessions = new Map(); // key: token, value: session object
-    this.memorySearchLogs = []; // array of log objects
-    this.memoryExceptions = new Map(); // key: student_number (TEXT), value: exception object
+    
+    this.memoryStudents = new Map(); 
+    this.memoryAdminSessions = new Map(); 
+    this.memorySearchLogs = []; 
+    this.memoryExceptions = new Map(); 
     this.nextStudentId = 1;
     this.nextSearchLogId = 1;
     this.nextExceptionId = 1;
+
+    
+    if (typeof setInterval !== 'undefined') {
+      const pruneInterval = setInterval(() => {
+        this.cleanExpiredSessions().catch(() => {});
+      }, 15 * 60 * 1000);
+      if (pruneInterval.unref) pruneInterval.unref();
+    }
 
     this.getSql();
   }
@@ -62,9 +70,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Initializes managed_students, admin_sessions, and search_logs schemas in database.
-   */
+   
   async ensureSchema() {
     const sql = this.getSql();
     if (!sql || this.schemaInitialized) return true;
@@ -72,7 +78,7 @@ class AdminDbService {
 
     this.schemaPromise = (async () => {
       try {
-        // 1. Dedicated students table & indexes
+        
         try {
           await sql`
             CREATE TABLE IF NOT EXISTS students (
@@ -91,7 +97,7 @@ class AdminDbService {
           await sql`CREATE INDEX IF NOT EXISTS idx_students_phone_number ON students(phone_number);`;
           await sql`CREATE INDEX IF NOT EXISTS idx_students_username ON students(username);`;
 
-          // Migration from legacy column names and managed_students table
+          
           try {
             await sql`
               DO $$
@@ -165,7 +171,7 @@ class AdminDbService {
           console.warn('[Admin DB] students schema check notice:', tableErr.message);
         }
 
-        // 2. admin_sessions table & indexes
+        
         try {
           await sql`
             CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -180,7 +186,7 @@ class AdminDbService {
           console.warn('[Admin DB] admin_sessions schema check notice:', sessErr.message);
         }
 
-        // 3. search_logs table & indexes (supports admission_number column)
+        
         try {
           await sql`
             CREATE TABLE IF NOT EXISTS search_logs (
@@ -203,7 +209,7 @@ class AdminDbService {
           console.warn('[Admin DB] search_logs schema check notice:', logErr.message);
         }
 
-        // 4. student_exceptions table & indexes (and view/alias)
+        
         try {
           await sql`
             CREATE TABLE IF NOT EXISTS student_exceptions (
@@ -236,9 +242,7 @@ class AdminDbService {
     return this.schemaPromise;
   }
 
-  /**
-   * Lists students with pagination, sorting, and universal search.
-   */
+   
   async listStudents({ page = 1, limit = 20, search = '', section = '', credential = '', sortBy = 'id', sortOrder = 'ASC' } = {}) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
@@ -276,7 +280,7 @@ class AdminDbService {
         }
 
         if (cleanSection) {
-          conditions.push(`(1=1)`); // Section column removed, no-op for compatibility
+          conditions.push(`(1=1)`); 
         }
 
         if (cleanCredential === 'complete' || cleanCredential === 'with_credentials') {
@@ -317,7 +321,7 @@ class AdminDbService {
       }
     }
 
-    // Memory fallback
+    
     let all = Array.from(this.memoryStudents.values());
 
     if (cleanSearch) {
@@ -352,7 +356,7 @@ class AdminDbService {
       all = all.filter(s => !(s.portal_password || s.password));
     }
 
-    // Sort
+    
     all.sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
@@ -384,10 +388,7 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Retrieves all students matching search, section, and credential filters,
-   * sorted as specified, without pagination limits (for export).
-   */
+   
   async getStudentsForExport({ search = '', section = '', credential = '', sortBy = 'student_name', sortOrder = 'ASC' } = {}) {
     const cleanSearch = String(search || '').trim().toLowerCase();
     const cleanSection = String(section || '').trim();
@@ -451,7 +452,7 @@ class AdminDbService {
       }
     }
 
-    // Memory fallback
+    
     let all = Array.from(this.memoryStudents.values());
 
     if (cleanSearch) {
@@ -486,7 +487,7 @@ class AdminDbService {
       all = all.filter(s => !(s.portal_password || s.password));
     }
 
-    // Sort
+    
     all.sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
@@ -507,15 +508,7 @@ class AdminDbService {
     return all.map(s => this._formatStudent(s));
   }
 
-  /**
-   * Dedicated Public Universal Student Search
-   * Allows public users to find basic directory info (student_name, admission_number, phone_number).
-   * STRICT SECURITY & PRIVACY GUARANTEES:
-   * - NEVER queries, selects, or returns username, password, id, created_at, or updated_at.
-   * - Executes parameterized read-only queries against the students table.
-   * - Does NOT trigger credential lookup API or student portal logins.
-   * - Preserves leading zeros on admission and phone numbers.
-   */
+   
   async searchPublicStudents(query, limit = 50) {
     if (!query || typeof query !== 'string' || !query.trim()) {
       return [];
@@ -552,7 +545,7 @@ class AdminDbService {
       }
     }
 
-    // Resilient in-memory fallback
+    
     const lowerQuery = cleanQuery.toLowerCase();
     const matches = [];
     for (const s of this.memoryStudents.values()) {
@@ -577,9 +570,7 @@ class AdminDbService {
     return matches.slice(0, safeLimit);
   }
 
-  /**
-   * Retrieves a student by their ID.
-   */
+   
   async getStudentById(id) {
     const studentId = parseInt(id, 10);
     if (!studentId || isNaN(studentId)) return null;
@@ -608,10 +599,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Retrieves a student by admission number.
-   * Strictly matches admission_number (never student name or phone number).
-   */
+   
   async getStudentByAdmissionNumber(admissionNumber) {
     const adm = String(admissionNumber || '').trim();
     if (!adm) return null;
@@ -643,10 +631,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Retrieves a student by phone number.
-   * Strictly matches phone_number (never student name or admission number).
-   */
+   
   async getStudentByPhoneNumber(phoneNumber) {
     const phone = String(phoneNumber || '').trim();
     if (!phone) return null;
@@ -677,12 +662,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Upserts a single student record.
-   * Duplicate protection: on conflict on admission_number:
-   * updates name, phone_number, section.
-   * NEVER overwrites existing non-empty username/password if incoming is empty/undefined.
-   */
+   
   async upsertStudent(params = {}) {
     const cleanName = String(params.student_name || params.name || '').trim();
     const cleanAdm = String(params.admission_number || '').trim();
@@ -713,7 +693,7 @@ class AdminDbService {
     if (sql) {
       try {
         await this.ensureSchema();
-        // Check if student existed before this query
+        
         const existingRows = await sql`
           SELECT id, username, password FROM students WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm})) LIMIT 1;
         `;
@@ -742,7 +722,7 @@ class AdminDbService {
 
         if (rows && rows.length > 0) {
           savedStudent = this._formatStudent(rows[0]);
-          // Sync to memory
+          
           this.memoryStudents.set(cleanAdm, { ...savedStudent });
           return { student: savedStudent, isUpdate };
         }
@@ -751,7 +731,7 @@ class AdminDbService {
       }
     }
 
-    // Memory store
+    
     const existing = this.memoryStudents.get(cleanAdm);
     if (existing) {
       isUpdate = true;
@@ -791,10 +771,7 @@ class AdminDbService {
     return { student: this._formatStudent(savedStudent), isUpdate };
   }
 
-  /**
-   * Updates an existing student record by ID.
-   * Validates uniqueness of admission_number and preserves credentials if omitted.
-   */
+   
   async updateStudent(id, fields = {}) {
     const studentId = parseInt(id, 10);
     if (!studentId || isNaN(studentId)) {
@@ -811,7 +788,7 @@ class AdminDbService {
       throw new Error('Admission number cannot be empty');
     }
 
-    // Check unique admission_number against other students
+    
     const conflictStudent = await this.getStudentByAdmissionNumber(cleanAdm);
     if (conflictStudent && Number(conflictStudent.id) !== studentId) {
       const err = new Error(`Admission number '${cleanAdm}' already belongs to another student`);
@@ -825,7 +802,7 @@ class AdminDbService {
     const cleanPhone = fields.phone_number !== undefined ? String(fields.phone_number).trim() : currentStudent.phone_number;
     const cleanSec = fields.section !== undefined ? String(fields.section).trim() : currentStudent.section;
 
-    // Credentials preservation: if not provided or empty, retain existing!
+    
     let newUsername = currentStudent.username || currentStudent.portal_username;
     if (fields.username !== undefined && fields.username !== null && fields.username !== '') {
       newUsername = String(fields.username).trim();
@@ -858,7 +835,7 @@ class AdminDbService {
         `;
         if (rows && rows.length > 0) {
           const updated = this._formatStudent(rows[0]);
-          // Sync to memory
+          
           if (currentStudent.admission_number !== cleanAdm) {
             this.memoryStudents.delete(currentStudent.admission_number);
           }
@@ -870,7 +847,7 @@ class AdminDbService {
       }
     }
 
-    // Memory store
+    
     if (currentStudent.admission_number !== cleanAdm) {
       this.memoryStudents.delete(currentStudent.admission_number);
     }
@@ -892,9 +869,7 @@ class AdminDbService {
     return this._formatStudent(updatedMem);
   }
 
-  /**
-   * Deletes a student by ID.
-   */
+   
   async deleteStudent(id) {
     const studentId = parseInt(id, 10);
     if (!studentId || isNaN(studentId)) return false;
@@ -920,12 +895,7 @@ class AdminDbService {
     return true;
   }
 
-  /**
-   * Batch upserts a list of student objects.
-   * Uses high-performance chunked multi-row queries when Neon is active to prevent timeouts,
-   * with automatic fallback.
-   * Returns { added, updated, duplicates, skipped, errors, total }.
-   */
+   
   async batchUpsertStudents(studentsList = []) {
     const summary = {
       added: 0,
@@ -1001,7 +971,7 @@ class AdminDbService {
               }
             }
           } catch (chunkErr) {
-            // Fallback for this chunk item-by-item
+            
             console.warn('[Admin DB] Batch chunk upsert encountered error, falling back to item-by-item:', chunkErr.message);
             for (const s of chunk) {
               try {
@@ -1029,7 +999,7 @@ class AdminDbService {
       }
     }
 
-    // Memory Store processing
+    
     for (const item of validItems) {
       try {
         const result = await this.upsertStudent(item);
@@ -1051,9 +1021,7 @@ class AdminDbService {
     return summary;
   }
 
-  /**
-   * Computes comprehensive dashboard statistics.
-   */
+   
   async getDashboardStats() {
     const sql = this.getSql();
     if (sql) {
@@ -1104,7 +1072,7 @@ class AdminDbService {
       }
     }
 
-    // Memory stats
+    
     const students = Array.from(this.memoryStudents.values());
     const totalStudents = students.length;
 
@@ -1166,11 +1134,12 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Session Management: Creates an admin session.
-   */
+   
   async createAdminSession(token, username, ttlHours = 2) {
     if (!token || !username) return false;
+
+    
+    this.cleanExpiredSessions().catch(() => {});
 
     const expiresAt = Date.now() + (ttlHours * 60 * 60 * 1000);
     this.memoryAdminSessions.set(token, {
@@ -1200,9 +1169,7 @@ class AdminDbService {
     return true;
   }
 
-  /**
-   * Session Management: Retrieves an admin session if valid and not expired.
-   */
+   
   async getAdminSession(token) {
     if (!token) return null;
 
@@ -1239,9 +1206,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Session Management: Deletes an admin session.
-   */
+   
   async deleteAdminSession(token) {
     if (!token) return false;
 
@@ -1263,9 +1228,7 @@ class AdminDbService {
     return true;
   }
 
-  /**
-   * Cleans up expired admin sessions.
-   */
+   
   async cleanExpiredSessions() {
     const now = Date.now();
     for (const [token, session] of this.memoryAdminSessions.entries()) {
@@ -1281,17 +1244,21 @@ class AdminDbService {
         await sql`
           DELETE FROM admin_sessions WHERE expires_at <= NOW();
         `;
+        return true;
       } catch (err) {
-        // Suppress cleanup warning
+        
+        return false;
       }
     }
+    return true;
   }
 
-  /**
-   * Updates only portal credentials for a verified student admission number.
-   * Strictly matches admission_number (never student name or phone number).
-   * Verifies exactly one record is updated and guards against duplicate corruption.
-   */
+   
+  async pruneExpiredSessions() {
+    return await this.cleanExpiredSessions();
+  }
+
+   
   async updateStudentCredentials(admissionNumber, credentials = {}) {
     const cleanAdm = String(admissionNumber || '').trim();
     if (!cleanAdm) throw new Error('Admission number is required to update credentials');
@@ -1309,7 +1276,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
 
-        // 1. Verify existence, check for duplicates, and read currently saved credentials
+        
         const checkRows = await sql`
           SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
           WHERE LOWER(TRIM(admission_number)) = LOWER(TRIM(${cleanAdm}));
@@ -1331,9 +1298,9 @@ class AdminDbService {
         const currentSavedUser = String(existingRow.username !== undefined ? existingRow.username : (existingRow.portal_username || '')).trim();
         const currentSavedPass = String(existingRow.password !== undefined ? existingRow.password : (existingRow.portal_password || '')).trim();
 
-        // 2. Compare saved credentials with newly returned credentials
+        
         if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
-          // Identical credentials: keep existing values without an unnecessary database update
+          
           const formatted = this._formatStudent(existingRow);
           formatted.count = 1;
           formatted.success = true;
@@ -1341,7 +1308,7 @@ class AdminDbService {
           return formatted;
         }
 
-        // 3. Perform parameterized update matching ONLY admission_number
+        
         const rows = await sql`
           UPDATE students
           SET username = ${cleanUser},
@@ -1373,7 +1340,7 @@ class AdminDbService {
       }
     }
 
-    // Resilient memory store fallback
+    
     const admLower = cleanAdm.toLowerCase();
     const matching = [];
     for (const [key, st] of this.memoryStudents.entries()) {
@@ -1399,7 +1366,7 @@ class AdminDbService {
     const currentSavedPass = String(existing.password !== undefined ? existing.password : (existing.portal_password || '')).trim();
 
     if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
-      // Identical credentials: keep existing values without an unnecessary update
+      
       const formatted = this._formatStudent(existing);
       formatted.count = 1;
       formatted.success = true;
@@ -1423,11 +1390,7 @@ class AdminDbService {
     return formatted;
   }
 
-  /**
-   * Updates only portal credentials for a verified student phone number.
-   * Strictly matches phone_number (never student name or admission number).
-   * Verifies exactly one record is updated and guards against duplicate corruption.
-   */
+   
   async updateStudentCredentialsByPhone(phoneNumber, credentials = {}) {
     const cleanPhone = String(phoneNumber || '').trim();
     if (!cleanPhone) throw new Error('Phone number is required to update credentials');
@@ -1445,7 +1408,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
 
-        // 1. Verify existence, check for duplicates, and read currently saved credentials
+        
         const checkRows = await sql`
           SELECT id, student_name, admission_number, phone_number, username, password, created_at, updated_at FROM students
           WHERE TRIM(phone_number) = TRIM(${cleanPhone});
@@ -1467,9 +1430,9 @@ class AdminDbService {
         const currentSavedUser = String(existingRow.username !== undefined ? existingRow.username : (existingRow.portal_username || '')).trim();
         const currentSavedPass = String(existingRow.password !== undefined ? existingRow.password : (existingRow.portal_password || '')).trim();
 
-        // 2. Compare saved credentials with newly returned credentials
+        
         if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
-          // Identical credentials: keep existing values without an unnecessary database update
+          
           const formatted = this._formatStudent(existingRow);
           formatted.count = 1;
           formatted.success = true;
@@ -1477,7 +1440,7 @@ class AdminDbService {
           return formatted;
         }
 
-        // 3. Perform parameterized update matching ONLY phone_number
+        
         const rows = await sql`
           UPDATE students
           SET username = ${cleanUser},
@@ -1509,7 +1472,7 @@ class AdminDbService {
       }
     }
 
-    // Resilient memory store fallback
+    
     const matching = [];
     for (const [key, st] of this.memoryStudents.entries()) {
       if (st.phone_number && String(st.phone_number).trim() === cleanPhone) {
@@ -1534,7 +1497,7 @@ class AdminDbService {
     const currentSavedPass = String(existing.password !== undefined ? existing.password : (existing.portal_password || '')).trim();
 
     if (currentSavedUser === cleanUser && currentSavedPass === cleanPass) {
-      // Identical credentials: keep existing values without an unnecessary update
+      
       const formatted = this._formatStudent(existing);
       formatted.count = 1;
       formatted.success = true;
@@ -1558,11 +1521,7 @@ class AdminDbService {
     return formatted;
   }
 
-  /**
-   * Clears only portal credentials for a verified student admission number (sets username = null, password = null, updated_at = NOW()).
-   * Strictly matches admission_number (never student name or phone number).
-   * Verifies exactly one record is updated and guards against duplicate corruption.
-   */
+   
   async clearStudentCredentials(admissionNumber) {
     const cleanAdm = String(admissionNumber || '').trim();
     if (!cleanAdm) throw new Error('Admission number is required to clear credentials');
@@ -1620,7 +1579,7 @@ class AdminDbService {
       }
     }
 
-    // Memory store fallback
+    
     const admLower = cleanAdm.toLowerCase();
     const matching = [];
     for (const [key, st] of this.memoryStudents.entries()) {
@@ -1658,11 +1617,7 @@ class AdminDbService {
     return formatted;
   }
 
-  /**
-   * Clears only portal credentials for a verified student phone number (sets username = null, password = null, updated_at = NOW()).
-   * Strictly matches phone_number (never student name or admission number).
-   * Verifies exactly one record is updated and guards against duplicate corruption.
-   */
+   
   async clearStudentCredentialsByPhone(phoneNumber) {
     const cleanPhone = String(phoneNumber || '').trim();
     if (!cleanPhone) throw new Error('Phone number is required to clear credentials');
@@ -1720,7 +1675,7 @@ class AdminDbService {
       }
     }
 
-    // Memory store fallback
+    
     const matching = [];
     for (const [key, st] of this.memoryStudents.entries()) {
       if (st.phone_number && String(st.phone_number).trim() === cleanPhone) {
@@ -1757,45 +1712,8 @@ class AdminDbService {
     return formatted;
   }
 
-  /**
-   * Seeds in-memory stores with baseline student records for unit testing and offline execution.
-   */
-  _seedMemoryStudents() {
-    const seedStudents = [
-      { student_name: 'Ansh Singh', name: 'Ansh Singh', admission_number: '8887416471', phone_number: '8887416471', section: 'CSE-A', portal_username: null, username: '', portal_password: null, password: '' },
-      { student_name: 'Anuj Kumar', name: 'Anuj Kumar', admission_number: '9919741137', phone_number: '9919741137', section: 'CSE-B', portal_username: null, username: '', portal_password: null, password: '' },
-      { student_name: 'Demo Student', name: 'Demo Student', admission_number: '0012345678', phone_number: '0012345678', section: 'CSE-A', portal_username: null, username: '', portal_password: null, password: '' }
-    ];
 
-    for (let i = 1; i <= 10; i++) {
-      const num = String(1000000000 + i);
-      seedStudents.push({
-        student_name: `Test Student ${num}`,
-        name: `Test Student ${num}`,
-        admission_number: num,
-        phone_number: num,
-        section: 'CSE-A',
-        portal_username: null,
-        username: '',
-        portal_password: null,
-        password: ''
-      });
-    }
-
-    for (const s of seedStudents) {
-      this.memoryStudents.set(s.admission_number, {
-        id: this.nextStudentId++,
-        ...s,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-    }
-  }
-
-  /**
-   * Records a student search operation into search_logs.
-   * Does NOT record student passwords or API keys.
-   */
+   
   async logSearch({ admissionNumber, searchQuery, searchType = 'Admission Number', result = 'SYSTEM_ERROR' }) {
     const cleanAdm = String(admissionNumber || searchQuery || '').trim();
     const cleanQuery = cleanAdm;
@@ -1833,9 +1751,7 @@ class AdminDbService {
     return this._formatSearchLog(logEntry);
   }
 
-  /**
-   * Retrieves paginated search logs with filtering.
-   */
+   
   async listSearchLogs({ page = 1, limit = 20, search = '', result = '', searchType = '', date = '' } = {}) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
@@ -1850,7 +1766,7 @@ class AdminDbService {
       try {
         await this.ensureSchema();
 
-        // High-performance direct path for default view (no filters applied)
+        
         if (!cleanSearch && !cleanResult && !cleanType && !cleanDate) {
           const countRes = await sql`SELECT COUNT(*) AS total FROM search_logs;`;
           const total = parseInt(countRes[0]?.total || 0, 10);
@@ -1926,7 +1842,7 @@ class AdminDbService {
       }
     }
 
-    // Memory fallback
+    
     let all = [...this.memorySearchLogs];
 
     if (cleanSearch) {
@@ -1964,10 +1880,7 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Clears all search activity logs.
-   * NEVER deletes student records.
-   */
+   
   async clearSearchLogs() {
     this.memorySearchLogs = [];
 
@@ -1985,9 +1898,7 @@ class AdminDbService {
     return true;
   }
 
-  /**
-   * Retrieves summary statistics from the search_logs table.
-   */
+   
   async getSearchLogStats() {
     const sql = this.getSql();
     if (sql) {
@@ -2021,7 +1932,7 @@ class AdminDbService {
       }
     }
 
-    // Memory stats
+    
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     let totalSearches = this.memorySearchLogs.length;
     let successfulLookups = 0;
@@ -2051,16 +1962,11 @@ class AdminDbService {
     };
   }
 
-  // =========================================================================
-  // Exception Management (Blocking & Custom Responses)
-  // =========================================================================
+  
+  
+  
 
-  /**
-   * Retrieves an exception by student number (e.g. 10-digit phone number or identifier).
-   * Exact match, preserves leading zeros as text.
-   * @param {string} studentNumber
-   * @returns {Promise<Object|null>}
-   */
+   
   async getExceptionByStudentNumber(studentNumber) {
     const rawNumber = String(studentNumber || '').trim();
     if (!rawNumber) return null;
@@ -2109,11 +2015,7 @@ class AdminDbService {
     return exc ? this._formatException(exc) : null;
   }
 
-  /**
-   * Lists all exceptions with optional search and pagination.
-   * @param {Object} options
-   * @returns {Promise<{exceptions: Array, total: number, page: number, limit: number, totalPages: number}>}
-   */
+   
   async listExceptions({ page = 1, limit = 50, search = '' } = {}) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
@@ -2164,7 +2066,7 @@ class AdminDbService {
       }
     }
 
-    // In-memory fallback
+    
     let all = Array.from(this.memoryExceptions.values());
     if (cleanSearch) {
       const q = cleanSearch.toLowerCase();
@@ -2187,11 +2089,7 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Retrieves an exception record by ID.
-   * @param {number|string} id
-   * @returns {Promise<Object|null>}
-   */
+   
   async getExceptionById(id) {
     const idNum = parseInt(id, 10);
     if (!idNum) return null;
@@ -2222,12 +2120,7 @@ class AdminDbService {
     return null;
   }
 
-  /**
-   * Creates a new student exception rule.
-   * Prevents duplicates by student_number.
-   * @param {Object} data
-   * @returns {Promise<Object>}
-   */
+   
   async createException({ student_number, custom_message }) {
     const cleanNumber = String(student_number || '').trim();
     const cleanMessage = String(custom_message || '').trim();
@@ -2243,7 +2136,7 @@ class AdminDbService {
       throw err;
     }
 
-    // Check existing
+    
     const existing = await this.getExceptionByStudentNumber(cleanNumber);
     if (existing) {
       const err = new Error('An exception for this student number already exists.');
@@ -2273,7 +2166,7 @@ class AdminDbService {
       }
     }
 
-    // In-memory fallback
+    
     const id = this.nextExceptionId++;
     const now = new Date().toISOString();
     const newExc = {
@@ -2287,12 +2180,7 @@ class AdminDbService {
     return this._formatException(newExc);
   }
 
-  /**
-   * Updates an existing exception rule by ID.
-   * @param {number|string} id
-   * @param {Object} data
-   * @returns {Promise<Object|null>}
-   */
+   
   async updateException(id, { student_number, custom_message }) {
     const idNum = parseInt(id, 10);
     if (!idNum) return null;
@@ -2314,7 +2202,7 @@ class AdminDbService {
       throw err;
     }
 
-    // If changing student number, verify uniqueness
+    
     if (newNumber !== existing.student_number) {
       const other = await this.getExceptionByStudentNumber(newNumber);
       if (other && Number(other.id) !== idNum) {
@@ -2355,7 +2243,7 @@ class AdminDbService {
       }
     }
 
-    // In-memory fallback
+    
     if (existing.student_number !== newNumber) {
       this.memoryExceptions.delete(existing.student_number);
     }
@@ -2370,11 +2258,7 @@ class AdminDbService {
     return this._formatException(updatedExc);
   }
 
-  /**
-   * Deletes an exception record by ID.
-   * @param {number|string} id
-   * @returns {Promise<{success: boolean, deleted: boolean}>}
-   */
+   
   async deleteException(id) {
     const idNum = parseInt(id, 10);
     if (!idNum) return { success: false, deleted: false };
@@ -2399,7 +2283,7 @@ class AdminDbService {
       }
     }
 
-    // In-memory fallback
+    
     for (const [key, exc] of this.memoryExceptions.entries()) {
       if (Number(exc.id) === idNum) {
         this.memoryExceptions.delete(key);
@@ -2409,9 +2293,7 @@ class AdminDbService {
     return { success: false, deleted: false };
   }
 
-  /**
-   * Formats an exception object.
-   */
+   
   _formatException(row) {
     if (!row) return null;
     return {
@@ -2423,9 +2305,7 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Formats a search log object.
-   */
+   
   _formatSearchLog(l) {
     if (!l) return null;
     const adm = l.admission_number || l.search_query || '';
@@ -2439,11 +2319,7 @@ class AdminDbService {
     };
   }
 
-  /**
-   * Formats student object for clean API response.
-   * Maps both canonical schema fields (student_name, portal_username, portal_password)
-   * and backwards-compatible aliases (name, username, password).
-   */
+   
   _formatStudent(s) {
     if (!s) return null;
     const studentName = String(s.student_name || s.name || '').trim();

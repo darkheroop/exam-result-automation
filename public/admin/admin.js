@@ -1,16 +1,11 @@
-/**
- * ABES Examination System - Enterprise Administrator Portal Engine
- * File: public/admin/admin.js
- * 
- * 100% Real API Driven - Communicates directly with Neon PostgreSQL backend.
- */
+ 
 
 (function () {
   'use strict';
 
-  // =========================================================================
-  // Global Admin Application State
-  // =========================================================================
+  
+  
+  
   const state = {
     currentUser: { username: 'inexpert_trifler', role: 'Super Administrator' },
     activeTab: 'overview',
@@ -80,9 +75,9 @@
     deleteExceptionTargetNumber: null
   };
 
-  // =========================================================================
-  // Utility Helpers
-  // =========================================================================
+  
+  
+  
   function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str)
@@ -165,9 +160,9 @@
     return `<span class="badge-status ${cls}">${escapeHtml(r)}</span>`;
   }
 
-  // =========================================================================
-  // Toast Notification System
-  // =========================================================================
+  
+  
+  
   function showToast(message, type = 'info', duration = 4000) {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -222,9 +217,9 @@
     }
   }
 
-  // =========================================================================
-  // Authenticated API Fetch Helper
-  // =========================================================================
+  
+  
+  
   async function apiFetch(endpoint, options = {}) {
     const token = localStorage.getItem('admin_token');
     const headers = {
@@ -265,9 +260,9 @@
     }
   }
 
-  // =========================================================================
-  // Authentication & Session Guard
-  // =========================================================================
+  
+  
+  
   async function checkAuthSession() {
     const res = await apiFetch('/api/admin/me');
     if (res && res.ok && res.data && res.data.user) {
@@ -276,7 +271,7 @@
       return true;
     }
 
-    // Invalid session token or cookie
+    
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     window.location.href = '/admin/login';
@@ -307,9 +302,9 @@
     }, 300);
   }
 
-  // =========================================================================
-  // Tab Routing & Navigation
-  // =========================================================================
+  
+  
+  
   function initRouting() {
     window.addEventListener('hashchange', () => {
       const hash = window.location.hash.replace('#', '') || 'overview';
@@ -397,9 +392,9 @@
     closeMobileSidebar();
   }
 
-  // =========================================================================
-  // VIEW 1: Dashboard Overview & Statistics
-  // =========================================================================
+  
+  
+  
   async function loadDashboardStats() {
     const [resStats, resSearchStats] = await Promise.all([
       apiFetch('/api/admin/stats'),
@@ -454,7 +449,7 @@
     setText('stat-students-not-found', stats.studentsNotFound || 0);
     setText('stat-searches-today', stats.searchesToday || 0);
 
-    // View-logs specific KPI cards
+    
     setText('logs-view-total-searches', total);
     setText('logs-view-success-searches', success);
     setText('logs-view-failed-searches', failed);
@@ -476,14 +471,14 @@
     setText('stat-with-passwords', data.studentsWithPassword || 0);
     setText('stat-without-passwords', data.studentsWithoutPassword || 0);
 
-    // Section Breakdown Badge
+    
     const breakdownBadge = document.getElementById('section-breakdown-count-badge');
     if (breakdownBadge) {
       const count = data.totalSections || (data.sectionBreakdown ? data.sectionBreakdown.length : 0);
       breakdownBadge.textContent = `${count} ${count === 1 ? 'Section' : 'Sections'}`;
     }
 
-    // Section Breakdown Chips
+    
     const sectionContainer = document.getElementById('section-chips-container');
     if (sectionContainer) {
       const breakdown = data.sectionBreakdown || [];
@@ -509,7 +504,7 @@
       }
     }
 
-    // Recently Added Students
+    
     const recentAddedTbody = document.getElementById('recently-added-tbody');
     if (recentAddedTbody) {
       const added = data.recentlyAdded || [];
@@ -537,7 +532,7 @@
       }
     }
 
-    // Recently Updated Students
+    
     const recentUpdatedTbody = document.getElementById('recently-updated-tbody');
     if (recentUpdatedTbody) {
       const updated = data.recentlyUpdated || [];
@@ -566,9 +561,9 @@
     }
   }
 
-  // =========================================================================
-  // VIEW 2: Student Management Directory
-  // =========================================================================
+  
+  
+  
   async function loadStudents() {
     const { page, limit } = state.pagination;
     const { search, section, credential, sort } = state.filters;
@@ -702,7 +697,7 @@
       `;
     }).join('');
 
-    // Attach row action listeners
+    
     tbody.querySelectorAll('.btn-eye-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const passCell = btn.closest('.password-cell');
@@ -742,7 +737,7 @@
       });
     });
 
-    // Update Pagination Display
+    
     const { page, limit, total, totalPages } = state.pagination;
     const startRecord = total > 0 ? (page - 1) * limit + 1 : 0;
     const endRecord = Math.min(page * limit, total);
@@ -766,7 +761,7 @@
 
     container.innerHTML = '';
 
-    // Prev Button
+    
     const prevBtn = document.createElement('button');
     prevBtn.type = 'button';
     prevBtn.className = 'btn-page';
@@ -813,7 +808,7 @@
       container.appendChild(createPageBtn(totalPages, currentPage === totalPages));
     }
 
-    // Next Button
+    
     const nextBtn = document.createElement('button');
     nextBtn.type = 'button';
     nextBtn.className = 'btn-page';
@@ -843,9 +838,9 @@
     return btn;
   }
 
-  // =========================================================================
-  // Student Export to Excel (.xlsx) - Three Filter Options
-  // =========================================================================
+  
+  
+  
   function openExportModal() {
     const searchNotice = document.getElementById('export-search-notice');
     const searchNoticeText = document.getElementById('export-search-notice-text');
@@ -860,7 +855,7 @@
       }
     }
 
-    // Default to 'all' or preserve radio
+    
     const radioAll = document.getElementById('export-opt-all');
     if (radioAll) radioAll.checked = true;
     updateExportOptionCardActive();
@@ -936,7 +931,7 @@
         throw new Error(errMsg);
       }
 
-      // Read filename from Content-Disposition header if available
+      
       let defaultName = 'All_Students.xlsx';
       if (chosenOption === 'with_credentials') defaultName = 'Students_With_Credentials.xlsx';
       if (chosenOption === 'without_credentials') defaultName = 'Students_Without_Credentials.xlsx';
@@ -977,7 +972,7 @@
     }
   }
 
-  // Alias for backward compatibility
+  
   function exportStudents(filterOption = null) {
     if (filterOption && typeof filterOption === 'string') {
       return executeStudentExport(filterOption);
@@ -985,9 +980,9 @@
     openExportModal();
   }
 
-  // =========================================================================
-  // Modals System (Edit, Add, Delete)
-  // =========================================================================
+  
+  
+  
   function openModal(modalId) {
     const m = document.getElementById(modalId);
     if (m) {
@@ -1005,7 +1000,7 @@
   }
 
   function initModals() {
-    // Backdrop click to close
+    
     document.querySelectorAll('.modal-backdrop').forEach(modal => {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -1014,7 +1009,7 @@
       });
     });
 
-    // Close modal on Escape key
+    
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeModal('modal-edit-student');
@@ -1027,7 +1022,7 @@
       }
     });
 
-    // Close buttons by attribute
+    
     document.querySelectorAll('[data-close-modal]').forEach(btn => {
       btn.addEventListener('click', () => {
         const modalId = btn.getAttribute('data-close-modal');
@@ -1035,7 +1030,7 @@
       });
     });
 
-    // --- MODAL 1: EDIT STUDENT ---
+    
     const editForm = document.getElementById('form-edit-student');
     if (editForm) {
       editForm.addEventListener('submit', handleSaveStudentEdit);
@@ -1045,7 +1040,7 @@
     const cancelEditBtn = document.getElementById('btn-cancel-edit-modal');
     if (cancelEditBtn) cancelEditBtn.addEventListener('click', () => closeModal('modal-edit-student'));
 
-    // Edit Password Toggle
+    
     const editTogglePassBtn = document.getElementById('btn-edit-toggle-password');
     if (editTogglePassBtn) {
       editTogglePassBtn.addEventListener('click', () => {
@@ -1057,7 +1052,7 @@
       });
     }
 
-    // --- MODAL 2: ADD STUDENT ---
+    
     const openAddBtn = document.getElementById('btn-open-add-student');
     if (openAddBtn) {
       openAddBtn.addEventListener('click', () => {
@@ -1075,7 +1070,7 @@
     const cancelAddBtn = document.getElementById('btn-cancel-add-modal');
     if (cancelAddBtn) cancelAddBtn.addEventListener('click', () => closeModal('modal-add-student'));
 
-    // Add Password Toggle
+    
     const addTogglePassBtn = document.getElementById('btn-add-toggle-password');
     if (addTogglePassBtn) {
       addTogglePassBtn.addEventListener('click', () => {
@@ -1087,7 +1082,7 @@
       });
     }
 
-    // --- MODAL 3: DELETE STUDENT ---
+    
     const deleteBtn = document.getElementById('btn-confirm-delete-student');
     if (deleteBtn) {
       deleteBtn.addEventListener('click', handleConfirmDeleteStudent);
@@ -1097,7 +1092,7 @@
       cancelDeleteBtn.addEventListener('click', () => closeModal('modal-delete-student'));
     }
 
-    // --- MODAL 4: CLEAR LOGS ---
+    
     const openClearLogsBtn = document.getElementById('btn-open-clear-logs');
     if (openClearLogsBtn) {
       openClearLogsBtn.addEventListener('click', () => openModal('modal-clear-logs'));
@@ -1112,7 +1107,7 @@
     }
   }
 
-  // Edit Student
+  
   async function openEditStudentModal(id) {
     let student = state.students.find(s => String(s.id) === String(id));
     if (!student) {
@@ -1202,7 +1197,7 @@
     }
   }
 
-  // Add Student
+  
   async function handleSaveAddStudent(e) {
     e.preventDefault();
     const name = (document.getElementById('add-student-name')?.value || '').trim();
@@ -1252,7 +1247,7 @@
     }
   }
 
-  // Delete Student
+  
   function openDeleteStudentModal(id, name, adm) {
     state.deleteTargetId = id;
     const nameEl = document.getElementById('delete-student-name');
@@ -1300,9 +1295,9 @@
     }
   }
 
-  // =========================================================================
-  // VIEW 3: Excel Upload & Import Workflow
-  // =========================================================================
+  
+  
+  
   function parseWorkbookClient(arrayBuffer, filename) {
     if (typeof XLSX === 'undefined') return null;
 
@@ -1541,7 +1536,7 @@
 
     setUploadProgress(20, 'Reading file contents...');
 
-    // 1. Read file as ArrayBuffer & Base64
+    
     let arrayBuffer = null;
     let base64String = null;
     try {
@@ -1556,7 +1551,7 @@
       console.warn('FileReader error:', readErr);
     }
 
-    // 2. Perform instant client-side parsing if SheetJS is available
+    
     let clientParsed = null;
     if (arrayBuffer) {
       setUploadProgress(40, 'Parsing student records across all sections...');
@@ -1583,7 +1578,7 @@
       renderImportPreview(state.pendingUpload, file.name);
     }
 
-    // 3. Send to server for server preview verification
+    
     setUploadProgress(70, 'Syncing with server...');
     const token = localStorage.getItem('admin_token');
 
@@ -1674,7 +1669,7 @@
     const fnEl = document.getElementById('preview-filename-badge');
     if (fnEl) fnEl.textContent = fileName || summary.filename || 'workbook.xlsx';
 
-    // Detected Sections
+    
     const sectionsEl = document.getElementById('preview-detected-sections');
     if (sectionsEl) {
       const sections = summary.sectionsFound || data.sectionsFound || [];
@@ -1687,13 +1682,13 @@
       }
     }
 
-    // Detected Columns Indicator
+    
     const colsEl = document.getElementById('preview-detected-columns');
     if (colsEl) {
       colsEl.textContent = '6 / 6 Complete';
     }
 
-    // Warnings Box
+    
     const warningsAlert = document.getElementById('preview-warnings-alert');
     const warningsList = document.getElementById('preview-warnings-list');
     const warnings = summary.warnings || data.warnings || [];
@@ -1712,7 +1707,7 @@
       }
     }
 
-    // Preview Table (first 20 rows)
+    
     const tbody = document.getElementById('preview-table-body');
     if (tbody) {
       const rows = data.sample || data.validRecords || [];
@@ -1852,7 +1847,7 @@
       confirmImportBtn.addEventListener('click', handleConfirmImport);
     }
 
-    // Result card actions
+    
     const toStudentsBtn = document.getElementById('btn-summary-to-students');
     if (toStudentsBtn) {
       toStudentsBtn.addEventListener('click', (e) => {
@@ -1873,9 +1868,9 @@
     }
   }
 
-  // =========================================================================
-  // VIEW 4: Universal Search Engine
-  // =========================================================================
+  
+  
+  
   function initUniversalSearch() {
     const searchInput = document.getElementById('universal-search-input');
     const clearBtn = document.getElementById('universal-search-clear');
@@ -1915,7 +1910,7 @@
       });
     }
 
-    // Field Filter Chips
+    
     document.querySelectorAll('.filter-chips-row .filter-chip-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-chips-row .filter-chip-btn').forEach(b => b.classList.remove('active'));
@@ -1957,7 +1952,7 @@
     const res = await apiFetch(`/api/admin/students?search=${encodeURIComponent(query)}&limit=100`);
     let results = (res && res.ok && res.data && res.data.students) ? res.data.students : [];
 
-    // Apply client-side chip filtering if active
+    
     const field = state.universalSearchFilter;
     if (field && field !== 'all') {
       const q = query.toLowerCase().trim();
@@ -2105,9 +2100,9 @@
     }
   }
 
-  // =========================================================================
-  // VIEW 5: Search Activity & Resolution Logs
-  // =========================================================================
+  
+  
+  
   async function loadSearchLogs() {
     const { page, limit } = state.logPagination;
     const { search, result, searchType, date } = state.logFilters;
@@ -2283,7 +2278,7 @@
     return btn;
   }
 
-  // Clear logs modal submit handler
+  
   async function handleConfirmClearLogs() {
     const confirmBtn = document.getElementById('btn-confirm-clear-logs');
     const spinner = document.getElementById('btn-clear-logs-spinner');
@@ -2309,7 +2304,7 @@
     }
   }
 
-  // Explicit Student Search with Automatic Credential Fetching
+  
   async function submitStudentSearch() {
     const input = document.getElementById('student-search-input');
     if (!input) return;
@@ -2355,7 +2350,7 @@
     }
   }
 
-  // Explicit Universal Search with Automatic Credential Fetching
+  
   async function submitUniversalSearch() {
     const input = document.getElementById('universal-search-input');
     if (!input) return;
@@ -2393,9 +2388,9 @@
     }
   }
 
-  // =========================================================================
-  // Mobile Controls & Toolbar Handlers
-  // =========================================================================
+  
+  
+  
   function initMobileControls() {
     const toggleBtn = document.getElementById('btn-sidebar-toggle');
     const sidebar = document.getElementById('app-sidebar');
@@ -2423,14 +2418,14 @@
   }
 
   function initToolbarHandlers() {
-    // Quick Logout & Sidebar Logout
+    
     const quickLogoutBtn = document.getElementById('btn-quick-logout');
     if (quickLogoutBtn) quickLogoutBtn.addEventListener('click', handleLogout);
 
     const sidebarLogoutBtn = document.getElementById('btn-sidebar-logout');
     if (sidebarLogoutBtn) sidebarLogoutBtn.addEventListener('click', handleLogout);
 
-    // Refresh Stats Button on Overview
+    
     const refreshStatsBtn = document.getElementById('btn-refresh-stats');
     if (refreshStatsBtn) {
       refreshStatsBtn.addEventListener('click', () => {
@@ -2439,25 +2434,25 @@
       });
     }
 
-    // Hero Overview Import Button
+    
     const overviewImportBtn = document.getElementById('btn-overview-import');
     if (overviewImportBtn) {
       overviewImportBtn.addEventListener('click', () => switchTab('upload'));
     }
 
-    // Header Upload Excel Button in Student Management
+    
     const headerUploadExcelBtn = document.getElementById('btn-header-upload-excel');
     if (headerUploadExcelBtn) {
       headerUploadExcelBtn.addEventListener('click', () => switchTab('upload'));
     }
 
-    // Export Students Button in Student Management
+    
     const exportStudentsBtn = document.getElementById('btn-export-students');
     if (exportStudentsBtn) {
       exportStudentsBtn.addEventListener('click', () => openExportModal());
     }
 
-    // Export Confirmation & Options Selection
+    
     const confirmExportBtn = document.getElementById('btn-confirm-export');
     if (confirmExportBtn) {
       confirmExportBtn.addEventListener('click', () => executeStudentExport());
@@ -2479,7 +2474,7 @@
       });
     });
 
-    // Student Search Input
+    
     const studentSearchInput = document.getElementById('student-search-input');
     const clearStudentSearchBtn = document.getElementById('student-search-clear');
 
@@ -2525,7 +2520,7 @@
       });
     }
 
-    // Section Filter Dropdown
+    
     const sectionFilter = document.getElementById('student-section-filter');
     if (sectionFilter) {
       sectionFilter.addEventListener('change', () => {
@@ -2535,7 +2530,7 @@
       });
     }
 
-    // Credential Filter Dropdown
+    
     const credFilter = document.getElementById('student-credential-filter');
     if (credFilter) {
       credFilter.addEventListener('change', () => {
@@ -2545,7 +2540,7 @@
       });
     }
 
-    // Sort Filter Dropdown
+    
     const sortSelect = document.getElementById('student-sort-filter');
     if (sortSelect) {
       sortSelect.addEventListener('change', () => {
@@ -2555,7 +2550,7 @@
       });
     }
 
-    // Refresh Students Table Button
+    
     const refreshStudentsBtn = document.getElementById('btn-refresh-students');
     if (refreshStudentsBtn) {
       refreshStudentsBtn.addEventListener('click', () => {
@@ -2564,7 +2559,7 @@
       });
     }
 
-    // Clear All Filters Button (Empty state)
+    
     const resetFiltersBtn = document.getElementById('btn-reset-filters');
     if (resetFiltersBtn) {
       resetFiltersBtn.addEventListener('click', () => {
@@ -2584,7 +2579,7 @@
       });
     }
 
-    // Pagination Limit Select (10, 25, 50)
+    
     const limitSelect = document.getElementById('pagination-limit-select');
     if (limitSelect) {
       limitSelect.addEventListener('change', () => {
@@ -2594,7 +2589,7 @@
       });
     }
 
-    // View All links on Overview cards
+    
     const linkAllAdded = document.getElementById('link-view-all-added');
     if (linkAllAdded) {
       linkAllAdded.addEventListener('click', (e) => {
@@ -2614,7 +2609,7 @@
       });
     }
 
-    // View All Logs link on Overview
+    
     const linkAllLogs = document.getElementById('link-view-all-logs');
     if (linkAllLogs) {
       linkAllLogs.addEventListener('click', (e) => {
@@ -2623,7 +2618,7 @@
       });
     }
 
-    // Refresh Logs button
+    
     const refreshLogsBtn = document.getElementById('btn-refresh-logs');
     if (refreshLogsBtn) {
       refreshLogsBtn.addEventListener('click', () => {
@@ -2632,7 +2627,7 @@
       });
     }
 
-    // Search Logs Filter Toolbar
+    
     const logSearchInput = document.getElementById('log-search-input');
     const logSearchClearBtn = document.getElementById('log-search-clear');
     if (logSearchInput) {
@@ -2716,9 +2711,9 @@
     }
   }
 
-  // =========================================================================
-  // VIEW 6: Exception Management
-  // =========================================================================
+  
+  
+  
   async function loadExceptions() {
     const { page, limit } = state.exceptionPagination;
     const { search } = state.exceptionFilters;
@@ -2804,7 +2799,7 @@
       `;
     }).join('');
 
-    // Attach listeners
+    
     tbody.querySelectorAll('.btn-exc-edit').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
@@ -2844,7 +2839,7 @@
     container.innerHTML = '';
     if (totalPages <= 1) return;
 
-    // Previous Button
+    
     const prevBtn = document.createElement('button');
     prevBtn.type = 'button';
     prevBtn.className = 'page-btn' + (currentPage <= 1 ? ' disabled' : '');
@@ -2863,7 +2858,7 @@
     });
     container.appendChild(prevBtn);
 
-    // Page numbers
+    
     const maxVisible = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
     let endPage = Math.min(totalPages, startPage + maxVisible - 1);
@@ -2898,7 +2893,7 @@
       container.appendChild(pLast);
     }
 
-    // Next Button
+    
     const nextBtn = document.createElement('button');
     nextBtn.type = 'button';
     nextBtn.className = 'page-btn' + (currentPage >= totalPages ? ' disabled' : '');
@@ -3036,7 +3031,7 @@
         const errCode = res?.data?.error?.code;
         const errorMsg = res?.data?.error?.message || 'Failed to create exception rule.';
         if (errCode === 'DUPLICATE_EXCEPTION' || res?.status === 409) {
-          // Find existing exception by student number to allow immediate editing
+          
           let existing = state.exceptions.find(e => String(e.student_number).trim() === studentNumber);
           if (!existing) {
             const fetchRes = await apiFetch(`/api/admin/exceptions?search=${encodeURIComponent(studentNumber)}`);
@@ -3213,7 +3208,7 @@
       });
     }
 
-    // Modal Close and Submit Handlers
+    
     const closeAddModalBtn = document.getElementById('btn-close-add-exc-modal');
     const cancelAddModalBtn = document.getElementById('btn-cancel-add-exc-modal');
     if (closeAddModalBtn) closeAddModalBtn.addEventListener('click', closeAddExceptionModal);
@@ -3237,9 +3232,9 @@
     if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', handleConfirmDeleteException);
   }
 
-  // =========================================================================
-  // Application Bootstrap
-  // =========================================================================
+  
+  
+  
   async function initApp() {
     initRouting();
     initMobileControls();

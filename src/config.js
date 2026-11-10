@@ -11,13 +11,13 @@ function findSystemBrowser() {
     return customPath;
   }
 
-  // Windows standard paths
+  
   const candidates = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    // Linux / Mac paths
+    
     '/usr/bin/google-chrome',
     '/usr/bin/chromium-browser',
     '/usr/bin/chromium',
@@ -30,28 +30,28 @@ function findSystemBrowser() {
     }
   }
 
-  return undefined; // Playwright will fall back to channel if undefined
+  return undefined; 
 }
 
 const config = Object.freeze({
   port: parseInt(process.env.PORT, 10) || 5050,
   nodeEnv: process.env.NODE_ENV || 'development',
   
-  // Student Lookup Credential API
-  studentLookupApiUrl: process.env.STUDENT_LOOKUP_API_URL || 'https://student-lookup-portal.vercel.app/api/lookup',
-  studentLookupApiKey: process.env.STUDENT_LOOKUP_API_KEY || 'sk_support_3dbd105ccf05e3fb30d38c64151d426e6bd397f8219545a946182e037c3ae0ac',
   
-  // Educational Portal
+  studentLookupApiUrl: process.env.STUDENT_LOOKUP_API_URL || 'https://student-lookup-portal.vercel.app/api/lookup',
+  studentLookupApiKey: process.env.STUDENT_LOOKUP_API_KEY || '',
+  
+  
   portalLoginUrl: process.env.PORTAL_LOGIN_URL || 'https://ai-edunova.abes.ac.in/#/auth/login',
   portalResultsUrl: process.env.PORTAL_RESULTS_URL || 'https://ai-edunova.abes.ac.in/#/insync/dashboard/exam/semester-examination-result?examMpId=2&resultView=annual',
   
-  // Browser Automation
+  
   chromePath: findSystemBrowser(),
   headless: process.env.HEADLESS !== 'false',
   pageTimeoutMs: parseInt(process.env.PAGE_TIMEOUT_MS, 10) || 15000,
   
-  // Session & Storage
-  sessionTtlMs: parseInt(process.env.SESSION_TTL_MS, 10) || 600000, // 10 minutes
+  
+  sessionTtlMs: parseInt(process.env.SESSION_TTL_MS, 10) || 600000, 
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS, 10) || 300,
   maxConcurrentWorkers: parseInt(process.env.MAX_CONCURRENT_WORKERS, 10) || Math.min(Math.max(os.cpus()?.length || 2, 2), 4),
   maxQueueSize: parseInt(process.env.MAX_QUEUE_SIZE, 10) || 200,
@@ -63,7 +63,7 @@ const config = Object.freeze({
       : path.resolve(__dirname, '../temp_downloads')
   ),
 
-  // Granular Operation-Specific Timeouts
+  
   credentialLookupTimeoutMs: parseInt(process.env.TIMEOUT_CREDENTIAL_LOOKUP_MS, 10) || 20000,
   browserLaunchTimeoutMs: parseInt(process.env.TIMEOUT_BROWSER_LAUNCH_MS, 10) || 35000,
   loginNavigationTimeoutMs: parseInt(process.env.TIMEOUT_LOGIN_NAV_MS, 10) || 30000,
@@ -73,7 +73,7 @@ const config = Object.freeze({
   pdfGenerationTimeoutMs: parseInt(process.env.TIMEOUT_PDF_GEN_MS, 10) || 25000,
   overallRequestTimeoutMs: parseInt(process.env.TIMEOUT_OVERALL_REQUEST_MS, 10) || 55000,
   
-  // Browser Pool Settings
+  
   browserPoolMinBrowsers: parseInt(process.env.BROWSER_POOL_MIN_BROWSERS, 10) || 1,
   browserPoolMaxBrowsers: parseInt(process.env.BROWSER_POOL_MAX_BROWSERS, 10) || (
     (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION || process.env.LAMBDA_TASK_ROOT) ? 2 : 4
@@ -81,11 +81,11 @@ const config = Object.freeze({
   browserPoolMaxContextsPerBrowser: parseInt(process.env.BROWSER_POOL_MAX_CONTEXTS, 10) || 4,
   browserPoolIdleTimeoutMs: parseInt(process.env.BROWSER_POOL_IDLE_TIMEOUT_MS, 10) || 180000,
 
-  // Optional Persistent Worker Service (Option A)
+  
   workerServiceUrl: process.env.WORKER_SERVICE_URL ? process.env.WORKER_SERVICE_URL.replace(/\/+$/, '') : null,
   workerApiKey: process.env.WORKER_API_KEY || null,
 
-  // Rate Limiting
+  
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
   rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 600,
 });

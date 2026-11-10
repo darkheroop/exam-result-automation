@@ -9,9 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lato:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/primeicons/primeicons.css">
   <link rel="stylesheet" href="styles.css">
+  <script src="/security.js"></script>
 </head>
 <body>
-  <!-- Header / Navigation Bar -->
+  
   <header class="app-header">
     <div class="header-container">
       <div class="brand">
@@ -29,7 +30,7 @@
         </div>
       </div>
 
-      <!-- Action buttons in header (view mode) -->
+      
       <div id="headerActions" class="header-actions hidden">
         <button id="headerNewSearchBtn" class="btn btn-secondary btn-sm">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -42,18 +43,16 @@
     </div>
   </header>
 
-  <!-- Main Content Wrapper -->
+  
   <main class="app-main">
     
-    <!-- SECTION 1: SEARCH / DASHBOARD VIEW -->
+    
     <section id="dashboardSection" class="section-view active">
       <div class="card intro-card">
         <div class="intro-header">
           <h1 class="main-title">Automated Examination Result Retrieval</h1>
           <p class="main-description">
-            Streamline educational administrative workflows by eliminating manual repetitive portal logins.
-            Enter an authorized student identifier to securely resolve credentials, authenticate with the official AI Edunova portal,
-            and view the authentic annual examination marksheet with comprehensive performance metrics.
+            Enter an authorized student identifier to view the authentic annual examination marksheet with comprehensive performance metrics.
           </p>
         </div>
 
@@ -68,7 +67,7 @@
                 type="text"
                 id="studentNumberInput"
                 class="form-input"
-                placeholder="Enter 10-digit number (e.g. 8887416471 or 9599099932)"
+                placeholder="Enter 10-digit number"
                 maxlength="10"
                 autocomplete="off"
                 spellcheck="false"
@@ -78,9 +77,6 @@
             <div id="inputValidationError" class="input-error-msg hidden">
               Please enter a valid 10-digit number.
             </div>
-            <p class="form-hint">
-              10-digit student mobile or registration number. Leading zeros will be strictly preserved.
-            </p>
           </div>
 
           <div class="form-actions">
@@ -90,71 +86,17 @@
             </button>
           </div>
         </form>
+      </div>
 
-        <!-- Privacy & Security Notice -->
-        <div class="privacy-notice">
-          <div class="notice-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
-          </div>
-          <div class="notice-text">
-            <strong>Security & Privacy Architecture:</strong> Credentials and authentication tokens are processed
-            strictly in ephemeral, isolated server-side browser contexts. Secrets are never exposed to browser storage
-            or client scripts and are permanently purged upon session termination.
-          </div>
+      
+      <div id="progressCard" class="card progress-card minimal-loading-card hidden" role="status" aria-live="polite">
+        <div class="minimal-loader-wrapper">
+          <div class="loader-spinner" aria-hidden="true"></div>
+          <p id="progressMessage" class="loading-label">Loading examination results...</p>
         </div>
       </div>
 
-      <!-- PROGRESS TRACKER (Shows while workflow executes) -->
-      <div id="progressCard" class="card progress-card hidden">
-        <div class="progress-header">
-          <div class="progress-title-wrap">
-            <h2 class="progress-title">Automation In Progress</h2>
-            <span id="progressPercentBadge" class="badge badge-info">15%</span>
-          </div>
-          <p id="progressMessage" class="progress-message">Validating student identifier...</p>
-        </div>
-
-        <div class="progress-bar-container">
-          <div id="progressBar" class="progress-bar" style="width: 15%;"></div>
-        </div>
-
-        <!-- Real Workflow Stages -->
-        <div class="workflow-steps">
-          <div class="step-item" data-step="1">
-            <div class="step-circle">1</div>
-            <div class="step-label">Validating input</div>
-          </div>
-          <div class="step-item" data-step="2">
-            <div class="step-circle">2</div>
-            <div class="step-label">Retrieving credentials</div>
-          </div>
-          <div class="step-item" data-step="3">
-            <div class="step-circle">3</div>
-            <div class="step-label">Connecting to portal</div>
-          </div>
-          <div class="step-item" data-step="4">
-            <div class="step-circle">4</div>
-            <div class="step-label">Authenticating</div>
-          </div>
-          <div class="step-item" data-step="5">
-            <div class="step-circle">5</div>
-            <div class="step-label">Opening results</div>
-          </div>
-          <div class="step-item" data-step="6">
-            <div class="step-circle">6</div>
-            <div class="step-label">Preparing marksheet</div>
-          </div>
-          <div class="step-item" data-step="7">
-            <div class="step-circle">7</div>
-            <div class="step-label">Marksheet ready</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ERROR STATE CARD -->
+      
       <div id="errorCard" class="card error-card hidden">
         <div class="error-header">
           <div class="error-icon">
@@ -174,7 +116,7 @@
         </div>
       </div>
 
-      <!-- PUBLIC UNIVERSAL STUDENT SEARCH SECTION -->
+      
       <section id="searchStudentsSection" class="card public-directory-card" aria-label="Student Directory Search">
         <div class="directory-header">
           <div class="directory-title-wrap">
@@ -223,7 +165,7 @@
           </button>
         </div>
 
-        <!-- Initial Prompt State (Shown when search box is empty) -->
+        
         <div id="publicSearchPromptState" class="directory-status-box prompt-box">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="8"></circle>
@@ -232,13 +174,13 @@
           <span>Enter a student name, phone number, or admission number to search.</span>
         </div>
 
-        <!-- Loading State -->
+        
         <div id="publicSearchLoadingState" class="directory-status-box loading-box hidden">
           <div class="spinner-sm"></div>
           <span>Searching student records...</span>
         </div>
 
-        <!-- Empty Results State -->
+        
         <div id="publicSearchEmptyState" class="directory-status-box empty-box hidden">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="12" cy="12" r="10"></circle>
@@ -247,11 +189,10 @@
           <span class="empty-state-text">No matching students found.</span>
         </div>
 
-        <!-- Results Table Container -->
+        
         <div id="publicSearchResultsContainer" class="directory-results-container hidden">
           <div class="directory-results-meta">
             <span id="publicSearchResultsCountText" class="results-count-text">Found 0 students</span>
-            <span class="results-hint-text">Click any phone number to fill the result search box above.</span>
           </div>
           <div class="directory-table-responsive">
             <table class="directory-table">
@@ -263,7 +204,7 @@
                 </tr>
               </thead>
               <tbody id="publicSearchResultsTableBody">
-                <!-- Dynamically populated rows -->
+                
               </tbody>
             </table>
           </div>
@@ -271,9 +212,9 @@
       </section>
     </section>
 
-    <!-- SECTION 2: RESULTS VIEWING SCREEN -->
+    
     <section id="resultSection" class="section-view hidden">
-      <!-- Result Control Bar -->
+      
       <div class="result-toolbar card">
         <div class="toolbar-info">
           <div class="student-meta">
@@ -299,7 +240,7 @@
         </div>
       </div>
 
-      <!-- Information Alert for Pending/Unpublished Results -->
+      
       <div id="pendingResultAlert" class="alert alert-warning hidden">
         <div class="alert-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -317,9 +258,9 @@
         </div>
       </div>
 
-      <!-- RECREATED OFFICIAL PORTAL MARKSHEET (Exact Match to Screenshot) -->
+      
       <div class="portal-marksheet-canvas">
-        <!-- Breadcrumb Navigation Bar -->
+        
         <div class="portal-breadcrumb-bar">
           <div class="breadcrumb-left">
             <span class="breadcrumb-item">
@@ -354,7 +295,7 @@
           </div>
         </div>
 
-        <!-- Official Header: Title & Institution Details -->
+        
         <div class="portal-result-header">
           <div class="portal-header-brand">
             <h1 class="portal-main-heading" id="marksheetCollegeTitle">ABES Engineering College : Annual Result</h1>
@@ -365,7 +306,7 @@
           </div>
         </div>
 
-        <!-- Student Biographical Information Card -->
+        
         <div class="student-info-card">
           <div class="student-card-header">
             <div class="student-profile-summary">
@@ -425,9 +366,9 @@
           </div>
         </div>
 
-        <!-- Annual Performance KPI Cards -->
+        
         <div class="annual-kpi-container">
-          <!-- Semester I SGPA -->
+          
           <div class="kpi-card" data-kpi="sem1">
             <div class="kpi-icon kpi-sem1-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -444,7 +385,7 @@
             </div>
           </div>
 
-          <!-- Semester II SGPA -->
+          
           <div class="kpi-card" data-kpi="sem2">
             <div class="kpi-icon kpi-sem2-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -461,7 +402,7 @@
             </div>
           </div>
 
-          <!-- Overall YGPA -->
+          
           <div class="kpi-card kpi-card-featured" data-kpi="ygpa">
             <div class="kpi-icon kpi-ygpa-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -478,7 +419,7 @@
             </div>
           </div>
 
-          <!-- Total Credits Earned -->
+          
           <div class="kpi-card" data-kpi="credits">
             <div class="kpi-icon kpi-credits-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -495,7 +436,7 @@
             </div>
           </div>
 
-          <!-- Overall Status / Remarks -->
+          
           <div class="kpi-card" data-kpi="status">
             <div class="kpi-icon kpi-status-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -513,7 +454,7 @@
           </div>
         </div>
 
-        <!-- Semester Navigation Tabs -->
+        
         <div class="semester-tabs-container">
           <div class="tabs-nav-bar" role="tablist">
             <button type="button" class="tab-btn active" data-tab="all" role="tab" id="tabBtnAll" aria-selected="true">
@@ -542,12 +483,12 @@
           </div>
         </div>
 
-        <!-- Dynamic Container for Semesters (Semester I & Semester II) -->
+        
         <div id="semestersContainer" class="semesters-container">
-          <!-- Dynamically populated with summary cards and marks tables -->
+          
         </div>
 
-        <!-- Fallback Iframe Container (hidden unless iframe mode is needed) -->
+        
         <div id="iframeContainer" class="iframe-container hidden">
           <iframe id="portalViewFrame" class="portal-iframe" title="Portal View" sandbox="allow-same-origin allow-scripts"></iframe>
         </div>
@@ -556,11 +497,10 @@
 
   </main>
 
-  <!-- Footer -->
+  
   <footer class="app-footer">
     <div class="footer-container">
       <p>© 2026 Educational Automation System • Secure Portal Relay Integration</p>
-      <p class="footer-subtext">Direct portal automation via Playwright • Zero client-side credential storage</p>
     </div>
   </footer>
 

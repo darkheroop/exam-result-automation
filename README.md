@@ -253,6 +253,3 @@ To reliably support 50–100 simultaneous student submissions and eliminate Verc
 ### 2. Deployment Modes
 * **Alternative Approach (Optimized In-Process Serverless)**: Default zero-cost configuration on Vercel. Chromium runs in-process with bounded context concurrency and pre-warmed pooling.
 * **Option A (Persistent Worker Service Delegation)**: Set `WORKER_SERVICE_URL` (and optional `WORKER_API_KEY`) in Vercel environment variables. The Vercel function acts as an ultra-fast proxy (via keep-alive HTTP agents) delegating headless browser execution to a dedicated persistent worker host (e.g. Render, Railway, EC2, VPS), completely bypassing serverless limits.
-
-<!-- Deployment trigger: pre-warmed browser pool and worker proxy architecture -->
-

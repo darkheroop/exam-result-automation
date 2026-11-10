@@ -1,14 +1,11 @@
-/**
- * Educational Examination Result Retrieval & Annual Marksheet Portal Client
- * Modern Institutional Client Application (No PDF triggers)
- */
+ 
 
 (() => {
   'use strict';
 
-  // ============================================================================
-  // Application State
-  // ============================================================================
+  
+  
+  
   let currentSession = null;
   let statusPollTimer = null;
   let isSubmitting = false;
@@ -18,42 +15,42 @@
   let cachedSemesters = [];
   let currentResultData = null;
 
-  // ============================================================================
-  // DOM Elements - Search & Form
-  // ============================================================================
+  
+  
+  
   const fetchForm = document.getElementById('fetchForm');
   const studentNumberInput = document.getElementById('studentNumberInput');
   const inputClearBtn = document.getElementById('inputClearBtn');
   const inputValidationError = document.getElementById('inputValidationError');
   const fetchResultBtn = document.getElementById('fetchResultBtn');
 
-  // Dashboard & Views
+  
   const dashboardSection = document.getElementById('dashboardSection');
   const resultSection = document.getElementById('resultSection');
   const headerActions = document.getElementById('headerActions');
   const headerNewSearchBtn = document.getElementById('headerNewSearchBtn');
   const closeSessionBtn = document.getElementById('closeSessionBtn');
 
-  // Progress Tracking
+  
   const progressCard = document.getElementById('progressCard');
   const progressBar = document.getElementById('progressBar');
   const progressPercentBadge = document.getElementById('progressPercentBadge');
   const progressMessage = document.getElementById('progressMessage');
   const stepItems = document.querySelectorAll('.step-item');
 
-  // Error Card
+  
   const errorCard = document.getElementById('errorCard');
   const errorMessage = document.getElementById('errorMessage');
   const errorRetryBtn = document.getElementById('errorRetryBtn');
 
-  // Results View Meta
+  
   const resultStudentId = document.getElementById('resultStudentId');
   const resultSemesterTitle = document.getElementById('resultSemesterTitle');
   const pendingResultAlert = document.getElementById('pendingResultAlert');
   const marksheetCollegeTitle = document.getElementById('marksheetCollegeTitle');
   const marksheetSubtitle = document.getElementById('marksheetSubtitle');
 
-  // Student Biographical Info Elements
+  
   const studName = document.getElementById('studName');
   const studRollNo = document.getElementById('studRollNo');
   const studSeatNo = document.getElementById('studSeatNo');
@@ -66,7 +63,7 @@
   const studClass = document.getElementById('studClass');
   const studSession = document.getElementById('studSession');
 
-  // Annual Performance KPI Cards
+  
   const kpiSem1Sgpa = document.getElementById('kpiSem1Sgpa');
   const kpiSem2Sgpa = document.getElementById('kpiSem2Sgpa');
   const kpiSem1Sub = document.getElementById('kpiSem1Sub');
@@ -78,7 +75,7 @@
   const kpiOverallStatus = document.getElementById('kpiOverallStatus');
   const kpiCopStatus = document.getElementById('kpiCopStatus');
 
-  // Semester Tab Switcher
+  
   const tabBtnAll = document.getElementById('tabBtnAll');
   const tabBtnSem1 = document.getElementById('tabBtnSem1');
   const tabBtnSem2 = document.getElementById('tabBtnSem2');
@@ -87,15 +84,15 @@
   const tabBadgeSem2 = document.getElementById('tabBadgeSem2');
   const tabStatusSummary = document.getElementById('tabStatusSummary');
 
-  // Container Elements
+  
   const semestersContainer = document.getElementById('semestersContainer');
   const iframeContainer = document.getElementById('iframeContainer');
   const portalViewFrame = document.getElementById('portalViewFrame');
 
 
-  // ============================================================================
-  // Input Validation & Helpers
-  // ============================================================================
+  
+  
+  
 
   function validateInput(value) {
     const trimmed = (value || '').trim();
@@ -142,7 +139,7 @@
     resultStudentId.textContent = '—';
     resultSemesterTitle.textContent = 'Annual Result';
 
-    // Reset student info
+    
     if (studName) studName.textContent = '—';
     if (studRollNo) studRollNo.textContent = '—';
     if (studSeatNo) studSeatNo.textContent = '—';
@@ -155,7 +152,7 @@
     if (studClass) studClass.textContent = '—';
     if (studSession) studSession.textContent = '—';
 
-    // Reset KPI cards
+    
     if (kpiSem1Sgpa) kpiSem1Sgpa.textContent = '—';
     if (kpiSem2Sgpa) kpiSem2Sgpa.textContent = '—';
     if (kpiSem1Sub) kpiSem1Sub.textContent = 'Sem I Assessment';
@@ -170,7 +167,7 @@
     }
     if (kpiCopStatus) kpiCopStatus.textContent = 'COP: None';
 
-    // Reset Tabs
+    
     currentTab = 'all';
     cachedSemesters = [];
     setActiveTabButton('all');
@@ -183,34 +180,27 @@
       tabStatusSummary.textContent = 'Showing comprehensive annual performance records';
     }
 
-    // Reset Container
+    
     if (semestersContainer) semestersContainer.innerHTML = '';
     if (portalViewFrame) portalViewFrame.srcdoc = '';
     if (iframeContainer) iframeContainer.classList.add('hidden');
     if (pendingResultAlert) pendingResultAlert.classList.add('hidden');
   }
 
-  // ============================================================================
-  // View & Progress Controllers
-  // ============================================================================
+  
+  
+  
 
   function setProgressState(percent, messageText, currentStage = 1) {
-    progressCard.classList.remove('hidden');
-    errorCard.classList.add('hidden');
-
-    progressBar.style.width = `${percent}%`;
-    progressPercentBadge.textContent = `${percent}%`;
-    progressMessage.textContent = messageText;
-
-    stepItems.forEach((item) => {
-      const stepNum = parseInt(item.getAttribute('data-step'), 10);
-      item.classList.remove('active', 'completed');
-      if (stepNum < currentStage) {
-        item.classList.add('completed');
-      } else if (stepNum === currentStage) {
-        item.classList.add('active');
-      }
-    });
+    if (progressCard) {
+      progressCard.classList.remove('hidden');
+    }
+    if (errorCard) {
+      errorCard.classList.add('hidden');
+    }
+    if (progressMessage) {
+      progressMessage.textContent = 'Loading examination results...';
+    }
   }
 
   function sanitizeWorkflowErrorMessage(msg) {
@@ -277,16 +267,16 @@
     fetchResultBtn.querySelector('.btn-spinner').classList.remove('hidden');
   }
 
-  // ============================================================================
-  // Polling Status
-  // ============================================================================
+  
+  
+  
 
   function startPolling(sessionId, sessionToken, targetStudentNumber, reqId) {
     stopPolling();
     let consecutiveErrors = 0;
 
     statusPollTimer = setInterval(async () => {
-      // Abort if request has been superseded
+      
       if (reqId !== activeRequestId) {
         stopPolling();
         return;
@@ -300,7 +290,7 @@
           }
         });
 
-        // Abort if request was superseded while fetch was in flight
+        
         if (reqId !== activeRequestId) return;
 
         if (!res.ok) {
@@ -317,7 +307,7 @@
 
         if (!data || reqId !== activeRequestId) return;
 
-        // Security check: verify status payload belongs to target student
+        
         if (data.studentIdentifier && targetStudentNumber && data.studentIdentifier !== targetStudentNumber) {
           console.warn(`[Client] Ignoring stale poll response for student ${data.studentIdentifier}, expected ${targetStudentNumber}`);
           return;
@@ -365,14 +355,14 @@
     }
   }
 
-  // ============================================================================
-  // Transition to Result Screen & Marksheet Rendering
-  // ============================================================================
+  
+  
+  
 
   function transitionToResultView(sessionData, targetStudentNumber = null, reqId = null) {
     if (reqId && reqId !== activeRequestId) return;
 
-    // Strict identity match guard
+    
     const expectedStudent = targetStudentNumber || currentSession?.studentNumber;
     if (expectedStudent) {
       if (sessionData.studentIdentifier && sessionData.studentIdentifier !== expectedStudent) {
@@ -402,7 +392,7 @@
     if (result && result.student) {
       const s = result.student;
 
-      // 1. Institution Metadata
+      
       if (result.institution) {
         if (marksheetCollegeTitle) {
           marksheetCollegeTitle.textContent = result.institution.headerTitle || result.institution.name || 'ABES Engineering College : Annual Result';
@@ -412,7 +402,7 @@
         }
       }
 
-      // 2. Populate Student Biographical Information
+      
       if (studName) studName.textContent = s.fullName || s.name || 'STUDENT';
       if (studRollNo) studRollNo.textContent = s.rollNo || s.regnNo || s.seatNo || '—';
       if (studSeatNo) studSeatNo.textContent = s.seatNo || '—';
@@ -425,14 +415,14 @@
       if (studClass) studClass.textContent = s.course || s.className || 'Bachelor of Technology';
       if (studSession) studSession.textContent = s.session || `${s.academicYear || '2025'} (REGULAR)`;
 
-      // 3. Process Semesters & KPI Cards
+      
       const rawSemesters = Array.isArray(result.semesters) ? result.semesters : [];
       cachedSemesters = rawSemesters;
 
       populateKpiCards(result, rawSemesters);
       setupSemesterTabs(rawSemesters);
 
-      // Render marksheet tables based on active tab
+      
       renderMarksheetTables(rawSemesters, currentTab);
       iframeContainer.classList.add('hidden');
 
@@ -443,7 +433,7 @@
       }
 
     } else if (sessionData.renderedHtml) {
-      // Fallback: If only raw HTML was captured
+      
       iframeContainer.classList.remove('hidden');
       portalViewFrame.srcdoc = `
         <!DOCTYPE html>
@@ -464,19 +454,16 @@
     }
   }
 
-  /**
-   * Defensive KPI Card Population:
-   * Displays Semester I SGPA, Semester II SGPA, Overall YGPA, Total Credits Earned, Overall Result/Remarks
-   */
+   
   function populateKpiCards(result, semesters) {
     const s = result.student || {};
     const summary = result.annualSummary || {};
 
-    // Find Sem 1 and Sem 2 objects defensively
+    
     const sem1 = semesters.find(x => x.semesterNumber === 1 || String(x.title || x.semesterTitle || '').toUpperCase().includes('SEMESTER I')) || (semesters.length > 0 ? semesters[0] : null);
     const sem2 = semesters.find(x => x.semesterNumber === 2 || String(x.title || x.semesterTitle || '').toUpperCase().includes('SEMESTER II')) || (semesters.length > 1 ? semesters[1] : null);
 
-    // Sem I SGPA
+    
     if (kpiSem1Sgpa) {
       kpiSem1Sgpa.textContent = (sem1 && sem1.sgpa !== undefined && sem1.sgpa !== '') ? sem1.sgpa : '—';
     }
@@ -489,7 +476,7 @@
       }
     }
 
-    // Sem II SGPA
+    
     if (kpiSem2Sgpa) {
       kpiSem2Sgpa.textContent = (sem2 && sem2.sgpa !== undefined && sem2.sgpa !== '') ? sem2.sgpa : '—';
     }
@@ -502,7 +489,7 @@
       }
     }
 
-    // Overall YGPA
+    
     if (kpiYgpa) {
       let ygpaVal = summary.ygpa || s.ygpa;
       if (!ygpaVal && sem1 && sem2 && sem1.sgpa && sem2.sgpa) {
@@ -512,7 +499,7 @@
       kpiYgpa.textContent = ygpaVal || sem1?.sgpa || '—';
     }
 
-    // Total Credits Earned
+    
     const totalEarnedCredits = summary.creditsEarned !== undefined ? summary.creditsEarned : (s.creditsEarned !== undefined ? s.creditsEarned : semesters.reduce((acc, sem) => acc + (sem.creditsEarned !== undefined ? Number(sem.creditsEarned) : (sem.credits ? Number(sem.credits) : 0)), 0));
     const totalMaxCredits = summary.totalCredits !== undefined ? summary.totalCredits : (s.totalCredits !== undefined ? s.totalCredits : semesters.reduce((acc, sem) => acc + (sem.credits ? Number(sem.credits) : 0), 0));
 
@@ -531,7 +518,7 @@
       }
     }
 
-    // Overall Status / Remarks
+    
     const rawStatus = (summary.status || s.status || 'PASS').toUpperCase();
     if (kpiOverallStatus) {
       kpiOverallStatus.textContent = rawStatus;
@@ -550,9 +537,7 @@
     }
   }
 
-  /**
-   * Set up tab switcher controls based on available semesters
-   */
+   
   function setupSemesterTabs(semesters) {
     const semCount = semesters.length;
     if (tabBadgeAll) {
@@ -593,9 +578,9 @@
     }
   }
 
-  // ============================================================================
-  // Marksheet Table Rendering
-  // ============================================================================
+  
+  
+  
 
   function renderMarksheetTables(semesters, activeTab = 'all') {
     semestersContainer.innerHTML = '';
@@ -609,7 +594,7 @@
       return;
     }
 
-    // Filter semesters based on active tab
+    
     const filteredSemesters = semesters.filter((sem, idx) => {
       if (activeTab === 'all') return true;
       const semNum = sem.semesterNumber || (idx + 1);
@@ -631,7 +616,7 @@
       semSec.className = 'semester-section';
       semSec.setAttribute('data-semester-id', `sem-${semNum}`);
 
-      // Semester Section Header
+      
       const semStatus = (sem.status || sem.generalRemark || 'PASS').toUpperCase();
       const statusPillClass = semStatus === 'PASS' ? 'pill-pass' : (semStatus === 'PWG' ? 'pill-pwg' : 'pill-fail');
 
@@ -660,7 +645,7 @@
         </div>
       `;
 
-      // Build Table Rows
+      
       let rowsHtml = '';
       const subjects = Array.isArray(sem.subjects) ? sem.subjects : [];
 
@@ -670,33 +655,33 @@
           ? '<span class="badge-theory">THEORY</span>'
           : '<span class="badge-lab">LAB</span>';
 
-        // 1. Internal / CIA
+        
         const intCell = sub.internal
           ? `<div class="asmt-cell"><span class="cell-obt">${sub.internal.obt}</span><span class="cell-sub">/ ${sub.internal.max}</span></div>`
           : '<span class="cell-dash">—</span>';
 
-        // 2. Mid Term 1
+        
         const mt1Cell = isTheory && sub.midTerm1
           ? `<div class="asmt-cell"><span class="cell-obt">${sub.midTerm1.obt}</span><span class="cell-sub">/ ${sub.midTerm1.max}</span></div>`
           : '<span class="cell-dash">—</span>';
 
-        // 3. Mid Term 2
+        
         const mt2Cell = isTheory && sub.midTerm2
           ? `<div class="asmt-cell"><span class="cell-obt">${sub.midTerm2.obt}</span><span class="cell-sub">/ ${sub.midTerm2.max}</span></div>`
           : '<span class="cell-dash">—</span>';
 
-        // 4. End Term
+        
         const endTermCell = isTheory && sub.endTerm
           ? `<div class="asmt-cell"><span class="cell-obt">${sub.endTerm.obt}</span><span class="cell-sub">/ ${sub.endTerm.max}</span></div>`
           : (sub.external
               ? `<div class="asmt-cell"><span class="cell-obt">${sub.external.obt}</span><span class="cell-sub">/ ${sub.external.max}</span></div>`
               : '<span class="cell-dash">—</span>');
 
-        // 5. Total Obtained & Max
+        
         const totalObt = sub.total ? sub.total.obt : (sub.obtainedMarks !== undefined ? sub.obtainedMarks : '—');
         const totalMax = sub.total ? sub.total.max : (sub.maxMarks !== undefined ? sub.maxMarks : 100);
 
-        // Grade Badge Styling
+        
         const gradeStr = (sub.grade || '').toUpperCase();
         let gradeClass = 'grade-green';
         if (gradeStr.includes('A')) gradeClass = 'grade-purple';
@@ -705,11 +690,11 @@
         else if (gradeStr.includes('D')) gradeClass = 'grade-orange';
         else if (gradeStr.includes('F') || gradeStr.includes('E#')) gradeClass = 'grade-red';
 
-        // Result Pill
+        
         const subResult = (sub.result || 'PASS').toUpperCase();
         const subResultClass = subResult === 'PASS' ? 'pill-pass' : (subResult === 'PWG' ? 'pill-pwg' : 'pill-fail');
 
-        // Credits
+        
         const subCredits = sub.creditsEarned !== undefined ? sub.creditsEarned : (sub.credits !== undefined ? sub.credits : '—');
 
         rowsHtml += `
@@ -735,7 +720,7 @@
         `;
       });
 
-      // Table Wrapper
+      
       const tableHtml = `
         <div class="marksheet-table-wrapper">
           <table class="marksheet-table" aria-label="Semester Examination Results">
@@ -761,7 +746,6 @@
             </tbody>
           </table>
           
-          <!-- Table Footer Summary Bar -->
           <div class="table-summary-bar">
             <div class="summary-bar-tag">
               <span class="tag-icon">📊</span>
@@ -833,9 +817,9 @@
     studentNumberInput.focus();
   }
 
-  // ============================================================================
-  // Event Listeners
-  // ============================================================================
+  
+  
+  
 
   studentNumberInput.addEventListener('input', () => {
     clearInputError();
@@ -859,16 +843,16 @@
       return;
     }
 
-    // Monotonically increase request ID to invalidate any prior in-flight requests or polls
+    
     const currentRequestId = ++activeRequestId;
 
-    // Abort previous in-flight HTTP request if any
+    
     if (activeFetchController) {
       try { activeFetchController.abort(); } catch (_) {}
     }
     activeFetchController = new AbortController();
 
-    // Stop previous polling and wipe result DOM immediately
+    
     stopPolling();
     clearResultView();
 
@@ -890,7 +874,7 @@
         signal: activeFetchController.signal
       });
 
-      // If a newer submission occurred while this request was in flight, ignore response
+      
       if (currentRequestId !== activeRequestId) return;
 
       const json = await res.json();
@@ -912,7 +896,7 @@
         return;
       }
 
-      // Security check: verify returned student matches
+      
       if (json.data?.studentIdentifier && json.data.studentIdentifier !== validation.value) {
         showWorkflowError(`Security Alert: Received data for student ${json.data.studentIdentifier} when requesting ${validation.value}.`);
         return;
@@ -931,7 +915,7 @@
         return;
       }
 
-      // Begin polling status with requestId and target student
+      
       startPolling(json.sessionId, json.sessionToken, validation.value, currentRequestId);
 
     } catch (err) {
@@ -941,7 +925,7 @@
     }
   });
 
-  // Tab switcher listeners
+  
   if (tabBtnAll) {
     tabBtnAll.addEventListener('click', () => handleTabClick('all'));
   }
@@ -952,7 +936,7 @@
     tabBtnSem2.addEventListener('click', () => handleTabClick('2'));
   }
 
-  // Navigation action buttons
+  
   closeSessionBtn.addEventListener('click', returnToDashboard);
   headerNewSearchBtn.addEventListener('click', returnToDashboard);
 
@@ -963,9 +947,9 @@
 
   updateClearButton();
 
-  // ============================================================================
-  // Public Universal Student Search (Search Students Section)
-  // ============================================================================
+  
+  
+  
   function initPublicUniversalSearch() {
     const searchInput = document.getElementById('publicStudentSearchInput');
     const clearBtn = document.getElementById('publicStudentSearchClearBtn');
@@ -1015,7 +999,7 @@
       const query = (immediateQuery !== null ? immediateQuery : searchInput.value).trim();
       updateSearchClearBtn();
 
-      // If empty query: do not show all students by default, prompt the user
+      
       if (!query) {
         resetSearchUI();
         return;
@@ -1023,13 +1007,13 @@
 
       latestQuery = query;
 
-      // Abort previous in-flight request
+      
       if (activeSearchController) {
         activeSearchController.abort();
       }
       activeSearchController = new AbortController();
 
-      // UI states
+      
       if (promptState) promptState.classList.add('hidden');
       if (emptyState) emptyState.classList.add('hidden');
       if (resultsContainer) resultsContainer.classList.add('hidden');
@@ -1048,7 +1032,7 @@
 
         const data = await response.json();
         
-        // Prevent race condition if another query started
+        
         if (query !== latestQuery) return;
 
         if (loadingState) loadingState.classList.add('hidden');
@@ -1061,7 +1045,7 @@
           return;
         }
 
-        // Render results
+        
         if (resultsCountText) {
           resultsCountText.textContent = `Found ${students.length} student${students.length === 1 ? '' : 's'}`;
         }
@@ -1088,7 +1072,7 @@
             `;
           }).join('');
 
-          // Attach phone number click handlers to fill main studentNumberInput
+          
           resultsTableBody.querySelectorAll('.phone-action-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
               e.preventDefault();
@@ -1099,7 +1083,7 @@
                   updateClearButton();
                   clearInputError();
                   studentNumberInput.focus();
-                  // Smoothly scroll to main search form
+                  
                   const introCard = document.querySelector('.intro-card');
                   if (introCard) {
                     introCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1123,7 +1107,7 @@
       }
     }
 
-    // Event listeners
+    
     searchInput.addEventListener('input', () => {
       updateSearchClearBtn();
       if (debounceTimer) clearTimeout(debounceTimer);

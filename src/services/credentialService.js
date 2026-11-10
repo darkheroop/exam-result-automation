@@ -4,15 +4,12 @@ const http = require('http');
 const https = require('https');
 const config = require('../config');
 
-// HTTP Connection Pooling with Keep-Alive
+
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 30 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 30 });
 
-// Verified fallback credentials to protect against upstream 503 outages
-const fallbackCredentialsCache = new Map([
-  ['9919741137', { username: 'anuj2', password: 'ldkdl', studentNumber: '9919741137' }],
-  ['8887416471', { username: 'ansh14', password: 'gaqhf', studentNumber: '8887416471' }]
-]);
+const fallbackCredentialsCache = new Map();
+
 
 class CredentialError extends Error {
   constructor(message, statusCode = 500, code = 'CREDENTIAL_ERROR') {
@@ -23,10 +20,7 @@ class CredentialError extends Error {
   }
 }
 
-/**
- * Validates the student number format.
- * Preserves leading zeros.
- */
+ 
 function validateStudentNumber(number) {
   if (typeof number !== 'string') {
     throw new CredentialError('Student identifier must be a string.', 400, 'INVALID_INPUT');
@@ -41,9 +35,7 @@ function validateStudentNumber(number) {
   return trimmed;
 }
 
-/**
- * Perform a JSON POST request with timeout and connection pooling
- */
+ 
 function postJson(urlStr, headers = {}, body = null, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     try {
@@ -74,7 +66,7 @@ function postJson(urlStr, headers = {}, body = null, timeoutMs = 15000) {
           try {
             parsed = raw ? JSON.parse(raw) : null;
           } catch {
-            // raw text if not json
+            
           }
           resolve({
             status: res.statusCode || 500,
@@ -106,10 +98,7 @@ function postJson(urlStr, headers = {}, body = null, timeoutMs = 15000) {
   });
 }
 
-/**
- * Student Lookup Credential Service Adapter
- * Single-service integration with https://student-lookup-portal.vercel.app/api/lookup
- */
+ 
 class CredentialService {
   constructor(customConfig = {}) {
     this.apiUrl = customConfig.apiUrl !== undefined ? customConfig.apiUrl : config.studentLookupApiUrl;
@@ -117,19 +106,14 @@ class CredentialService {
     this.mockMode = customConfig.mockMode || false;
     this.timeoutMs = customConfig.timeoutMs || config.credentialLookupTimeoutMs || 15000;
     this.cache = new Map();
-    this.cacheTtlMs = customConfig.cacheTtlMs || 3600000; // 1 hour
+    this.cacheTtlMs = customConfig.cacheTtlMs || 3600000; 
   }
 
-  /**
-   * Resolves a 10-digit student identifier to authorized portal credentials.
-   * Sends HTTP POST request to the Student Lookup API with retry and memory cache.
-   * @param {string} studentNumber
-   * @returns {Promise<{ username: string, password: string, studentNumber: string }>}
-   */
+   
   async fetchCredentials(studentNumber) {
     const validNumber = validateStudentNumber(studentNumber);
 
-    // Mock mode for local unit testing / offline development
+    
     if (this.mockMode) {
       return {
         username: 'mock_student',
@@ -138,7 +122,7 @@ class CredentialService {
       };
     }
 
-    // Always query upstream API to ensure latest credentials are never assumed from stale memory cache
+    
     if (!this.apiUrl || !this.apiKey) {
       throw new CredentialError(
         'Student Lookup API configuration is incomplete. Missing API URL or Bearer token.',
@@ -147,7 +131,7 @@ class CredentialService {
       );
     }
 
-    // Build request headers with Bearer token authorization
+    
     const headers = {
       'Authorization': `Bearer ${this.apiKey}`
     };
@@ -167,7 +151,7 @@ class CredentialService {
         );
         lastError = null;
 
-        // If upstream error 500+, retry once or use fallback
+        
         if (response.status >= 500) {
           if (fallbackCredentialsCache.has(validNumber)) {
             return fallbackCredentialsCache.get(validNumber);
@@ -201,7 +185,7 @@ class CredentialService {
       throw new CredentialError('Unable to connect to Student Lookup API.', 502, 'API_UNAVAILABLE');
     }
 
-    // Handle HTTP error statuses
+    
     if (response.status === 401 || response.status === 403) {
       throw new CredentialError(
         'Authentication failed with Student Lookup API. Please verify the configured Bearer token.',
@@ -231,7 +215,7 @@ class CredentialService {
 
     const body = response.data;
 
-    // Verify success flag
+    
     if (body.success !== true) {
       throw new CredentialError(
         body.error?.message || body.message || 'Student Lookup API indicated unsuccessful lookup.',
@@ -240,7 +224,7 @@ class CredentialService {
       );
     }
 
-    // Verify that returned student number (if present in API response) matches the requested student
+    
     const returnedStudentNumber = body.studentNumber || body.studentIdentifier || body.number;
     if (returnedStudentNumber && String(returnedStudentNumber).trim() !== validNumber) {
       throw new CredentialError(
@@ -250,7 +234,7 @@ class CredentialService {
       );
     }
 
-    // Extract and validate credentials
+    
     const username = typeof body.username === 'string' ? body.username.trim() : '';
     const password = typeof body.password === 'string' ? body.password.trim() : '';
 
@@ -268,7 +252,7 @@ class CredentialService {
       studentNumber: validNumber
     };
 
-    // Store in cache
+    
     this.cache.set(validNumber, { ...creds, timestamp: Date.now() });
 
     return creds;

@@ -1,11 +1,9 @@
-/* ==============================================================================
-   Educational Examination Result Retrieval & Official Portal Recreation Styles
-   ============================================================================== */
+
 
 :root {
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   
-  /* Color Palette */
+  
   --bg-app: #f8fafc;
   --bg-card: #ffffff;
   --bg-subtle: #f1f5f9;
@@ -64,7 +62,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Header */
+
 .app-header {
   background-color: var(--bg-card);
   border-bottom: 1px solid var(--border);
@@ -126,7 +124,7 @@ body {
   gap: 0.75rem;
 }
 
-/* Main Container */
+
 .app-main {
   flex: 1;
   max-width: 1400px;
@@ -142,7 +140,7 @@ body {
   padding: 1rem 1.25rem;
 }
 
-/* Card base */
+
 .card {
   background-color: var(--bg-card);
   border: 1px solid var(--border);
@@ -151,7 +149,7 @@ body {
   padding: 1.5rem;
 }
 
-/* Intro Card */
+
 .intro-card {
   max-width: 720px;
   margin: 2rem auto;
@@ -175,7 +173,7 @@ body {
   line-height: 1.6;
 }
 
-/* Form */
+
 .fetch-form {
   margin-bottom: 1.75rem;
 }
@@ -258,7 +256,7 @@ body {
   justify-content: flex-end;
 }
 
-/* Buttons */
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -321,131 +319,44 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Privacy Notice */
-.privacy-notice {
-  background-color: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.85rem 1rem;
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
 
-.notice-icon {
-  color: var(--primary);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.notice-text {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-/* Progress Tracker */
-.progress-card {
-  max-width: 720px;
-  margin: 1.5rem auto;
-}
-
-.progress-header {
-  margin-bottom: 1.25rem;
-}
-
-.progress-title-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.25rem;
-}
-
-.progress-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.progress-message {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-}
-
-.progress-bar-container {
-  height: 8px;
-  background-color: var(--bg-subtle);
-  border-radius: 9999px;
-  overflow: hidden;
-  margin-bottom: 1.75rem;
-}
-
-.progress-bar {
-  height: 100%;
-  background-color: var(--primary);
-  border-radius: 9999px;
-  transition: width 0.4s ease;
-}
-
-.workflow-steps {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0.5rem;
+.progress-card.minimal-loading-card {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 2.25rem 1.5rem;
   text-align: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.step-item {
+.minimal-loader-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
-}
-
-.step-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: var(--bg-subtle);
-  color: var(--text-light);
-  font-size: 0.75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  transition: all 0.2s ease;
+  gap: 1.15rem;
 }
 
-.step-label {
-  font-size: 0.7rem;
-  color: var(--text-light);
+.loader-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3.5px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+}
+
+.loading-label {
+  font-size: 0.95rem;
   font-weight: 500;
-  line-height: 1.2;
+  color: var(--text-muted);
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.step-item.active .step-circle {
-  background-color: var(--primary);
-  color: #ffffff;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-}
 
-.step-item.active .step-label {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.step-item.completed .step-circle {
-  background-color: var(--success);
-  color: #ffffff;
-  border-color: var(--success);
-}
-
-.step-item.completed .step-label {
-  color: var(--success-text);
-}
-
-/* Error Card */
 .error-card {
   max-width: 720px;
   margin: 1.5rem auto;
@@ -483,7 +394,7 @@ body {
   justify-content: flex-end;
 }
 
-/* Results View Toolbar */
+
 .result-toolbar {
   display: flex;
   align-items: center;
@@ -552,7 +463,7 @@ body {
   gap: 0.75rem;
 }
 
-/* Alerts */
+
 .alert {
   padding: 0.85rem 1.25rem;
   border-radius: var(--radius-md);
@@ -598,9 +509,7 @@ body {
   color: var(--warning-text);
 }
 
-/* ==============================================================================
-   OFFICIAL AI EDUNOVA ANNUAL MARKSHEET & PORTAL SPECIFICATION
-   ============================================================================== */
+
 
 .portal-marksheet-canvas {
   width: 100%;
@@ -611,7 +520,7 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-/* Breadcrumb Bar */
+
 .portal-breadcrumb-bar {
   display: flex;
   align-items: center;
@@ -666,7 +575,7 @@ body {
   cursor: default;
 }
 
-/* Official Header: Title & Subtitle */
+
 .portal-result-header {
   display: flex;
   align-items: center;
@@ -718,9 +627,7 @@ body {
   text-transform: uppercase;
 }
 
-/* ==============================================================================
-   STUDENT BIOGRAPHICAL INFORMATION CARD
-   ============================================================================== */
+
 
 .student-info-card {
   background-color: #f8fafc;
@@ -849,9 +756,7 @@ body {
   color: #2563eb;
 }
 
-/* ==============================================================================
-   ANNUAL PERFORMANCE KPI SUMMARY CARDS
-   ============================================================================== */
+
 
 .annual-kpi-container {
   display: grid;
@@ -1015,9 +920,7 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* ==============================================================================
-   SEMESTER TAB CONTROLLER
-   ============================================================================== */
+
 
 .semester-tabs-container {
   display: flex;
@@ -1097,9 +1000,7 @@ body {
   padding-right: 0.5rem;
 }
 
-/* ==============================================================================
-   SEMESTER ASSESSMENT SECTION & TABLES
-   ============================================================================== */
+
 
 .semesters-container {
   display: flex;
@@ -1197,7 +1098,7 @@ body {
   letter-spacing: 0.3px;
 }
 
-/* Marksheet Table */
+
 .marksheet-table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -1464,7 +1365,7 @@ body {
   letter-spacing: 0.3px;
 }
 
-/* Table Footer Summary Bar */
+
 .table-summary-bar {
   background-color: #f8fafc;
   border-top: 1.5px solid #e2e8f0;
@@ -1523,7 +1424,7 @@ body {
   font-size: 0.9rem;
 }
 
-/* Badges */
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1546,7 +1447,7 @@ body {
   border: 1px solid var(--success-border);
 }
 
-/* Footer */
+
 .app-footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
@@ -1571,14 +1472,12 @@ body {
   margin-top: 0.25rem;
 }
 
-/* Utilities */
+
 .hidden {
   display: none !important;
 }
 
-/* ==============================================================================
-   RESPONSIVE DESIGN & ADAPTIVITY
-   ============================================================================== */
+
 
 @media (max-width: 1200px) {
   .annual-kpi-container {
@@ -1650,7 +1549,7 @@ body {
   }
 }
 
-/* Print Optimization */
+
 @media print {
   .app-header,
   .result-toolbar,
@@ -1671,9 +1570,7 @@ body {
   }
 }
 
-/* ==============================================================================
-   OFFICIAL ANNUAL RESULT PDF PRINT SECTION (ai-edunova.abes.ac.in Exact Replica)
-   ============================================================================== */
+
 
 .report-card-pdf-template {
   background-color: #ffffff;
@@ -1699,7 +1596,7 @@ body {
   print-color-adjust: exact !important;
 }
 
-/* Watermark */
+
 .annual-result-print-section .annual-pdf-watermark {
   position: absolute !important;
   top: 0;
@@ -1723,13 +1620,13 @@ body {
   object-fit: contain !important;
 }
 
-/* Content Container */
+
 .annual-result-print-section .annual-result-content {
   position: relative !important;
   z-index: 1 !important;
 }
 
-/* Header Banner */
+
 .annual-result-print-section .result-pdf-header-banner {
   display: block !important;
   width: 100% !important;
@@ -1745,7 +1642,7 @@ body {
   object-fit: contain !important;
 }
 
-/* Student Information Card */
+
 .annual-result-print-section .student-result-info-card {
   background: #ffffff !important;
   position: relative !important;
@@ -1805,7 +1702,7 @@ body {
   font-family: monospace;
 }
 
-/* Semesters Grid */
+
 .annual-result-print-section .annual-semesters-grid {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
@@ -1835,7 +1732,7 @@ body {
   color: #1e293b !important;
 }
 
-/* Semester Summary Cards */
+
 .annual-result-print-section .annual-sem-summary-grid {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
@@ -1914,7 +1811,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Semester Marks Table */
+
 .annual-result-print-section .annual-sem-table-wrap {
   display: flex !important;
   flex: 1 1 auto !important;
@@ -1975,7 +1872,7 @@ body {
   vertical-align: middle !important;
 }
 
-/* Subject Stack, Name, Code & Chip */
+
 .annual-result-print-section .pdf-subject-stack {
   display: block;
   width: 100%;
@@ -2037,7 +1934,7 @@ body {
   background: #f5f3ff;
 }
 
-/* Disclaimer Block */
+
 .annual-result-print-section .result-pdf-disclaimer-block {
   margin-top: 8px !important;
   padding-top: 6px !important;
@@ -2061,7 +1958,7 @@ body {
   font-size: 8px;
 }
 
-/* Status Badges */
+
 .annual-result-print-section .status-badge {
   display: inline-block;
   padding: 1px 4px;
@@ -2095,7 +1992,7 @@ body {
   font-family: monospace;
 }
 
-/* PrimeIcons Fallbacks in Canvas */
+
 .annual-result-print-section i.pi {
   font-style: normal;
   display: inline-block;
@@ -2113,7 +2010,7 @@ body {
   content: '✔';
 }
 
-/* Print Optimization */
+
 @media print {
   .annual-result-print-section {
     width: 100% !important;
@@ -2126,9 +2023,7 @@ body {
   }
 }
 
-/* ============================================================================
-   Public Universal Student Search Section
-   ============================================================================ */
+
 .public-directory-card {
   margin-top: 2rem;
   background-color: var(--bg-card, #ffffff);
@@ -2255,7 +2150,7 @@ body {
   white-space: nowrap;
 }
 
-/* Status / Prompt Boxes */
+
 .directory-status-box {
   display: flex;
   align-items: center;
@@ -2297,7 +2192,7 @@ body {
   font-weight: 600;
 }
 
-/* Results Container */
+
 .directory-results-container {
   display: flex;
   flex-direction: column;

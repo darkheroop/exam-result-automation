@@ -16,7 +16,7 @@ class SessionManager {
     this.dbService = options.dbService || defaultDbService;
     this.sessions = new Map();
 
-    // Ensure temporary storage directory exists safely without crashing on read-only file systems
+    
     try {
       if (!fs.existsSync(this.tempDir)) {
         fs.mkdirSync(this.tempDir, { recursive: true });
@@ -28,21 +28,18 @@ class SessionManager {
           fs.mkdirSync(this.tempDir, { recursive: true });
         }
       } catch (fallbackErr) {
-        // Safe suppression of startup error
+        
       }
     }
 
-    // Periodic sweep for expired sessions
+    
     this.cleanupTimer = setInterval(() => this.cleanupExpired(), 30000);
     if (this.cleanupTimer.unref) {
       this.cleanupTimer.unref();
     }
   }
 
-  /**
-   * Finds an existing active or ready session for a student number
-   * to prevent duplicate concurrent workflows.
-   */
+   
   findActiveSessionByStudent(studentIdentifier) {
     const now = Date.now();
     for (const session of this.sessions.values()) {
@@ -59,9 +56,7 @@ class SessionManager {
     return null;
   }
 
-  /**
-   * Calculates the queue position of a session if queued
-   */
+   
   getQueuePosition(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session || session.status !== 'queued') return 0;
@@ -75,9 +70,7 @@ class SessionManager {
     return position;
   }
 
-  /**
-   * Creates a new isolated automation session
-   */
+   
   createSession(studentIdentifier, initialExtra = {}) {
     if (this.sessions.size >= this.maxSessions) {
       this.cleanupExpired();
@@ -103,7 +96,7 @@ class SessionManager {
           fs.mkdirSync(sessionTempDir, { recursive: true });
         }
       } catch (fallbackErr) {
-        // Safe suppression
+        
       }
     }
 
@@ -135,13 +128,11 @@ class SessionManager {
     return session;
   }
 
-  /**
-   * Retrieves a session by ID and verifies the session token
-   */
+   
   getSession(sessionId, sessionToken) {
     let session = this.sessions.get(sessionId);
     if (!session) {
-      // Attempt restoration from temp disk
+      
       try {
         const sessionTempDir = path.join(this.tempDir, sessionId);
         const stateFile = path.join(sessionTempDir, 'state.json');
@@ -155,7 +146,7 @@ class SessionManager {
           this.sessions.set(sessionId, session);
         }
       } catch (err) {
-        // Safe suppression
+        
       }
     }
 
@@ -175,14 +166,12 @@ class SessionManager {
       return null;
     }
 
-    // Touch session on activity
+    
     session.updatedAt = Date.now();
     return session;
   }
 
-  /**
-   * Updates session progress
-   */
+   
   updateProgress(sessionId, stage, stageMessage, progressPercent, extra = {}) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -195,7 +184,7 @@ class SessionManager {
     Object.assign(session, extra);
     this.dbService.saveSession(session).catch(() => {});
 
-    // Persist session state to disk for multi-container resilience
+    
     try {
       if (session.tempDir) {
         const stateFile = path.join(session.tempDir, 'state.json');
@@ -212,13 +201,11 @@ class SessionManager {
         }), 'utf8');
       }
     } catch (e) {
-      // Safe suppression
+      
     }
   }
 
-  /**
-   * Restores a session from durable Neon DB store if not found in memory
-   */
+   
   async restoreSessionFromDb(sessionId, sessionToken) {
     if (!sessionId) return null;
     let session = this.sessions.get(sessionId);
@@ -251,9 +238,7 @@ class SessionManager {
     return null;
   }
 
-  /**
-   * Closes a session and cleans up resources
-   */
+   
   async closeSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -267,18 +252,18 @@ class SessionManager {
       try {
         await session.browserContext.close();
       } catch (err) {
-        // Safe suppression
+        
       }
       session.browserContext = null;
       session.page = null;
     }
 
-    // Clean up temporary files
+    
     if (session.tempDir && fs.existsSync(session.tempDir)) {
       try {
         fs.rmSync(session.tempDir, { recursive: true, force: true });
       } catch (err) {
-        // Operational log
+        
       }
     }
 
@@ -286,9 +271,7 @@ class SessionManager {
     this.dbService.deleteSession(sessionId).catch(() => {});
   }
 
-  /**
-   * Periodic cleanup of stale sessions
-   */
+   
   async cleanupExpired() {
     const now = Date.now();
     for (const [id, session] of this.sessions.entries()) {
@@ -298,9 +281,7 @@ class SessionManager {
     }
   }
 
-  /**
-   * Safe public representation of a session (no secrets, no internal handles, no PDF tracking)
-   */
+   
   toPublicState(session) {
     if (!session) return null;
 

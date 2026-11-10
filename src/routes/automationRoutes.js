@@ -11,7 +11,7 @@ const { defaultAdminDbService } = require('../services/adminDbService');
 
 const router = express.Router();
 
-// Keep-alive agents for proxying to persistent worker
+
 const proxyHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
 const proxyHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 
@@ -59,9 +59,7 @@ function forwardRequest(urlStr, method, headers = {}, body = null) {
   });
 }
 
-/**
- * Helper to extract session token from header or query param
- */
+ 
 function getSessionToken(req) {
   return (
     req.headers['x-session-token'] ||
@@ -71,16 +69,13 @@ function getSessionToken(req) {
   );
 }
 
-/**
- * POST /api/automation/start
- * Starts the examination result retrieval workflow via direct portal API
- */
+ 
 router.post('/start', async (req, res, next) => {
   try {
     const rawNumber = req.body?.studentNumber || req.body?.number || req.body?.studentIdentifier;
     const validatedNumber = validateStudentNumber(rawNumber);
 
-    // Option A: Forward to persistent worker service if configured
+    
     if (config.workerServiceUrl) {
       const fwdHeaders = { 'Content-Type': 'application/json' };
       if (config.workerApiKey) fwdHeaders['x-worker-key'] = config.workerApiKey;
@@ -93,7 +88,7 @@ router.post('/start', async (req, res, next) => {
       return res.status(fwdRes.statusCode || 202).json(fwdRes.data || { raw: fwdRes.raw });
     }
 
-    // De-duplication: check if student has an existing active or recent session
+    
     const existingSession = defaultSessionManager.findActiveSessionByStudent(validatedNumber);
     if (existingSession && !req.query?.force) {
       const isExistingExc = existingSession.status === 'exception' || Boolean(existingSession.isException);
@@ -117,15 +112,15 @@ router.post('/start', async (req, res, next) => {
       });
     }
 
-    // Create a new session
+    
     const session = defaultSessionManager.createSession(validatedNumber);
 
-    // Start workflow asynchronously
+    
     const workflowPromise = defaultAutomationService.runWorkflow(session.sessionId, session.sessionToken, validatedNumber).catch((workflowErr) => {
       console.error(`[Session ${session.sessionId}] Workflow failure:`, workflowErr.message);
     });
 
-    // If session was immediately queued due to capacity, return 202 immediately
+    
     if (session.status === 'queued') {
       return res.status(202).json({
         success: true,
@@ -139,7 +134,7 @@ router.post('/start', async (req, res, next) => {
       });
     }
 
-    // Direct API calls finish fast (typically 1-3s). Wait up to waitWindowMs so the response can return completed if ready.
+    
     const isServerless = Boolean(
       process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_VERSION ||
@@ -179,10 +174,7 @@ router.post('/start', async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/automation/status/:sessionId and GET /api/automation/:sessionId/status
- * Returns the current workflow progress and result data for a specific session
- */
+ 
 const statusHandler = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -226,10 +218,7 @@ const statusHandler = async (req, res, next) => {
 router.get('/status/:sessionId', statusHandler);
 router.get('/:sessionId/status', statusHandler);
 
-/**
- * GET /api/automation/view/:sessionId
- * Serves the rendered examination result view
- */
+ 
 router.get('/view/:sessionId', async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -347,10 +336,7 @@ router.get('/view/:sessionId', async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/automation/:sessionId/close
- * Cleans up session records
- */
+ 
 router.post('/:sessionId/close', async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -369,7 +355,7 @@ router.post('/:sessionId/close', async (req, res, next) => {
       return res.status(fwdRes.statusCode || 200).json(fwdRes.data || { raw: fwdRes.raw });
     }
 
-    // Verify ownership
+    
     const session = defaultSessionManager.getSession(sessionId, token);
     if (session) {
       await defaultSessionManager.closeSession(sessionId);
@@ -384,10 +370,7 @@ router.post('/:sessionId/close', async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/automation/metrics
- * Returns operational metrics, queue status, and resource usage
- */
+ 
 router.get('/metrics', async (req, res, next) => {
   try {
     if (config.workerServiceUrl) {
@@ -410,14 +393,7 @@ router.get('/metrics', async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/automation/students/search
- * (Also aliased as GET /api/students/search and GET /api/public/students/search in app.js)
- * Dedicated public universal student search endpoint.
- * Returns strictly { student_name, admission_number, phone_number }.
- * Zero exposure of credentials, database IDs, or timestamps.
- * Does NOT invoke credential lookup API or student portal logins.
- */
+ 
 router.get('/students/search', async (req, res, next) => {
   try {
     const rawQuery = req.query.q || req.query.query || req.query.search || '';

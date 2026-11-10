@@ -13,7 +13,7 @@ const server = app.listen(config.port, () => {
   console.log(`================================================================`);
 });
 
-// Graceful Shutdown
+
 function gracefulShutdown(signal) {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
   server.close(async () => {

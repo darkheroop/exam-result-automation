@@ -16,7 +16,7 @@ const server = app.listen(port, () => {
   console.log('Ready for forwarded requests from Vercel or direct client searches.');
 });
 
-// Graceful Shutdown
+
 async function gracefulShutdown(signal) {
   console.log(`\n[Worker] Received ${signal}. Shutting down worker gracefully...`);
   server.close(async () => {

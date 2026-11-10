@@ -1,10 +1,7 @@
-/* ==========================================================================
-   ABES Examination System - Enterprise Administrator Portal Stylesheet
-   Theme: Slate / Indigo / Emerald
-   ========================================================================== */
+
 
 :root {
-  /* Color Palette - Slate */
+  
   --slate-50: #f8fafc;
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
@@ -17,7 +14,7 @@
   --slate-900: #0f172a;
   --slate-950: #020617;
 
-  /* Color Palette - Indigo (Primary Brand) */
+  
   --indigo-50: #eef2ff;
   --indigo-100: #e0e7ff;
   --indigo-200: #c7d2fe;
@@ -27,7 +24,7 @@
   --indigo-800: #3730a3;
   --indigo-900: #312e81;
 
-  /* Color Palette - Emerald (Success) */
+  
   --emerald-50: #ecfdf5;
   --emerald-100: #d1fae5;
   --emerald-200: #a7f3d0;
@@ -35,26 +32,26 @@
   --emerald-600: #059669;
   --emerald-700: #047857;
 
-  /* Color Palette - Amber (Warning) */
+  
   --amber-50: #fffbeb;
   --amber-100: #fef3c7;
   --amber-500: #f59e0b;
   --amber-600: #d97706;
 
-  /* Color Palette - Rose (Danger) */
+  
   --rose-50: #fff1f2;
   --rose-100: #ffe4e6;
   --rose-500: #f43f5e;
   --rose-600: #e11d48;
   --rose-700: #be123c;
 
-  /* Color Palette - Cyan/Teal (Accents) */
+  
   --teal-50: #f0fdfa;
   --teal-100: #ccfbf1;
   --teal-500: #14b8a6;
   --teal-600: #0d9488;
 
-  /* Layout & Surface Variables */
+  
   --sidebar-width: 264px;
   --topbar-height: 68px;
   --body-bg: #f8fafc;
@@ -66,11 +63,11 @@
   --text-muted: #64748b;
   --text-subtle: #94a3b8;
 
-  /* Typography */
+  
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', Menlo, monospace;
 
-  /* Radii */
+  
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -78,7 +75,7 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* Shadows */
+  
   --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
   --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.06);
@@ -87,14 +84,12 @@
   --shadow-focus: 0 0 0 3px rgba(79, 70, 229, 0.25);
   --shadow-glow: 0 0 20px -3px rgba(79, 70, 229, 0.35);
 
-  /* Transitions */
+  
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ==========================================================================
-   CSS Reset & Base Rules
-   ========================================================================== */
+
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -147,9 +142,7 @@ code, kbd, samp, pre {
   font-family: var(--font-mono);
 }
 
-/* ==========================================================================
-   Admin Login Page Specifics
-   ========================================================================== */
+
 
 .login-body {
   background: radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 50%, #020617 100%);
@@ -409,9 +402,7 @@ code, kbd, samp, pre {
   padding-top: 1.25rem;
 }
 
-/* ==========================================================================
-   Admin App Layout (SPA Structure)
-   ========================================================================== */
+
 
 .app-wrapper {
   display: flex;
@@ -419,7 +410,7 @@ code, kbd, samp, pre {
   background-color: var(--body-bg);
 }
 
-/* Sidebar */
+
 .app-sidebar {
   width: var(--sidebar-width);
   background: var(--sidebar-bg);
@@ -601,7 +592,7 @@ code, kbd, samp, pre {
   color: #ffffff;
 }
 
-/* Sidebar Backdrop for Mobile */
+
 .sidebar-backdrop {
   display: none;
   position: fixed;
@@ -611,17 +602,17 @@ code, kbd, samp, pre {
   z-index: 90;
 }
 
-/* Main Area */
+
 .app-main {
   flex: 1;
   margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  min-width: 0; /* Prevents flex children from overflowing */
+  min-width: 0; 
 }
 
-/* Topbar */
+
 .app-topbar {
   height: var(--topbar-height);
   background: #ffffff;
@@ -742,7 +733,7 @@ code, kbd, samp, pre {
   color: var(--rose-600);
 }
 
-/* Page Content Container */
+
 .page-content {
   flex: 1;
   padding: 2rem;
@@ -751,7 +742,7 @@ code, kbd, samp, pre {
   margin: 0 auto;
 }
 
-/* Tab Views */
+
 .tab-view {
   display: none;
 }
@@ -766,7 +757,7 @@ code, kbd, samp, pre {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* View Header */
+
 .view-header {
   display: flex;
   align-items: flex-start;
@@ -795,7 +786,7 @@ code, kbd, samp, pre {
   gap: 0.75rem;
 }
 
-/* Standard Buttons */
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -875,11 +866,9 @@ code, kbd, samp, pre {
   border-color: var(--slate-300);
 }
 
-/* ==========================================================================
-   VIEW 1: Dashboard Overview Styles
-   ========================================================================== */
 
-/* Overview Welcome Banner */
+
+
 .welcome-banner {
   background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #1e293b 100%);
   border-radius: var(--radius-lg);
@@ -918,7 +907,7 @@ code, kbd, samp, pre {
   font-size: 0.9rem;
 }
 
-/* Metric Cards Grid */
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1006,7 +995,7 @@ code, kbd, samp, pre {
 .metric-badge-warning { background: var(--amber-50); color: var(--amber-600); }
 .metric-badge-danger  { background: var(--rose-50); color: var(--rose-600); }
 
-/* Section Breakdown Card */
+
 .section-breakdown-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -1068,7 +1057,7 @@ code, kbd, samp, pre {
   border: 1px solid var(--slate-200);
 }
 
-/* Activity Grid */
+
 .activity-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1113,9 +1102,7 @@ code, kbd, samp, pre {
   border-bottom: none;
 }
 
-/* ==========================================================================
-   VIEW 2: Student Management Styles
-   ========================================================================== */
+
 
 .filter-toolbar {
   background: var(--card-bg);
@@ -1213,7 +1200,7 @@ code, kbd, samp, pre {
   gap: 0.75rem;
 }
 
-/* Data Table Card */
+
 .table-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -1335,7 +1322,7 @@ code, kbd, samp, pre {
   border: 1px solid var(--indigo-200);
 }
 
-/* Password Cell & Eye Toggle */
+
 .password-cell, .password-cell-wrapper {
   display: inline-flex;
   align-items: center;
@@ -1427,7 +1414,7 @@ code, kbd, samp, pre {
   box-shadow: var(--shadow-xs);
 }
 
-/* Empty State */
+
 .table-empty-state {
   padding: 3.5rem 1.5rem;
   text-align: center;
@@ -1452,7 +1439,7 @@ code, kbd, samp, pre {
   margin: 0 auto 1.25rem;
 }
 
-/* Pagination Bar */
+
 .pagination-bar {
   padding: 1rem 1.25rem;
   background: #ffffff;
@@ -1530,9 +1517,7 @@ code, kbd, samp, pre {
   cursor: not-allowed;
 }
 
-/* ==========================================================================
-   VIEW 3: Excel Upload & Import Styles
-   ========================================================================== */
+
 
 .upload-grid {
   display: grid;
@@ -1549,7 +1534,7 @@ code, kbd, samp, pre {
   box-shadow: var(--shadow-sm);
 }
 
-/* Dropzone */
+
 .dropzone {
   border: 2px dashed var(--slate-300);
   border-radius: var(--radius-lg);
@@ -1631,7 +1616,7 @@ code, kbd, samp, pre {
   margin-top: 0.35rem;
 }
 
-/* Guide Card */
+
 .guide-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -1681,7 +1666,7 @@ code, kbd, samp, pre {
   margin-left: 1.2rem;
 }
 
-/* Import Preview Box */
+
 .import-preview-box {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -1768,7 +1753,7 @@ code, kbd, samp, pre {
   margin-top: 1.5rem;
 }
 
-/* Import Result Summary Card */
+
 .import-summary-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -1829,9 +1814,7 @@ code, kbd, samp, pre {
   font-weight: 600;
 }
 
-/* ==========================================================================
-   VIEW 4: Universal Search Styles
-   ========================================================================== */
+
 
 .universal-search-hero {
   background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
@@ -1954,9 +1937,7 @@ mark.search-highlight {
   border-radius: 2px;
 }
 
-/* ==========================================================================
-   Modals
-   ========================================================================== */
+
 
 .modal-backdrop {
   display: none;
@@ -2083,7 +2064,7 @@ mark.search-highlight {
   gap: 0.75rem;
 }
 
-/* Delete Modal Specifics */
+
 .delete-dialog {
   max-width: 460px;
 }
@@ -2117,9 +2098,7 @@ mark.search-highlight {
   line-height: 1.5;
 }
 
-/* ==========================================================================
-   Toast Notification Container
-   ========================================================================== */
+
 
 .toast-container {
   position: fixed;
@@ -2194,9 +2173,7 @@ mark.search-highlight {
 .toast-info    .toast-icon { color: var(--indigo-500); }
 .toast-warning .toast-icon { color: var(--amber-500); }
 
-/* ==========================================================================
-   Loading Spinner
-   ========================================================================== */
+
 
 .spinner {
   width: 18px;
@@ -2217,9 +2194,7 @@ mark.search-highlight {
   to { transform: rotate(360deg); }
 }
 
-/* ==========================================================================
-   Responsive Breakpoints
-   ========================================================================== */
+
 
 @media (max-width: 1024px) {
   .app-sidebar {
@@ -2309,11 +2284,9 @@ mark.search-highlight {
   }
 }
 
-/* ==========================================================================
-   Search Activity & Logs Styles
-   ========================================================================== */
 
-/* Search Submit Buttons */
+
+
 .search-submit-btn {
   display: flex;
   align-items: center;
@@ -2355,7 +2328,7 @@ mark.search-highlight {
   background: var(--indigo-700);
 }
 
-/* Date filter input */
+
 .date-filter-input {
   padding: 0.45rem 0.75rem;
   border: 1px solid var(--slate-300);
@@ -2366,7 +2339,7 @@ mark.search-highlight {
   font-family: inherit;
 }
 
-/* Overview Search Activity Card */
+
 .search-activity-overview-card {
   background: #ffffff;
   border-radius: var(--radius-lg);
@@ -2413,7 +2386,7 @@ mark.search-highlight {
 .text-slate { color: var(--slate-600) !important; }
 .text-indigo { color: var(--indigo-600) !important; }
 
-/* Status Badges */
+
 .badge-status {
   display: inline-flex;
   align-items: center;
@@ -2498,9 +2471,7 @@ mark.search-highlight {
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
-/* ==========================================================================
-   Export Students Selection Dialog
-   ========================================================================== */
+
 .export-options-list {
   display: flex;
   flex-direction: column;

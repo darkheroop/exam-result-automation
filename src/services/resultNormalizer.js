@@ -1,14 +1,6 @@
 'use strict';
 
-/**
- * Normalizes genuine portal API responses into a clean, consistent data structure for the frontend marksheet.
- * Thoroughly extracts Semester I and Semester II data from ManageExamInfo publishingDetails:
- * - Semesters array with semester name/title, SGPA, credits earned, total credits, general remarks.
- * - Overall YGPA, overall credits earned, overall total credits, overall remarks.
- * - Subjects array for each semester with acadSubjectCode, acadSubjectLngTitle, subjectType,
- *   maxPointsToPrint, minPointsToPrint, obtResolutionGracesMarksToPrint, gradeLetterToPrint,
- *   gradePointsToPrint, creditPointsToPrint, creditEarnedToPrint, and allExamAsmtTypeMarksDataArr.
- */
+ 
 function normalizeResultData({
   annualwiseCardDetails,
   manageExamInfoDetails,
@@ -20,7 +12,7 @@ function normalizeResultData({
     return null;
   }
 
-  // Identity Verification: If authenticated user data is available, verify it belongs to expected student
+  
   if (expectedStudentNumber && authenticatedUserData && authenticatedUserData.mobile) {
     const authMobile = String(authenticatedUserData.mobile).trim();
     const expected = String(expectedStudentNumber).trim();
@@ -31,25 +23,25 @@ function normalizeResultData({
     }
   }
 
-  // Extract annual cards if provided
+  
   const annualCards = annualwiseCardDetails?.collection?.response?.data || 
                       annualwiseCardDetails?.data || 
                       (Array.isArray(annualwiseCardDetails) ? annualwiseCardDetails : []);
 
-  // Find published annual card (one that has ygpa and yearlyRemark), or fallback to first card
+  
   const publishedCard = annualCards.find(c => c.ygpa && c.yearlyRemark) || annualCards[0] || {};
 
-  // Extract exam info publishing details
+  
   const pubDetails = manageExamInfoDetails?.collection?.response?.examInfo?.publishingDetails || 
                      manageExamInfoDetails?.examInfo?.publishingDetails || 
                      manageExamInfoDetails?.publishingDetails;
   const semDataArr = pubDetails?.data || [];
 
-  // Find student metadata across semester records
+  
   const firstSem = semDataArr[0] || {};
   const rawStudent = firstSem?.allStudentMarksRawDataArr?.[0] || {};
 
-  // Find a student record that has YGPA or yearlyRemark populated (e.g. from Sem II)
+  
   let rawStudentWithYgpa = null;
   for (const sem of semDataArr) {
     const s = sem.allStudentMarksRawDataArr?.[0];
@@ -63,7 +55,7 @@ function normalizeResultData({
   const sYear = publishedCard.acadSyear || firstSem?.examClassMpCtgryAcademicYears || '2025';
   const nextYear = parseInt(sYear, 10) + 1;
 
-  // Extract result publish date
+  
   let publishedOn = '2026-07-22';
   if (rawStudent.resultPublishDate) {
     publishedOn = rawStudent.resultPublishDate;
@@ -73,7 +65,7 @@ function normalizeResultData({
     publishedOn = publishedCard.semesters[0].resultPublishDate;
   }
 
-  // Sort semesters so Semester I is first (index 0), Semester II is second (index 1)
+  
   const sortedSems = [...semDataArr].sort((a, b) => {
     const titleA = (a.examClassMpCtgryTitle || '').toUpperCase();
     const titleB = (b.examClassMpCtgryTitle || '').toUpperCase();
@@ -88,7 +80,7 @@ function normalizeResultData({
     const semTitle = sem.examClassMpCtgryTitle || (sIdx === 0 ? 'Semester I' : 'Semester II');
     const semNumber = semTitle.includes('II') ? 2 : (semTitle.includes('I') ? 1 : sIdx + 1);
 
-    // Match semester metadata from publishedCard using strict matching if card is available
+    
     const cardSem = (publishedCard.semesters || []).find(s => {
       const cardTitle = (s.semesterTitle || '').trim().toUpperCase();
       if (semNumber === 1) {
@@ -168,7 +160,7 @@ function normalizeResultData({
       }
 
       return {
-        // Explicit required subject fields
+        
         acadSubjectCode: sub.acadSubjectCode || '',
         acadSubjectLngTitle: sub.acadSubjectLngTitle || '',
         subjectType: sub.subjectType || (isTheory ? 'Theory' : 'Practical'),
@@ -183,7 +175,7 @@ function normalizeResultData({
         creditEarnedToPrint: sub.creditEarnedToPrint !== undefined ? sub.creditEarnedToPrint : creditEarned,
         allExamAsmtTypeMarksDataArr: sub.allExamAsmtTypeMarksDataArr || [],
 
-        // Preserved backward-compatible fields
+        
         code: sub.acadSubjectCode || '',
         name: sub.acadSubjectLngTitle || '',
         title: sub.acadSubjectLngTitle || '',
@@ -283,7 +275,7 @@ function normalizeResultData({
     };
   });
 
-  // Calculate overall YGPA, overall credits earned, overall total credits, overall remarks
+  
   const overallYgpa = publishedCard.ygpa !== undefined && publishedCard.ygpa !== ''
     ? String(publishedCard.ygpa)
     : (rawStudentWithYgpa.ygpa !== undefined && rawStudentWithYgpa.ygpa !== '' ? String(rawStudentWithYgpa.ygpa) : '');

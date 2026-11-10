@@ -14,11 +14,17 @@ class AdminAuthService {
     this.dbService = dbService;
   }
 
-  /**
-   * Verifies admin username and password.
-   * Compares password against PBKDF2 hash or process.env.ADMIN_PASSWORD.
-   * Uses crypto.timingSafeEqual for constant-time comparison.
-   */
+   
+  hashPasswordAsync(password, salt = (process.env.ADMIN_PASSWORD_SALT || DEFAULT_SALT)) {
+    return new Promise((resolve, reject) => {
+      crypto.pbkdf2(password, salt, ITERATIONS, KEY_LEN, DIGEST, (err, derivedKey) => {
+        if (err) return reject(err);
+        resolve(derivedKey);
+      });
+    });
+  }
+
+   
   verifyCredentials(username, password) {
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
       return false;
@@ -27,53 +33,89 @@ class AdminAuthService {
     const expectedUsername = (process.env.ADMIN_USERNAME || 'inexpert_trifler').trim();
     const inputUsername = username.trim();
 
-    // Constant-time username comparison
-    const userBuf = Buffer.from(inputUsername);
-    const expUserBuf = Buffer.from(expectedUsername);
-    if (userBuf.length !== expUserBuf.length || !crypto.timingSafeEqual(userBuf, expUserBuf)) {
-      return false;
-    }
+    
+    const inputUserHash = crypto.createHash('sha256').update(inputUsername).digest();
+    const expUserHash = crypto.createHash('sha256').update(expectedUsername).digest();
+    const userMatches = crypto.timingSafeEqual(inputUserHash, expUserHash);
 
-    // Direct password override
+    
+    let envPwdMatches = false;
     if (process.env.ADMIN_PASSWORD) {
-      const pwdBuf = Buffer.from(password);
-      const envPwdBuf = Buffer.from(process.env.ADMIN_PASSWORD);
-      if (pwdBuf.length === envPwdBuf.length && crypto.timingSafeEqual(pwdBuf, envPwdBuf)) {
-        return true;
-      }
+      const inputPwdHash = crypto.createHash('sha256').update(password).digest();
+      const envPwdHash = crypto.createHash('sha256').update(process.env.ADMIN_PASSWORD).digest();
+      envPwdMatches = crypto.timingSafeEqual(inputPwdHash, envPwdHash);
     }
 
-    // PBKDF2 Hash Verification
+    
     const salt = process.env.ADMIN_PASSWORD_SALT || DEFAULT_SALT;
     const expectedHash = process.env.ADMIN_PASSWORD_HASH || DEFAULT_HASH;
 
+    let hashMatches = false;
     try {
       const computedHashBuf = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST);
       const expectedHashBuf = Buffer.from(expectedHash, 'hex');
 
-      if (computedHashBuf.length !== expectedHashBuf.length) {
-        return false;
+      if (computedHashBuf.length === expectedHashBuf.length) {
+        hashMatches = crypto.timingSafeEqual(computedHashBuf, expectedHashBuf);
       }
-
-      return crypto.timingSafeEqual(computedHashBuf, expectedHashBuf);
-    } catch (err) {
-      return false;
+    } catch (_) {
+      hashMatches = false;
     }
+
+    const pwdValid = envPwdMatches || hashMatches;
+    return Boolean(userMatches && pwdValid);
   }
 
-  /**
-   * Generates a cryptographically secure admin session token with 2-hour TTL.
-   */
+   
+  async verifyCredentialsAsync(username, password) {
+    if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
+      return false;
+    }
+
+    const expectedUsername = (process.env.ADMIN_USERNAME || 'inexpert_trifler').trim();
+    const inputUsername = username.trim();
+
+    
+    const inputUserHash = crypto.createHash('sha256').update(inputUsername).digest();
+    const expUserHash = crypto.createHash('sha256').update(expectedUsername).digest();
+    const userMatches = crypto.timingSafeEqual(inputUserHash, expUserHash);
+
+    
+    let envPwdMatches = false;
+    if (process.env.ADMIN_PASSWORD) {
+      const inputPwdHash = crypto.createHash('sha256').update(password).digest();
+      const envPwdHash = crypto.createHash('sha256').update(process.env.ADMIN_PASSWORD).digest();
+      envPwdMatches = crypto.timingSafeEqual(inputPwdHash, envPwdHash);
+    }
+
+    
+    const salt = process.env.ADMIN_PASSWORD_SALT || DEFAULT_SALT;
+    const expectedHash = process.env.ADMIN_PASSWORD_HASH || DEFAULT_HASH;
+
+    let hashMatches = false;
+    try {
+      const computedHashBuf = await this.hashPasswordAsync(password, salt);
+      const expectedHashBuf = Buffer.from(expectedHash, 'hex');
+
+      if (computedHashBuf.length === expectedHashBuf.length) {
+        hashMatches = crypto.timingSafeEqual(computedHashBuf, expectedHashBuf);
+      }
+    } catch (_) {
+      hashMatches = false;
+    }
+
+    const pwdValid = envPwdMatches || hashMatches;
+    return Boolean(userMatches && pwdValid);
+  }
+
+   
   async createSession(username) {
     const token = crypto.randomBytes(32).toString('hex');
     await this.dbService.createAdminSession(token, username, 2);
     return token;
   }
 
-  /**
-   * Verifies if an admin session token is valid and active.
-   * Returns { username } or null.
-   */
+   
   async verifySession(token) {
     if (!token || typeof token !== 'string') return null;
     const session = await this.dbService.getAdminSession(token);
@@ -81,18 +123,13 @@ class AdminAuthService {
     return { username: session.username };
   }
 
-  /**
-   * Destroys an active admin session.
-   */
+   
   async destroySession(token) {
     if (!token) return false;
     return await this.dbService.deleteAdminSession(token);
   }
 
-  /**
-   * Express middleware enforcing admin authentication.
-   * Inspects cookie admin_token, Authorization: Bearer, or x-admin-token.
-   */
+   
   getMiddleware() {
     return async (req, res, next) => {
       try {
@@ -114,7 +151,7 @@ class AdminAuthService {
           }
         }
 
-        // Authentication failure
+        
         const reqPath = req.originalUrl || req.url || req.path || '';
         if (reqPath.startsWith('/api')) {
           return res.status(401).json({

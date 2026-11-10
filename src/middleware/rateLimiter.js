@@ -22,12 +22,12 @@ class RateLimiter {
 
   middleware() {
     return (req, res, next) => {
-      // In test mode, allow tests to bypass rate limiter unless explicitly testing it
+      
       if (process.env.NODE_ENV === 'test' && !req.headers['x-test-ratelimit']) {
         return next();
       }
 
-      // Read-only status polling, health check, and rendered views should not consume rate limit
+      
       const p = req.path || req.url || '';
       if (!req.headers['x-test-ratelimit'] && (
         p.includes('/status') ||

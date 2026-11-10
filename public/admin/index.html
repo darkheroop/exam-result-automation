@@ -8,16 +8,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin/admin.css">
-  <!-- SheetJS for client-side Excel parsing & preview -->
+  
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="/security.js"></script>
 </head>
 <body>
 
   <div class="app-wrapper">
-    <!-- Sidebar Backdrop for Mobile -->
+    
     <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
-    <!-- Sidebar Navigation -->
+    
     <aside id="app-sidebar" class="app-sidebar">
       <div class="sidebar-header">
         <a href="#overview" class="sidebar-brand">
@@ -107,9 +108,9 @@
       </div>
     </aside>
 
-    <!-- Main Content Wrapper -->
+    
     <div class="app-main">
-      <!-- Top Header Bar -->
+      
       <header class="app-topbar">
         <div class="topbar-left">
           <button type="button" id="btn-sidebar-toggle" class="btn-sidebar-toggle" aria-label="Toggle navigation menu">
@@ -150,14 +151,12 @@
         </div>
       </header>
 
-      <!-- Main Page Content -->
+      
       <main class="page-content">
 
-        <!-- ============================================================
-             VIEW 1: Dashboard Overview
-             ============================================================ -->
+        
         <section id="view-overview" class="tab-view active">
-          <!-- Welcome Hero Banner -->
+          
           <div class="welcome-banner">
             <div class="welcome-content">
               <h2>Welcome back, <span id="overview-username">inexpert_trifler</span></h2>
@@ -181,9 +180,9 @@
             </div>
           </div>
 
-          <!-- 6 Metric Cards -->
+          
           <div class="metrics-grid">
-            <!-- 1. Total Students -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">Total Students</span>
@@ -203,7 +202,7 @@
               </div>
             </div>
 
-            <!-- 2. Total Sections -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">Total Sections</span>
@@ -221,7 +220,7 @@
               </div>
             </div>
 
-            <!-- 3. With Usernames -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">With Usernames</span>
@@ -240,7 +239,7 @@
               </div>
             </div>
 
-            <!-- 4. Without Usernames -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">Without Usernames</span>
@@ -260,7 +259,7 @@
               </div>
             </div>
 
-            <!-- 5. With Stored Passwords -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">With Passwords</span>
@@ -278,7 +277,7 @@
               </div>
             </div>
 
-            <!-- 6. Without Stored Passwords -->
+            
             <div class="metric-card">
               <div class="metric-header">
                 <span class="metric-title">Without Passwords</span>
@@ -297,7 +296,7 @@
             </div>
           </div>
 
-          <!-- Section Breakdown Card (Hidden when sections not enabled) -->
+          
           <div class="section-breakdown-card" id="section-breakdown-card" style="display: none;">
             <div class="card-title-row">
               <div>
@@ -307,13 +306,13 @@
               <span id="section-breakdown-count-badge" class="metric-badge metric-badge-success">0 Sections</span>
             </div>
             <div id="section-chips-container" class="chips-container">
-              <!-- Dynamically populated section chips -->
+              
             </div>
           </div>
 
-          <!-- Activity Grid: Recently Added & Recently Updated -->
+          
           <div class="activity-grid">
-            <!-- Recently Added -->
+            
             <div class="activity-card">
               <div class="card-title-row">
                 <h3>Recently Added Students</h3>
@@ -330,13 +329,13 @@
                     </tr>
                   </thead>
                   <tbody id="recently-added-tbody">
-                    <!-- Populated dynamically -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <!-- Recently Updated -->
+            
             <div class="activity-card">
               <div class="card-title-row">
                 <h3>Recently Updated Students</h3>
@@ -353,14 +352,14 @@
                     </tr>
                   </thead>
                   <tbody id="recently-updated-tbody">
-                    <!-- Populated dynamically -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <!-- Search Activity Overview Section -->
+          
           <div class="search-activity-overview-card">
             <div class="card-title-row">
               <div>
@@ -395,9 +394,7 @@
         </section>
 
 
-        <!-- ============================================================
-             VIEW 2: Student Management
-             ============================================================ -->
+        
         <section id="view-students" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -431,7 +428,7 @@
             </div>
           </div>
 
-          <!-- Search & Filter Bar -->
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -458,12 +455,12 @@
                 </button>
               </div>
 
-              <!-- Compatibility hidden section filter -->
+              
               <select id="student-section-filter" class="filter-select" style="display: none;">
                 <option value="">All Sections</option>
               </select>
 
-              <!-- Credentials Filter Dropdown -->
+              
               <select id="student-credential-filter" class="filter-select">
                 <option value="">All Students</option>
                 <option value="with_credentials">With Credentials</option>
@@ -487,7 +484,7 @@
             </div>
           </div>
 
-          <!-- Responsive Data Table -->
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="students-table">
@@ -502,11 +499,11 @@
                   </tr>
                 </thead>
                 <tbody id="students-table-body">
-                  <!-- Populated via admin.js -->
+                  
                 </tbody>
               </table>
 
-              <!-- Empty State -->
+              
               <div id="students-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="11" cy="11" r="8"/>
@@ -519,7 +516,7 @@
               </div>
             </div>
 
-            <!-- Pagination Bar -->
+            
             <div class="pagination-bar">
               <div class="pagination-info" id="pagination-info">
                 Showing 0 to 0 of 0 students
@@ -537,7 +534,7 @@
                 </div>
 
                 <div class="page-btn-group" id="pagination-buttons">
-                  <!-- Generated dynamically -->
+                  
                 </div>
               </div>
             </div>
@@ -545,9 +542,7 @@
         </section>
 
 
-        <!-- ============================================================
-             VIEW 3: Excel Upload & Import
-             ============================================================ -->
+        
         <section id="view-upload" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -557,7 +552,7 @@
           </div>
 
           <div class="upload-grid">
-            <!-- Dropzone Card -->
+            
             <div class="upload-card">
               <div id="excel-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Dropzone to upload Excel file">
                 <input type="file" id="excel-file-input" accept=".xlsx, .xlxs, .xls, .xlsm, .xlsb, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" style="display: none;">
@@ -584,7 +579,7 @@
               </div>
             </div>
 
-            <!-- Column Guide Card -->
+            
             <div class="guide-card">
               <h3>Supported Format &amp; Column Mapping</h3>
               <p style="font-size: 0.85rem; color: var(--slate-600); margin-bottom: 1rem;">
@@ -606,7 +601,7 @@
             </div>
           </div>
 
-          <!-- Import Preview Box (Appears after file parse) -->
+          
           <div id="import-preview-box" class="import-preview-box">
             <div class="preview-header-bar">
               <div class="preview-title-group">
@@ -624,7 +619,7 @@
               </div>
             </div>
 
-            <!-- Preview Metrics Summary -->
+            
             <div class="preview-metrics-grid">
               <div class="preview-metric-pill">
                 <div class="preview-metric-label">Total Records</div>
@@ -652,13 +647,13 @@
               </div>
             </div>
 
-            <!-- Warnings Alert Box -->
+            
             <div id="preview-warnings-alert" class="preview-warning-alert">
               <strong>Data Validation Warnings:</strong>
               <div id="preview-warnings-list" style="margin-top: 0.35rem;"></div>
             </div>
 
-            <!-- Sample Preview Table -->
+            
             <div class="table-card">
               <div class="table-responsive" style="max-height: 380px;">
                 <table class="data-table">
@@ -673,14 +668,14 @@
                     </tr>
                   </thead>
                   <tbody id="preview-table-body">
-                    <!-- Populated dynamically -->
+                    
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <!-- Import Result Summary Card (Shown upon successful commit) -->
+          
           <div id="import-result-card" class="import-summary-card">
             <div class="summary-hero-row">
               <div class="summary-check-icon">
@@ -721,9 +716,7 @@
         </section>
 
 
-        <!-- ============================================================
-             VIEW 4: Search Activity Logs
-             ============================================================ -->
+        
         <section id="view-logs" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -748,7 +741,7 @@
             </div>
           </div>
 
-          <!-- Public Search Activity Metrics -->
+          
           <div class="search-stats-grid" style="margin-bottom: 1.25rem;">
             <div class="search-stat-pill">
               <span class="search-stat-label">Total Public Searches</span>
@@ -768,7 +761,7 @@
             </div>
           </div>
 
-          <!-- Filter Toolbar for Logs -->
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -790,7 +783,7 @@
                 </button>
               </div>
 
-              <!-- Result Status Filter -->
+              
               <select id="log-result-filter" class="filter-select">
                 <option value="">All Result Statuses</option>
                 <option value="SUCCESS">SUCCESS</option>
@@ -804,7 +797,7 @@
                 <option value="DATABASE_ERROR">DATABASE_ERROR</option>
               </select>
 
-              <!-- Search Type Filter -->
+              
               <select id="log-type-filter" class="filter-select">
                 <option value="">All Search Types</option>
                 <option value="Admission Number">Admission Number</option>
@@ -813,7 +806,7 @@
                 <option value="Username">Username</option>
               </select>
 
-              <!-- Date Filter -->
+              
               <input type="date" id="log-date-filter" class="filter-select date-filter-input" title="Filter by date">
             </div>
 
@@ -822,7 +815,7 @@
             </div>
           </div>
 
-          <!-- Logs Table Card -->
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="search-logs-table">
@@ -836,11 +829,11 @@
                   </tr>
                 </thead>
                 <tbody id="search-logs-tbody">
-                  <!-- Populated dynamically via JS -->
+                  
                 </tbody>
               </table>
 
-              <!-- Empty State -->
+              
               <div id="search-logs-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -854,7 +847,7 @@
               </div>
             </div>
 
-            <!-- Pagination Bar for Logs -->
+            
             <div class="pagination-bar" id="log-pagination-bar">
               <div class="pagination-info" id="log-pagination-info">
                 Showing 0 to 0 of 0 logs
@@ -872,7 +865,7 @@
                 </div>
 
                 <div class="page-btn-group" id="log-pagination-buttons">
-                  <!-- Generated dynamically -->
+                  
                 </div>
               </div>
             </div>
@@ -880,9 +873,7 @@
         </section>
 
 
-        <!-- ============================================================
-             VIEW 5: Exception Management
-             ============================================================ -->
+        
         <section id="view-exceptions" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -900,7 +891,7 @@
             </div>
           </div>
 
-          <!-- Search & Filter Bar -->
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -933,7 +924,7 @@
             </div>
           </div>
 
-          <!-- Exceptions Table Card -->
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="exceptions-table">
@@ -946,11 +937,11 @@
                   </tr>
                 </thead>
                 <tbody id="exceptions-tbody">
-                  <!-- Populated dynamically via JS -->
+                  
                 </tbody>
               </table>
 
-              <!-- Empty State -->
+              
               <div id="exceptions-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -969,7 +960,7 @@
               </div>
             </div>
 
-            <!-- Pagination Bar for Exceptions -->
+            
             <div class="pagination-bar" id="exception-pagination-bar">
               <div class="pagination-info" id="exception-pagination-info">
                 Showing 0 exceptions
@@ -987,7 +978,7 @@
                 </div>
 
                 <div class="page-btn-group" id="exception-pagination-buttons">
-                  <!-- Generated dynamically -->
+                  
                 </div>
               </div>
             </div>
@@ -998,9 +989,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 1: Edit Student Modal
-       ============================================================ -->
+  
   <div id="modal-edit-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1038,7 +1027,7 @@
 
             <div class="form-group">
               <label for="edit-student-username">Username</label>
-              <input type="text" id="edit-student-username" class="form-control" placeholder="e.g. ansh14">
+              <input type="text" id="edit-student-username" class="form-control" placeholder="Username">
             </div>
 
             <div class="form-group full-width">
@@ -1073,9 +1062,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 2: Add Student Modal
-       ============================================================ -->
+  
   <div id="modal-add-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1096,12 +1083,12 @@
           <div class="form-grid">
             <div class="form-group full-width">
               <label for="add-student-name">Full Student Name *</label>
-              <input type="text" id="add-student-name" class="form-control" placeholder="e.g. Aryan Sharma" required>
+              <input type="text" id="add-student-name" class="form-control" placeholder="Student name" required>
             </div>
 
             <div class="form-group">
               <label for="add-student-adm">Admission Number *</label>
-              <input type="text" id="add-student-adm" class="form-control" placeholder="e.g. 2023CS042" required>
+              <input type="text" id="add-student-adm" class="form-control" placeholder="Admission number" required>
             </div>
 
             <div class="form-group">
@@ -1111,7 +1098,7 @@
 
             <div class="form-group">
               <label for="add-student-username">Username</label>
-              <input type="text" id="add-student-username" class="form-control" placeholder="e.g. aryan42">
+              <input type="text" id="add-student-username" class="form-control" placeholder="Username">
             </div>
 
             <div class="form-group full-width">
@@ -1143,9 +1130,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 3: Delete Student Confirmation Modal
-       ============================================================ -->
+  
   <div id="modal-delete-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1181,9 +1166,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 4: Clear Search Logs Confirmation Modal
-       ============================================================ -->
+  
   <div id="modal-clear-logs" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-clear-logs-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1215,9 +1198,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 5: Add Exception Modal
-       ============================================================ -->
+  
   <div id="modal-add-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-add-exc-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1238,7 +1219,7 @@
           <div class="form-grid">
             <div class="form-group full-width">
               <label for="add-exc-student-number">Student Number (Phone / Identifier) *</label>
-              <input type="text" id="add-exc-student-number" class="form-control" placeholder="e.g. 9876543210 or 0012345678" required autocomplete="off">
+              <input type="text" id="add-exc-student-number" class="form-control" placeholder="10-digit number" required autocomplete="off">
               <span class="form-hint" style="font-size: 0.75rem; color: var(--slate-400); margin-top: 0.25rem;">Leading zeros will be strictly preserved.</span>
             </div>
 
@@ -1260,9 +1241,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 6: Edit Exception Modal
-       ============================================================ -->
+  
   <div id="modal-edit-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-exc-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1306,9 +1285,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL 7: Delete Exception Confirmation Modal
-       ============================================================ -->
+  
   <div id="modal-delete-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-delete-exc-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1341,9 +1318,7 @@
     </div>
   </div>
 
-  <!-- ============================================================
-       MODAL: Export Students Selection Modal
-       ============================================================ -->
+  
   <div id="modal-export-students" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-export-title">
     <div class="modal-dialog" style="max-width: 520px;">
       <div class="modal-header">
@@ -1369,7 +1344,7 @@
         </div>
 
         <div class="export-options-list">
-          <!-- Option 1: All Students -->
+          
           <label class="export-option-card active" for="export-opt-all">
             <input type="radio" id="export-opt-all" name="exportOption" value="all" checked>
             <div class="export-option-icon">
@@ -1387,7 +1362,7 @@
             </div>
           </label>
 
-          <!-- Option 2: Students With Credentials -->
+          
           <label class="export-option-card" for="export-opt-with">
             <input type="radio" id="export-opt-with" name="exportOption" value="with_credentials">
             <div class="export-option-icon icon-success">
@@ -1403,7 +1378,7 @@
             </div>
           </label>
 
-          <!-- Option 3: Students Without Credentials -->
+          
           <label class="export-option-card" for="export-opt-without">
             <input type="radio" id="export-opt-without" name="exportOption" value="without_credentials">
             <div class="export-option-icon icon-warning">
@@ -1437,10 +1412,10 @@
     </div>
   </div>
 
-  <!-- Toast Notification Container -->
+  
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Admin JavaScript Engine -->
+  
   <script src="/admin/admin.js"></script>
 </body>
 </html>

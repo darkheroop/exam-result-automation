@@ -11,10 +11,10 @@ const { generateStudentsExportWorkbook, getExportFilename } = require('../servic
 
 const router = express.Router();
 
-// Multer memory storage configuration (15MB limit, .xlsx, .xlxs, .xls, .xlsm, .csv)
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  limits: { fileSize: 15 * 1024 * 1024 }, 
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     const allowedExts = new Set(['.xlsx', '.xlxs', '.xls', '.xlsm', '.xlsb', '.csv']);
@@ -32,9 +32,7 @@ const upload = multer({
   }
 });
 
-/**
- * Middleware handling multer upload errors gracefully.
- */
+ 
 function handleUpload(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -68,22 +66,67 @@ function handleUpload(req, res, next) {
   });
 }
 
-// In-memory rate limiting for login attempts (max 10 attempts per minute)
+
 const loginAttempts = new Map();
+const accountLockouts = new Map();
+
+ 
+function cleanExpiredRateLimits() {
+  const now = Date.now();
+  for (const [key, record] of loginAttempts.entries()) {
+    if (record.resetTime && now > record.resetTime) {
+      loginAttempts.delete(key);
+    }
+  }
+  for (const [key, record] of accountLockouts.entries()) {
+    if (record.lockoutUntil && now > record.lockoutUntil) {
+      accountLockouts.delete(key);
+    }
+  }
+}
+
+
+const rateLimitPruneInterval = setInterval(cleanExpiredRateLimits, 60 * 1000);
+if (rateLimitPruneInterval.unref) rateLimitPruneInterval.unref();
+
 function loginRateLimiter(req, res, next) {
   const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
   const now = Date.now();
   const windowMs = 60 * 1000;
   const maxAttempts = 10;
 
+  
   const record = loginAttempts.get(ip);
-  if (!record || now > record.resetTime) {
+  if (record && now > record.resetTime) {
+    loginAttempts.delete(ip);
+  }
+
+  
+  const rawUsername = req.body?.username;
+  if (typeof rawUsername === 'string' && rawUsername.trim()) {
+    const targetUser = rawUsername.trim().toLowerCase();
+    const acctRecord = accountLockouts.get(targetUser);
+    if (acctRecord && acctRecord.lockoutUntil && acctRecord.lockoutUntil > now) {
+      const retryAfter = Math.ceil((acctRecord.lockoutUntil - now) / 1000);
+      res.setHeader('Retry-After', retryAfter);
+      return res.status(429).json({
+        success: false,
+        error: {
+          message: 'Too many failed login attempts for this account. Please try again after 15 minutes.',
+          code: 'RATE_LIMITED'
+        }
+      });
+    }
+  }
+
+  const activeRecord = loginAttempts.get(ip);
+  if (!activeRecord) {
     loginAttempts.set(ip, { count: 1, resetTime: now + windowMs });
     return next();
   }
 
-  if (record.count >= maxAttempts) {
-    const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+  if (activeRecord.count >= maxAttempts) {
+    const retryAfter = Math.ceil((activeRecord.resetTime - now) / 1000);
     res.setHeader('Retry-After', retryAfter);
     return res.status(429).json({
       success: false,
@@ -94,14 +137,11 @@ function loginRateLimiter(req, res, next) {
     });
   }
 
-  record.count++;
+  activeRecord.count++;
   return next();
 }
 
-/**
- * POST /api/admin/login
- * Validates admin credentials, issues session token, sets HTTP-only cookie.
- */
+ 
 router.post('/login', loginRateLimiter, async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
@@ -116,8 +156,18 @@ router.post('/login', loginRateLimiter, async (req, res, next) => {
       });
     }
 
-    const isValid = defaultAdminAuthService.verifyCredentials(username, password);
+    const normalizedUser = String(username).trim().toLowerCase();
+    const isValid = await defaultAdminAuthService.verifyCredentialsAsync(username, password);
     if (!isValid) {
+      
+      const now = Date.now();
+      const acct = accountLockouts.get(normalizedUser) || { failedCount: 0, lockoutUntil: 0 };
+      acct.failedCount = (acct.failedCount || 0) + 1;
+      if (acct.failedCount >= 5) {
+        acct.lockoutUntil = now + (15 * 60 * 1000);
+      }
+      accountLockouts.set(normalizedUser, acct);
+
       return res.status(401).json({
         success: false,
         error: {
@@ -127,33 +177,42 @@ router.post('/login', loginRateLimiter, async (req, res, next) => {
       });
     }
 
+    
+    accountLockouts.delete(normalizedUser);
+
     const token = await defaultAdminAuthService.createSession(username);
 
-    // Set HTTP-only secure cookie
+    
     res.cookie('admin_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict',
       maxAge: 2 * 60 * 60 * 1000,
       path: '/'
     });
 
-    return res.json({
+    const responsePayload = {
       success: true,
-      token,
       user: {
         username
       }
-    });
+    };
+
+    
+    
+    
+    const isBrowser = req.headers['sec-fetch-mode'] || req.headers['sec-fetch-dest'] || req.headers['user-agent']?.includes('Mozilla');
+    if (process.env.NODE_ENV !== 'production' && !isBrowser) {
+      responsePayload.token = token;
+    }
+
+    return res.json(responsePayload);
   } catch (err) {
     return next(err);
   }
 });
 
-/**
- * POST /api/admin/logout
- * Clears cookie and invalidates the session.
- */
+ 
 router.post('/logout', async (req, res, next) => {
   try {
     let token = null;
@@ -181,10 +240,7 @@ router.post('/logout', async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/me
- * Retrieves current admin identity.
- */
+ 
 router.get('/me', requireAdminAuth, (req, res) => {
   return res.json({
     success: true,
@@ -192,10 +248,7 @@ router.get('/me', requireAdminAuth, (req, res) => {
   });
 });
 
-/**
- * GET /api/admin/stats
- * Retrieves real dashboard metrics and analytics.
- */
+ 
 router.get('/stats', requireAdminAuth, async (req, res, next) => {
   try {
     const stats = await defaultAdminDbService.getDashboardStats();
@@ -208,11 +261,7 @@ router.get('/stats', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/admin/search
- * Executes student search with automatic credential retrieval for admission numbers
- * and single-occurrence audit logging.
- */
+ 
 router.post('/search', requireAdminAuth, async (req, res, next) => {
   try {
     const { query, searchType } = req.body || {};
@@ -226,10 +275,7 @@ router.post('/search', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/search-logs
- * Paginated list of student search activity logs.
- */
+ 
 router.get('/search-logs', requireAdminAuth, async (req, res, next) => {
   try {
     const { page, limit, search, result, searchType, date } = req.query;
@@ -250,10 +296,7 @@ router.get('/search-logs', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/search-logs/stats
- * Real database statistics for search activity.
- */
+ 
 router.get('/search-logs/stats', requireAdminAuth, async (req, res, next) => {
   try {
     const stats = await defaultAdminDbService.getSearchLogStats();
@@ -266,10 +309,7 @@ router.get('/search-logs/stats', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * DELETE /api/admin/search-logs
- * Clears search activity logs without affecting student records.
- */
+ 
 router.delete('/search-logs', requireAdminAuth, async (req, res, next) => {
   try {
     await defaultAdminDbService.clearSearchLogs();
@@ -282,10 +322,7 @@ router.delete('/search-logs', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/students
- * Paginated, sorted, and searchable student directory.
- */
+ 
 router.get('/students', requireAdminAuth, async (req, res, next) => {
   try {
     const { page, limit, search, section, credential, sortBy, sortOrder, sort, filter } = req.query;
@@ -321,14 +358,7 @@ router.get('/students', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/students/export
- * Exports student directory to an Excel (.xlsx) file, respecting active search, filters, and sorting.
- * Supports export options:
- * - 'all' -> All_Students.xlsx
- * - 'with_credentials' -> Students_With_Credentials.xlsx
- * - 'without_credentials' -> Students_Without_Credentials.xlsx
- */
+ 
 router.get('/students/export', requireAdminAuth, async (req, res, next) => {
   try {
     const { search, section, credential, sortBy, sortOrder, sort, filter, exportFilter } = req.query;
@@ -343,7 +373,7 @@ router.get('/students/export', requireAdminAuth, async (req, res, next) => {
       else if (sort === 'updated_desc') { effSortBy = 'updated_at'; effSortOrder = 'DESC'; }
     }
 
-    // Determine the export filter option: 'all', 'with_credentials', or 'without_credentials'
+    
     const chosenExportFilter = String(exportFilter || credential || filter || 'all').toLowerCase().trim();
     let effCredential = '';
     if (chosenExportFilter === 'with_credentials' || chosenExportFilter === 'complete') {
@@ -373,10 +403,7 @@ router.get('/students/export', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/students/:id
- * Retrieves single student by ID.
- */
+ 
 router.get('/students/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const student = await defaultAdminDbService.getStudentById(req.params.id);
@@ -399,10 +426,7 @@ router.get('/students/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/admin/students
- * Creates or upserts a student manually.
- */
+ 
 router.post('/students', requireAdminAuth, async (req, res, next) => {
   try {
     const { name, student_name, admission_number, phone_number, username, portal_username, password, portal_password, section } = req.body || {};
@@ -442,10 +466,7 @@ router.post('/students', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * PUT /api/admin/students/:id
- * Updates an existing student record with credential protection.
- */
+ 
 router.put('/students/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const student = await defaultAdminDbService.updateStudent(req.params.id, req.body || {});
@@ -477,10 +498,7 @@ router.put('/students/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * DELETE /api/admin/students/:id
- * Deletes a student record.
- */
+ 
 router.delete('/students/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const success = await defaultAdminDbService.deleteStudent(req.params.id);
@@ -503,22 +521,18 @@ router.delete('/students/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/admin/upload-preview
- * Parses uploaded Excel workbook without committing, creates a previewToken.
- * Accepts multipart/form-data, JSON Base64 ({ filename, fileBase64 }), or pre-parsed records.
- */
+ 
 router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, next) => {
   try {
     let buffer = null;
     let originalname = 'upload.xlsx';
 
-    // 1. Check if multipart file uploaded
+    
     if (req.file && req.file.buffer) {
       buffer = req.file.buffer;
       originalname = req.file.originalname || 'upload.xlsx';
     } else if (req.body && req.body.fileBase64) {
-      // 2. Check if sent as Base64 JSON payload
+      
       originalname = req.body.filename || req.body.fileName || 'upload.xlsx';
       let b64 = req.body.fileBase64;
       if (typeof b64 === 'string' && b64.startsWith('data:')) {
@@ -526,7 +540,7 @@ router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, 
       }
       buffer = Buffer.from(b64, 'base64');
     } else if (req.body && Array.isArray(req.body.records) && req.body.records.length > 0) {
-      // 3. Check if sent as pre-parsed client records
+      
       const records = req.body.records;
       const filename = req.body.filename || req.body.fileName || 'client_parsed.xlsx';
       const sectionsSet = new Set();
@@ -599,18 +613,14 @@ router.post('/upload-preview', requireAdminAuth, handleUpload, async (req, res, 
   }
 });
 
-/**
- * POST /api/admin/upload-confirm
- * Commits the parsed records into the database.
- * Supports previewToken with stateless fallback to direct records payload for serverless resilience.
- */
+ 
 router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
   try {
     const { previewToken, records } = req.body || {};
 
     let recordsToImport = null;
 
-    // Check previewToken cache first
+    
     if (previewToken) {
       const preview = defaultExcelImportService.getPreview(previewToken);
       if (preview && Array.isArray(preview.validRecords)) {
@@ -619,7 +629,7 @@ router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
       }
     }
 
-    // Serverless-resilient fallback: if token was not in memory or container restarted, use client records payload
+    
     if (!recordsToImport && Array.isArray(records) && records.length > 0) {
       recordsToImport = records;
     }
@@ -646,14 +656,11 @@ router.post('/upload-confirm', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-// =========================================================================
-// Exception Management Routes (Protected by requireAdminAuth)
-// =========================================================================
 
-/**
- * GET /api/admin/exceptions
- * List all configured student exceptions with pagination and search.
- */
+
+
+
+ 
 router.get('/exceptions', requireAdminAuth, async (req, res, next) => {
   try {
     const { page = 1, limit = 50, search = '' } = req.query;
@@ -676,10 +683,7 @@ router.get('/exceptions', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/admin/exceptions/:id
- * Retrieve a single exception record by ID.
- */
+ 
 router.get('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -703,10 +707,7 @@ router.get('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/admin/exceptions
- * Create a new exception record.
- */
+ 
 router.post('/exceptions', requireAdminAuth, async (req, res, next) => {
   try {
     const studentNumber = String(req.body?.student_number || req.body?.studentNumber || '').trim();
@@ -760,10 +761,7 @@ router.post('/exceptions', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * PUT /api/admin/exceptions/:id
- * Update an existing exception record.
- */
+ 
 router.put('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -833,10 +831,7 @@ router.put('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
-/**
- * DELETE /api/admin/exceptions/:id
- * Delete an exception record.
- */
+ 
 router.delete('/exceptions/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;

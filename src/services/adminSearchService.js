@@ -13,10 +13,7 @@ class AdminSearchService {
     this.mockCredentialHandler = options.mockCredentialHandler || null;
   }
 
-  /**
-   * Resolves search type from explicit input or query inspection.
-   * Allowed types: 'Admission Number', 'Name', 'Phone Number', 'Username'
-   */
+   
   resolveSearchType(query, explicitType) {
     const cleanType = String(explicitType || '').trim().toLowerCase();
     if (cleanType === 'adm' || cleanType === 'admission number' || cleanType === 'admission_number' || cleanType === 'admissionnumber') {
@@ -33,15 +30,15 @@ class AdminSearchService {
     }
 
     const q = String(query || '').trim();
-    // Alphanumeric admission numbers: e.g. 2023CS001, 2021...
+    
     if (/^20\d{2}[A-Za-z0-9_-]{3,}$/.test(q)) {
       return 'Admission Number';
     }
-    // Name with spaces or alphabets
+    
     if (/^[A-Za-z\s.]{3,}$/.test(q) && q.includes(' ')) {
       return 'Name';
     }
-    // 10-digit starting with 6-9 is typically a phone number unless matched to student admission
+    
     if (/^[6-9]\d{9}$/.test(q)) {
       return 'Phone Number';
     }
@@ -51,11 +48,7 @@ class AdminSearchService {
     return 'Admission Number';
   }
 
-  /**
-   * Calls the Student Lookup API to retrieve portal credentials.
-   * @param {string} studentNumber
-   * @returns {Promise<{ status: string, username?: string, password?: string, error?: string }>}
-   */
+   
   async fetchStudentCredentials(studentNumber) {
     if (this.mockMode && typeof this.mockCredentialHandler === 'function') {
       return this.mockCredentialHandler(studentNumber);
@@ -118,15 +111,7 @@ class AdminSearchService {
     }
   }
 
-  /**
-   * Executes a student search operation with automatic credential retrieval
-   * and single-occurrence audit logging.
-   * 
-   * @param {Object} params
-   * @param {string} params.query
-   * @param {string} [params.searchType]
-   * @returns {Promise<{ success: boolean, result: string, students: Array, updated?: boolean, log?: Object }>}
-   */
+   
   async executeSearch({ query, searchType = 'all' }) {
     const rawQuery = query;
     if (typeof rawQuery !== 'string' || !rawQuery.trim()) {
@@ -146,8 +131,8 @@ class AdminSearchService {
     const cleanQuery = rawQuery.trim();
     let effectiveType = this.resolveSearchType(cleanQuery, searchType);
 
-    // If searchType was not explicitly pinned to Phone Number, but a student exists locally with this admission_number,
-    // ensure effectiveType resolves to 'Admission Number' so automatic credential lookup triggers.
+    
+    
     const cleanSearchType = String(searchType || '').trim().toLowerCase();
     const isExplicitPhone = cleanSearchType === 'phone' || cleanSearchType === 'phone number' || cleanSearchType === 'phone_number' || cleanSearchType === 'phonenumber';
     if (!isExplicitPhone && effectiveType === 'Phone Number') {
@@ -163,9 +148,9 @@ class AdminSearchService {
     }
 
     try {
-      // -------------------------------------------------------------
-      // CASE 1: Admission / Student Lookup Search (Automatic Credential Lookup)
-      // -------------------------------------------------------------
+      
+      
+      
       if (effectiveType === 'Admission Number') {
         let existingStudent = await this.dbService.getStudentByAdmissionNumber(cleanQuery);
         let matchedByPhone = false;
@@ -175,7 +160,7 @@ class AdminSearchService {
         }
 
         if (!existingStudent) {
-          // Rule: If student does NOT exist in local database, log NOT_FOUND and do NOT call credential API.
+          
           const log = await this.dbService.logSearch({
             searchQuery: cleanQuery,
             searchType: 'Admission Number',
@@ -189,11 +174,11 @@ class AdminSearchService {
           };
         }
 
-        // Student exists locally -> Call the Credential Lookup API
-        // In mock mode (e.g. unit tests), pass cleanQuery directly to handler.
-        // In live mode, upstream student-lookup API requires a 10-digit student identifier.
-        // If cleanQuery is not 10 digits (e.g. alphanumeric admission number like 2023CS042),
-        // fallback to student's 10-digit phone number or 10-digit admission number if available.
+        
+        
+        
+        
+        
         let studentNumberForApi = cleanQuery;
         if (!this.mockMode && !/^\d{10}$/.test(studentNumberForApi)) {
           if (existingStudent.phone_number && /^\d{10}$/.test(existingStudent.phone_number.trim())) {
@@ -207,7 +192,7 @@ class AdminSearchService {
 
         if (apiResult.status === 'SUCCESS') {
           try {
-            // Update credentials in database without overwriting name, phone, section, created_at
+            
             let updatedStudent = null;
             if (matchedByPhone && existingStudent.phone_number) {
               updatedStudent = await this.dbService.updateStudentCredentialsByPhone(existingStudent.phone_number, {
@@ -236,7 +221,7 @@ class AdminSearchService {
               };
             }
 
-            // Successfully updated credentials in DB -> Log SUCCESS
+            
             const log = await this.dbService.logSearch({
               searchQuery: cleanQuery,
               searchType: 'Admission Number',
@@ -265,8 +250,8 @@ class AdminSearchService {
           }
         }
 
-        // Credential API returned non-success (API_ERROR, INVALID_RESPONSE, TIMEOUT, NETWORK_ERROR)
-        // Existing student credentials MUST be preserved!
+        
+        
         const resultStatus = ['API_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'NETWORK_ERROR'].includes(apiResult.status)
           ? apiResult.status
           : 'API_ERROR';
@@ -285,9 +270,9 @@ class AdminSearchService {
         };
       }
 
-      // -------------------------------------------------------------
-      // CASE 2: Name, Phone Number, or Username Search (No Credential API)
-      // -------------------------------------------------------------
+      
+      
+      
       const listRes = await this.dbService.listStudents({
         search: cleanQuery,
         limit: 50

@@ -3,16 +3,13 @@
 const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 
-/**
- * Cleans string and numeric values from Excel cells, retaining leading zeros
- * and avoiding scientific notation or floating point trailing '.0'.
- */
+ 
 function cleanStringValue(val) {
   if (val === null || val === undefined) return '';
   let str = String(val).trim();
   if (!str) return '';
 
-  // Handle scientific notation e.g. 1.23456789e9
+  
   if (/^[+-]?\d+(\.\d+)?[eE][+-]?\d+$/.test(str)) {
     try {
       const num = Number(str);
@@ -20,11 +17,11 @@ function cleanStringValue(val) {
         str = BigInt(Math.round(num)).toString();
       }
     } catch (e) {
-      // Ignore conversion fallback to original
+      
     }
   }
 
-  // Remove trailing .0 from Excel integer representations
+  
   if (/^\d+\.0+$/.test(str)) {
     str = str.replace(/\.0+$/, '');
   }
@@ -32,17 +29,7 @@ function cleanStringValue(val) {
   return str;
 }
 
-/**
- * Matches a header cell string against recognized column roles.
- * Priority order:
- *  1. Admission number (explicit admission > enrollment/reg > roll)
- *  2. Name
- *  3. Phone/Mobile
- *  4. Section
- *  5. Roll number (fallback if no admission column)
- *  6. Username
- *  7. Password
- */
+ 
 function matchHeaderColumn(headerCell) {
   if (!headerCell || typeof headerCell !== 'string') return null;
   const h = headerCell
@@ -54,39 +41,39 @@ function matchHeaderColumn(headerCell) {
 
   if (!h) return null;
 
-  // 1. Admission number takes highest priority
+  
   if (/(?:^|\b)(?:admission|adm)(?:\s*(?:no|num|number))?(?:$|\b)/i.test(h) ||
       /^(?:admission_no|adm_no|admission_number|enrollment(?:\s*(?:no|num|number))?)$/i.test(h)) {
     return 'adm';
   }
 
-  // 2. Student Name
+  
   if (/(?:student\s*name|candidate\s*name|name\s*student|name\s*of\s*student|full\s*name|^name$)/i.test(h)) {
     return 'name';
   }
 
-  // 3. Mobile / Phone
+  
   if (/(?:student\s*mob|student\s*mobile|mob\s*no|mobile\s*no|^mob$|mobile|phone|contact|cell|whatsapp)/i.test(h)) {
     return 'phone';
   }
 
-  // 4. Section
+  
   if (/^(?:sec|sec\.|section|branch|class|batch)$/i.test(h)) {
     return 'section';
   }
 
-  // 5. Roll number (lower priority admission identifier)
+  
   if (/(?:roll\s*(?:no|num|number)|student\s*id|registration)/i.test(h) ||
       /^(?:roll_no|reg_no)$/i.test(h)) {
     return 'roll';
   }
 
-  // 6. Username
+  
   if (/^(?:user\s*name|username|login\s*id|user\s*id|user)$/i.test(h)) {
     return 'username';
   }
 
-  // 7. Password
+  
   if (/^(?:password|pwd|pass)$/i.test(h)) {
     return 'password';
   }
@@ -94,28 +81,23 @@ function matchHeaderColumn(headerCell) {
   return null;
 }
 
-/**
- * Extracts section identifier from table title banners like:
- * "Branch & Section  B.Tech.  (1st Sem) CSE - 11"
- * "Attendance Sheet of Session: ... CSE-12"
- * "Section: Batch-Alpha"
- */
+ 
 function detectSectionFromTitle(cellText) {
   if (!cellText || typeof cellText !== 'string') return null;
   const text = cellText.replace(/\s+/g, ' ').trim();
 
-  // Pattern: Branch & Section B.Tech. (1st Sem) CSE - 11 or Branch & Section : CSEDS-1
+  
   const branchMatch = text.match(/(?:branch\s*&\s*section|branch|section)\s*[:\-]?\s*(?:b\.?tech\.?)?\s*(?:\([^)]*\))?\s*([a-z0-9\-_ ]+)/i);
   if (branchMatch && branchMatch[1]) {
     let sec = branchMatch[1].trim();
-    // Normalize "CSE - 11" to "CSE-11"
+    
     sec = sec.replace(/\s*-\s*/g, '-');
     if (sec.length >= 2 && !/^(name|faculty|date|total|sheet|session|semester)/i.test(sec)) {
       return sec;
     }
   }
 
-  // Pattern: "Section: A" or "Sec - B"
+  
   const secMatch = text.match(/^\s*(?:section|sec|class|batch)\s*[:\-]?\s*([a-z0-9\-_ ]+)/i);
   if (secMatch && secMatch[1]) {
     let sec = secMatch[1].trim().replace(/\s*-\s*/g, '-');
@@ -125,18 +107,14 @@ function detectSectionFromTitle(cellText) {
   return null;
 }
 
-/**
- * Parses an Excel buffer or workbook into structured student records.
- * Supports any workbook layout: multi-section attendance sheets, single consolidated sheets,
- * custom column orderings, inline sections, and missing headers via smart fallback scanning.
- */
+ 
 function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
   if (!buffer) {
     throw new Error('No Excel buffer or data provided');
   }
 
   let rawBuffer = buffer;
-  // Convert base64 string to buffer if string was supplied
+  
   if (typeof buffer === 'string') {
     if (buffer.startsWith('data:')) {
       const commaIdx = buffer.indexOf(',');
@@ -162,7 +140,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
   const duplicateWithinFile = [];
   const warnings = [];
   const sectionsFoundSet = new Set();
-  const seenAdmissionNumbers = new Map(); // adm -> { row, sheet, name }
+  const seenAdmissionNumbers = new Map(); 
 
   let totalRawRowsCount = 0;
 
@@ -170,11 +148,11 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    // Convert sheet to array of rows
+    
     const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     if (!rows || rows.length === 0) continue;
 
-    // Default section from sheet name if informative
+    
     const cleanSheetName = sheetName.trim();
     let sheetDefaultSection = cleanSheetName;
     if (cleanSheetName && !/^(sheet\d+|total students\s*\d*)$/i.test(cleanSheetName)) {
@@ -190,24 +168,24 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
       const row = rows[rIdx];
       if (!Array.isArray(row)) continue;
 
-      // Filter non-empty cell strings
+      
       const nonEmpties = row.map(cleanStringValue).filter(Boolean);
       if (nonEmpties.length === 0) continue;
 
       totalRawRowsCount++;
 
-      // 1. Check for title section marker in early non-empty cells
+      
       for (const cell of nonEmpties.slice(0, 3)) {
         const detectedSec = detectSectionFromTitle(cell);
         if (detectedSec) {
           currentSection = detectedSec;
           sectionsFoundSet.add(currentSection);
-          colMap = null; // reset column map for new section table
+          colMap = null; 
           break;
         }
       }
 
-      // 2. Check if this row is a header row
+      
       const tempMap = {};
       for (let c = 0; c < row.length; c++) {
         const role = matchHeaderColumn(cleanStringValue(row[c]));
@@ -216,7 +194,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
         }
       }
 
-      // Prioritize explicit 'adm' column over 'roll' column
+      
       const effectiveAdmCol = tempMap.adm !== undefined ? tempMap.adm : tempMap.roll;
 
       if (effectiveAdmCol !== undefined && (tempMap.name !== undefined || tempMap.phone !== undefined)) {
@@ -228,15 +206,15 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
           username: tempMap.username !== undefined ? tempMap.username : -1,
           password: tempMap.password !== undefined ? tempMap.password : -1
         };
-        continue; // Header row consumed
+        continue; 
       }
 
-      // If no valid column mapping established yet, skip non-data banner rows
+      
       if (!colMap) {
         continue;
       }
 
-      // Extract values according to mapped columns
+      
       let rawAdm = colMap.adm >= 0 ? cleanStringValue(row[colMap.adm]) : '';
       let rawName = colMap.name >= 0 ? cleanStringValue(row[colMap.name]) : '';
       let rawPhone = colMap.phone >= 0 ? cleanStringValue(row[colMap.phone]) : '';
@@ -244,19 +222,19 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
       let rawUser = colMap.username >= 0 ? cleanStringValue(row[colMap.username]) : '';
       let rawPass = colMap.password >= 0 ? cleanStringValue(row[colMap.password]) : '';
 
-      // Skip repeated header rows
+      
       if (matchHeaderColumn(rawName) === 'name' || matchHeaderColumn(rawAdm) === 'adm') {
         continue;
       }
 
-      // Skip footer or summary rows (e.g. Total, HOD, Signature, Date)
+      
       if (/^(total|hod|s\.?\s*no|faculty|subject|regular|lecture|attendance|sign)/i.test(rawName) ||
           /^(total|hod|s\.?\s*no)/i.test(rawAdm)) {
         continue;
       }
 
-      // 3. Fallback Cell Scanner:
-      // If admission number is missing from mapped column, scan the row for admission number patterns
+      
+      
       if (!rawAdm) {
         for (const cell of row) {
           const s = cleanStringValue(cell);
@@ -267,7 +245,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
         }
       }
 
-      // If phone number is missing from mapped column, scan row for 10-digit mobile number
+      
       if (!rawPhone) {
         for (const cell of row) {
           const s = cleanStringValue(cell);
@@ -278,7 +256,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
         }
       }
 
-      // If student name is missing and admission number exists, scan row for alphabetic name
+      
       if (!rawName && rawAdm) {
         for (const cell of row) {
           const s = cleanStringValue(cell);
@@ -291,15 +269,15 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
         }
       }
 
-      // Determine final section
+      
       let recordSection = rawSec;
-      // If rawSec is a group identifier like "G1" or "A1", or empty, prefer currentSection/sheetDefaultSection
+      
       if (!recordSection || /^[a-z]\d+$/i.test(recordSection)) {
         recordSection = currentSection || sheetDefaultSection || 'Default';
       }
       sectionsFoundSet.add(recordSection);
 
-      // Handle records completely missing admission numbers
+      
       if (!rawAdm) {
         if (rawName || rawPhone) {
           missingAdmissionRecords.push({
@@ -317,7 +295,7 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
         continue;
       }
 
-      // Duplicate detection within the file
+      
       if (seenAdmissionNumbers.has(rawAdm)) {
         const previous = seenAdmissionNumbers.get(rawAdm);
         duplicateWithinFile.push({
@@ -368,21 +346,17 @@ function parseExcelBuffer(buffer, filename = 'upload.xlsx') {
 
 class ExcelImportService {
   constructor() {
-    // In-memory preview cache: token -> { data, expiresAt }
+    
     this.previewCache = new Map();
-    this.previewTtlMs = 15 * 60 * 1000; // 15 minutes TTL
+    this.previewTtlMs = 15 * 60 * 1000; 
   }
 
-  /**
-   * Parses an Excel buffer or base64 data.
-   */
+   
   parseExcelBuffer(buffer, filename) {
     return parseExcelBuffer(buffer, filename);
   }
 
-  /**
-   * Stores parsed preview data in cache and returns a previewToken.
-   */
+   
   storePreview(parsedData) {
     this._cleanExpiredPreviews();
     const token = uuidv4();
@@ -394,9 +368,7 @@ class ExcelImportService {
     return token;
   }
 
-  /**
-   * Retrieves parsed preview data by token.
-   */
+   
   getPreview(token) {
     if (!token) return null;
     this._cleanExpiredPreviews();
@@ -409,17 +381,13 @@ class ExcelImportService {
     return entry.data;
   }
 
-  /**
-   * Clears a preview session from cache.
-   */
+   
   clearPreview(token) {
     if (!token) return false;
     return this.previewCache.delete(token);
   }
 
-  /**
-   * Internal cleaner for expired preview sessions.
-   */
+   
   _cleanExpiredPreviews() {
     const now = Date.now();
     for (const [token, entry] of this.previewCache.entries()) {
