@@ -410,3 +410,40 @@ test('Anti-Inspection [Tier 4] - DevTools docked window dimension delta detectio
     'Docked DevTools dimension delta (>160px) must activate the security warning modal'
   );
 });
+
+test('Anti-Inspection [Tier 5] - Refuses to dismiss modal while DevTools are open, and automatically unlocks when closed', () => {
+  if (!fs.existsSync(securityJsPath)) return;
+  const scriptContent = fs.readFileSync(securityJsPath, 'utf8');
+
+  const env = createMockDomEnvironment();
+  vm.runInContext(scriptContent, env.sandbox);
+
+  // 1. Simulate DevTools being open (docked)
+  env.sandbox.window.outerWidth = 1024;
+  env.sandbox.window.innerWidth = 700; // delta = 324px
+  env.dispatchResize();
+
+  const modal = env.elementsById['security-shield-modal'];
+  const btn = env.elementsById['security-shield-btn'];
+  assert.ok(modal.classList.contains('active'), 'Modal must be active when DevTools are open');
+
+  // 2. Attempt to dismiss via button click while DevTools are open -> MUST FAIL / STAY ACTIVE
+  btn.dispatchEvent({ type: 'click' });
+  assert.ok(modal.classList.contains('active'), 'Clicking button while DevTools are open must NOT dismiss modal');
+
+  // 3. Attempt to dismiss via Escape key while DevTools are open -> MUST FAIL / STAY ACTIVE
+  env.dispatchKey({ key: 'Escape', keyCode: 27 });
+  assert.ok(modal.classList.contains('active'), 'Pressing Escape while DevTools are open must NOT dismiss modal');
+
+  // 4. Attempt to dismiss via clicking backdrop while DevTools are open -> MUST FAIL / STAY ACTIVE
+  modal.dispatchEvent({ type: 'click', target: modal });
+  assert.ok(modal.classList.contains('active'), 'Clicking backdrop while DevTools are open must NOT dismiss modal');
+
+  // 5. Simulate closing DevTools (dimensions return to normal)
+  env.sandbox.window.outerWidth = 1024;
+  env.sandbox.window.innerWidth = 1000; // delta = 24px (normal window)
+  env.dispatchResize();
+
+  // 6. Verify modal automatically unlocks and hides when DevTools are closed
+  assert.ok(!modal.classList.contains('active'), 'Modal must automatically unlock and dismiss when DevTools are closed');
+});
