@@ -338,7 +338,7 @@ test('Anti-Inspection [Tier 3] - Preserves standard user clipboard (Ctrl+C, Ctrl
   assert.ok(!cutEvt.isPrevented(), 'Clipboard Cut (Ctrl+X) must NOT be prevented');
 });
 
-test('Anti-Inspection [Tier 4] - Warning modal display, anti-spam throttling, and dismissal', () => {
+test('Anti-Inspection [Tier 4] - Warning modal display, custom restriction message, and buttonless layout', () => {
   if (!fs.existsSync(securityJsPath)) return;
   const scriptContent = fs.readFileSync(securityJsPath, 'utf8');
 
@@ -361,23 +361,34 @@ test('Anti-Inspection [Tier 4] - Warning modal display, anti-spam throttling, an
     'Modal must have role="alertdialog" for accessibility'
   );
 
-  // Verify anti-spam throttling: rapid consecutive triggers within 1500ms
+  // Verify button is removed
   const btn = env.elementsById['security-shield-btn'];
-  assert.ok(btn, 'Modal must provide an acknowledge/dismiss button');
+  assert.ok(!btn, 'Modal must NOT contain a button');
 
-  // Dismiss modal via button click
-  btn.dispatchEvent({ type: 'click' });
+  // Verify custom messages
+  const title = env.elementsById['security-shield-title'];
+  assert.ok(title, 'Modal must have a title element');
   assert.ok(
-    !modal.classList.contains('active'),
-    'Clicking acknowledge button must dismiss the modal'
+    title.textContent.includes('Restriction Prohbiated'),
+    'Title must match "Restriction Prohbiated"'
   );
 
-  // Trigger again and dismiss via Escape key
-  env.dispatchKey({ key: 'F12', keyCode: 123 });
+  const body = env.elementsById['security-shield-body'];
+  assert.ok(body, 'Modal must have a body element');
+  assert.ok(
+    body.innerHTML.includes('Beta Jab Mai Pheli Mai Tha'),
+    'Modal body must contain "Beta Jab Mai Pheli Mai Tha"'
+  );
+  assert.ok(
+    body.innerHTML.includes('Tabb Tuu Theli Mai Tha'),
+    'Modal body must contain "Tabb Tuu Theli Mai Tha"'
+  );
+
+  // Escape key dismisses when DevTools are NOT open
   env.dispatchKey({ key: 'Escape', keyCode: 27 });
   assert.ok(
     !modal.classList.contains('active'),
-    'Pressing Escape must dismiss the security modal'
+    'Pressing Escape must dismiss modal when DevTools are not active'
   );
 });
 
@@ -424,12 +435,10 @@ test('Anti-Inspection [Tier 5] - Refuses to dismiss modal while DevTools are ope
   env.dispatchResize();
 
   const modal = env.elementsById['security-shield-modal'];
-  const btn = env.elementsById['security-shield-btn'];
   assert.ok(modal.classList.contains('active'), 'Modal must be active when DevTools are open');
 
-  // 2. Attempt to dismiss via button click while DevTools are open -> MUST FAIL / STAY ACTIVE
-  btn.dispatchEvent({ type: 'click' });
-  assert.ok(modal.classList.contains('active'), 'Clicking button while DevTools are open must NOT dismiss modal');
+  // 2. Verify button does not exist
+  assert.ok(!env.elementsById['security-shield-btn'], 'No button should exist in the modal');
 
   // 3. Attempt to dismiss via Escape key while DevTools are open -> MUST FAIL / STAY ACTIVE
   env.dispatchKey({ key: 'Escape', keyCode: 27 });

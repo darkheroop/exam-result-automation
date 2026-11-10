@@ -7,7 +7,7 @@
   var THROTTLE_MS = 1500;
   var isModalVisible = false;
   var isDevToolsLocked = false;
-  var devToolsReported = false;
+  var autoDismissTimer = null;
 
   var styleInjected = false;
   function injectStyles() {
@@ -23,10 +23,10 @@
     var css = '' +
       '.security-shield-backdrop {' +
       '  position: fixed; inset: 0; width: 100vw; height: 100vh;' +
-      '  background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);' +
+      '  background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);' +
       '  display: flex; align-items: center; justify-content: center;' +
       '  z-index: 2147483647; opacity: 0; pointer-events: none;' +
-      '  transition: opacity 0.2s ease;' +
+      '  transition: opacity 0.25s ease;' +
       '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;' +
       '}' +
       '.security-shield-backdrop.active {' +
@@ -34,9 +34,9 @@
       '}' +
       '.security-shield-card {' +
       '  background: #0f172a; color: #f8fafc;' +
-      '  border: 1.5px solid rgba(239, 68, 68, 0.55); border-radius: 14px;' +
-      '  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px rgba(239, 68, 68, 0.25);' +
-      '  max-width: 480px; width: 90%; padding: 28px; text-align: center;' +
+      '  border: 1.5px solid rgba(239, 68, 68, 0.6); border-radius: 16px;' +
+      '  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 40px rgba(239, 68, 68, 0.3);' +
+      '  max-width: 480px; width: 90%; padding: 32px 24px; text-align: center;' +
       '  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);' +
       '  box-sizing: border-box;' +
       '}' +
@@ -44,30 +44,18 @@
       '  transform: scale(1);' +
       '}' +
       '.security-shield-icon {' +
-      '  width: 56px; height: 56px; margin: 0 auto 16px auto; color: #ef4444;' +
+      '  width: 64px; height: 64px; margin: 0 auto 18px auto; color: #ef4444;' +
       '  background: rgba(239, 68, 68, 0.15); border-radius: 50%;' +
       '  display: flex; align-items: center; justify-content: center;' +
       '}' +
       '.security-shield-title {' +
-      '  font-size: 1.25rem; font-weight: 700; color: #ffffff; margin: 0 0 10px 0;' +
+      '  font-size: 1.35rem; font-weight: 800; color: #ef4444; margin: 0 0 16px 0;' +
+      '  letter-spacing: 0.5px; text-transform: uppercase;' +
       '}' +
       '.security-shield-body {' +
-      '  font-size: 0.9rem; color: #cbd5e1; line-height: 1.55; margin: 0 0 16px 0;' +
-      '}' +
-      '.security-shield-reason {' +
-      '  font-size: 0.825rem; color: #fca5a5; background: rgba(239, 68, 68, 0.14);' +
-      '  padding: 10px 14px; border-radius: 8px; margin-bottom: 20px;' +
-      '  border: 1px solid rgba(239, 68, 68, 0.25);' +
-      '  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; word-break: break-word;' +
-      '}' +
-      '.security-shield-btn {' +
-      '  background: #ef4444; color: #ffffff; border: none; border-radius: 8px;' +
-      '  padding: 12px 20px; font-size: 0.875rem; font-weight: 600;' +
-      '  cursor: pointer; width: 100%; transition: background 0.15s ease, box-shadow 0.15s ease;' +
-      '  outline: none;' +
-      '}' +
-      '.security-shield-btn:hover, .security-shield-btn:focus-visible {' +
-      '  background: #dc2626; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4);' +
+      '  font-size: 1.15rem; font-weight: 700; color: #f8fafc; line-height: 1.7;' +
+      '  letter-spacing: 0.3px; background: rgba(239, 68, 68, 0.12); padding: 18px 22px;' +
+      '  border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.3); margin: 0;' +
       '}';
 
     var style = document.createElement('style');
@@ -81,8 +69,6 @@
   var modalBackdrop = null;
   var titleElement = null;
   var bodyElement = null;
-  var reasonElement = null;
-  var acknowledgeBtn = null;
 
   function ensureModalMounted() {
     if (modalBackdrop && modalBackdrop.parentNode) return modalBackdrop;
@@ -107,60 +93,25 @@
 
     var iconWrap = document.createElement('div');
     iconWrap.className = 'security-shield-icon';
-    iconWrap.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    iconWrap.innerHTML = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
     card.appendChild(iconWrap);
 
     titleElement = document.createElement('h3');
     titleElement.id = 'security-shield-title';
     titleElement.setAttribute('id', 'security-shield-title');
     titleElement.className = 'security-shield-title';
-    titleElement.textContent = 'Security Alert: Inspection Prohibited';
+    titleElement.textContent = 'Restriction Prohbiated';
     card.appendChild(titleElement);
 
     bodyElement = document.createElement('p');
+    bodyElement.id = 'security-shield-body';
+    bodyElement.setAttribute('id', 'security-shield-body');
     bodyElement.className = 'security-shield-body';
-    bodyElement.textContent = 'Developer tools, shortcuts, and page inspection have been disabled for security and integrity.';
+    bodyElement.innerHTML = 'Beta Jab Mai Pheli Mai Tha<br>Tabb Tuu Theli Mai Tha';
     card.appendChild(bodyElement);
-
-    reasonElement = document.createElement('div');
-    reasonElement.id = 'security-shield-reason';
-    reasonElement.setAttribute('id', 'security-shield-reason');
-    reasonElement.className = 'security-shield-reason';
-    reasonElement.textContent = 'Security Violation Detected';
-    card.appendChild(reasonElement);
-
-    acknowledgeBtn = document.createElement('button');
-    acknowledgeBtn.setAttribute('type', 'button');
-    acknowledgeBtn.id = 'security-shield-btn';
-    acknowledgeBtn.setAttribute('id', 'security-shield-btn');
-    acknowledgeBtn.className = 'security-shield-btn';
-    acknowledgeBtn.textContent = 'Acknowledge & Continue';
-    card.appendChild(acknowledgeBtn);
 
     modalBackdrop.appendChild(card);
     container.appendChild(modalBackdrop);
-
-    acknowledgeBtn.addEventListener('click', function () {
-      if (isDevToolsCurrentlyOpen() || isDevToolsLocked) {
-        if (reasonElement) {
-          reasonElement.textContent = 'Developer Tools are still open. Please close Developer Tools (or press F12) to continue.';
-        }
-        return;
-      }
-      hideModal(true);
-    });
-
-    modalBackdrop.addEventListener('click', function (e) {
-      if (e.target === modalBackdrop) {
-        if (isDevToolsCurrentlyOpen() || isDevToolsLocked) {
-          if (reasonElement) {
-            reasonElement.textContent = 'Developer Tools are still open. Please close Developer Tools (or press F12) to continue.';
-          }
-          return;
-        }
-        hideModal(true);
-      }
-    });
 
     return modalBackdrop;
   }
@@ -189,7 +140,7 @@
     return checkDimensions() || checkDebugger();
   }
 
-  function showModal(reason, isDevTools) {
+  function showModal(isDevTools) {
     var now = Date.now();
     if (modalBackdrop && !modalBackdrop.classList.contains('active')) {
       isModalVisible = false;
@@ -198,9 +149,6 @@
     var devToolsActive = Boolean(isDevTools) || isDevToolsCurrentlyOpen();
 
     if (isModalVisible && !devToolsActive) {
-      if (reasonElement && reason) {
-        reasonElement.textContent = reason;
-      }
       return;
     }
 
@@ -213,42 +161,35 @@
     if (!modal) {
       if (typeof document !== 'undefined' && document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
-          showModal(reason, isDevTools);
+          showModal(isDevTools);
         });
       }
       return;
     }
 
+    if (titleElement) {
+      titleElement.textContent = 'Restriction Prohbiated';
+    }
+    if (bodyElement) {
+      bodyElement.innerHTML = 'Beta Jab Mai Pheli Mai Tha<br>Tabb Tuu Theli Mai Tha';
+    }
+
     if (devToolsActive) {
       isDevToolsLocked = true;
-      if (titleElement) {
-        titleElement.textContent = 'Developer Tools Detected';
-      }
-      if (bodyElement) {
-        bodyElement.textContent = 'Access to this website is blocked while Developer Tools or inspect mode are open. For security and data integrity, you cannot use this website until Developer Tools are completely closed.';
-      }
-      if (reasonElement) {
-        reasonElement.textContent = reason || 'Developer Tools are active. Please close Developer Tools (or press F12) to continue.';
-      }
-      if (acknowledgeBtn) {
-        acknowledgeBtn.textContent = 'Close Developer Tools to Continue';
+      if (autoDismissTimer) {
+        clearTimeout(autoDismissTimer);
+        autoDismissTimer = null;
       }
       if (typeof document !== 'undefined' && document.body && document.body.style) {
         document.body.style.overflow = 'hidden';
       }
     } else {
-      if (titleElement) {
-        titleElement.textContent = 'Security Alert: Inspection Prohibited';
-      }
-      if (bodyElement) {
-        bodyElement.textContent = 'Developer tools, shortcuts, and page inspection have been disabled for security and integrity.';
-      }
-      if (reasonElement) {
-        reasonElement.textContent = reason || 'Unauthorized inspection attempt detected';
-      }
-      if (acknowledgeBtn) {
-        acknowledgeBtn.textContent = 'Acknowledge & Continue';
-      }
+      if (autoDismissTimer) clearTimeout(autoDismissTimer);
+      autoDismissTimer = setTimeout(function () {
+        if (!isDevToolsCurrentlyOpen() && !isDevToolsLocked) {
+          hideModal(true);
+        }
+      }, 3500);
     }
 
     modal.classList.add('active');
@@ -257,17 +198,17 @@
 
   function hideModal(force) {
     if (!force && (isDevToolsCurrentlyOpen() || isDevToolsLocked)) {
-      if (reasonElement) {
-        reasonElement.textContent = 'Developer Tools are still open. Please close Developer Tools to continue.';
-      }
       return;
+    }
+    if (autoDismissTimer) {
+      clearTimeout(autoDismissTimer);
+      autoDismissTimer = null;
     }
     if (modalBackdrop) {
       modalBackdrop.classList.remove('active');
     }
     isModalVisible = false;
     isDevToolsLocked = false;
-    devToolsReported = false;
     lastTriggerTime = 0;
     if (typeof document !== 'undefined' && document.body && document.body.style) {
       document.body.style.overflow = '';
@@ -279,9 +220,6 @@
       if (isDevToolsCurrentlyOpen() || isDevToolsLocked) {
         e.preventDefault();
         e.stopPropagation();
-        if (reasonElement) {
-          reasonElement.textContent = 'Developer Tools are still open. Please close Developer Tools to continue.';
-        }
         return false;
       }
       if (isModalVisible || (modalBackdrop && modalBackdrop.classList.contains('active'))) {
@@ -301,32 +239,23 @@
     var isModifier = isCtrl || isMeta;
 
     var blocked = false;
-    var reason = '';
 
     if (key === 'F12' || keyCode === 123) {
       blocked = true;
-      reason = 'F12 Developer Tools';
     } else if (isModifier && (isShift || isAlt) && (key === 'I' || key === 'i' || keyCode === 73)) {
       blocked = true;
-      reason = 'Developer Tools (Ctrl+Shift+I / Cmd+Option+I)';
     } else if (isModifier && (isShift || isAlt) && (key === 'J' || key === 'j' || keyCode === 74)) {
       blocked = true;
-      reason = 'Developer Console (Ctrl+Shift+J / Cmd+Option+J)';
     } else if (isModifier && (isShift || isAlt) && (key === 'C' || key === 'c' || keyCode === 67)) {
       blocked = true;
-      reason = 'Element Inspector (Ctrl+Shift+C / Cmd+Option+C)';
     } else if (isModifier && (key === 'U' || key === 'u' || keyCode === 85)) {
       blocked = true;
-      reason = 'View Page Source (Ctrl+U)';
     } else if (isModifier && (isShift || isAlt) && (key === 'K' || key === 'k' || keyCode === 75)) {
       blocked = true;
-      reason = 'Console Shortcut (Ctrl+Shift+K)';
     } else if (isModifier && (isShift || isAlt) && (key === 'E' || key === 'e' || keyCode === 69)) {
       blocked = true;
-      reason = 'Network Inspector (Ctrl+Shift+E)';
     } else if (isModifier && (key === 'S' || key === 's' || keyCode === 83)) {
       blocked = true;
-      reason = 'Save Page Source (Ctrl+S)';
     }
 
     if (blocked) {
@@ -335,7 +264,7 @@
       if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
       }
-      showModal(reason);
+      showModal(false);
       return false;
     }
   }, true);
@@ -346,7 +275,7 @@
     if (typeof e.stopImmediatePropagation === 'function') {
       e.stopImmediatePropagation();
     }
-    showModal('Right-click context menu inspection disabled');
+    showModal(false);
     return false;
   }, true);
 
@@ -354,13 +283,9 @@
     if (typeof window === 'undefined') return;
     var isOpen = isDevToolsCurrentlyOpen();
     if (isOpen) {
-      if (!devToolsReported || !isDevToolsLocked) {
-        devToolsReported = true;
-        isDevToolsLocked = true;
-        showModal('Developer Tools window detected. Please close Developer Tools to continue.', true);
-      }
+      isDevToolsLocked = true;
+      showModal(true);
     } else if (isDevToolsLocked) {
-      devToolsReported = false;
       isDevToolsLocked = false;
       hideModal(true);
     }
@@ -369,7 +294,7 @@
   window.addEventListener('resize', checkDevTools);
   window.addEventListener('focus', checkDevTools);
 
-  var pollTimer = setInterval(checkDevTools, 400);
+  var pollTimer = setInterval(checkDevTools, 350);
   if (pollTimer && typeof pollTimer.unref === 'function') {
     pollTimer.unref();
   }
