@@ -6,138 +6,111 @@
   <title>ABES Examination System - Administrator Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin/admin.css">
+  
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="/security.js"></script>
 </head>
 <body>
 
   <div class="app-wrapper">
+    
     <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
+    
     <aside id="app-sidebar" class="app-sidebar">
       <div class="sidebar-header">
         <a href="#overview" class="sidebar-brand">
-          <div class="brand-logo-mark" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <rect width="24" height="24" rx="6" fill="#2563eb"/>
-              <path d="M7 16L12 8L17 16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="12" cy="14" r="1.5" fill="#93c5fd"/>
+          <div class="brand-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
             </svg>
           </div>
           <div class="brand-info">
-            <div class="brand-title-wrap">
-              <span class="brand-title">Fitsura OS</span>
-              <span class="brand-tag">Manager · Admin OS</span>
-            </div>
+            <span class="brand-title">ABES Examination</span>
+            <span class="brand-subtitle">Administrator Portal</span>
           </div>
         </a>
-
-        <div class="tenant-status-pill">
-          <span class="pulse-dot"></span>
-          <span class="tenant-status-label">Production DB Active</span>
-        </div>
       </div>
 
       <nav class="sidebar-nav">
-        <div class="nav-group">
-          <span class="nav-section-label">OVERVIEW</span>
-          <a href="#overview" class="nav-link active" data-tab="overview" id="nav-tab-overview">
-            <div class="nav-icon-squircle icon-blue">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="7" height="7" x="3" y="3" rx="1.5"/>
-                <rect width="7" height="7" x="14" y="3" rx="1.5"/>
-                <rect width="7" height="7" x="14" y="14" rx="1.5"/>
-                <rect width="7" height="7" x="3" y="14" rx="1.5"/>
-              </svg>
-            </div>
-            <span>Dashboard Overview</span>
-          </a>
-        </div>
+        <span class="nav-section-label">Management</span>
 
-        <div class="nav-group">
-          <span class="nav-section-label">STUDENTS</span>
-          <a href="#students" class="nav-link" data-tab="students" id="nav-tab-students">
-            <div class="nav-icon-squircle icon-purple">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-            </div>
-            <span>Student Management</span>
-          </a>
+        <a href="#overview" class="nav-link active" data-tab="overview" id="nav-tab-overview">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="7" height="9" x="3" y="3" rx="1"/>
+            <rect width="7" height="5" x="14" y="3" rx="1"/>
+            <rect width="7" height="9" x="14" y="12" rx="1"/>
+            <rect width="7" height="5" x="3" y="16" rx="1"/>
+          </svg>
+          <span>Dashboard Overview</span>
+        </a>
 
-          <a href="#exceptions" class="nav-link" data-tab="exceptions" id="nav-tab-exceptions">
-            <div class="nav-icon-squircle icon-rose">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </div>
-            <span>Exception Management</span>
-          </a>
-        </div>
+        <a href="#students" class="nav-link" data-tab="students" id="nav-tab-students">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>Student Management</span>
+        </a>
 
-        <div class="nav-group">
-          <span class="nav-section-label">OPERATIONS</span>
-          <a href="#upload" class="nav-link" data-tab="upload" id="nav-tab-upload">
-            <div class="nav-icon-squircle icon-teal">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </div>
-            <span>Excel Upload &amp; Import</span>
-          </a>
+        <a href="#upload" class="nav-link" data-tab="upload" id="nav-tab-upload">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Excel Upload & Import</span>
+        </a>
 
-          <a href="#logs" class="nav-link" data-tab="logs" id="nav-tab-logs">
-            <div class="nav-icon-squircle icon-amber">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-              </svg>
-            </div>
-            <span>Search Logs</span>
-          </a>
-        </div>
+        <a href="#logs" class="nav-link" data-tab="logs" id="nav-tab-logs">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span>Search Logs</span>
+        </a>
 
-        <div class="nav-group">
-          <span class="nav-section-label">SYSTEM</span>
-          <button type="button" id="btn-sidebar-logout" class="sidebar-logout-btn">
-            <div class="nav-icon-squircle icon-slate">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            </div>
-            <span>Sign Out</span>
-          </button>
-        </div>
+        <a href="#exceptions" class="nav-link" data-tab="exceptions" id="nav-tab-exceptions">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>Exception Management</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="sidebar-user-card">
-          <div class="sidebar-user-avatar">
-            <div class="user-avatar-initials">IT</div>
+        <div class="sidebar-status-card">
+          <div class="status-indicator">
+            <span class="pulse-dot"></span>
+            <span>Neon DB Connected</span>
           </div>
-          <div class="sidebar-user-info">
-            <span class="sidebar-user-name">inexpert_trifler</span>
-            <span class="sidebar-user-role">Super Administrator</span>
-          </div>
+          <span style="font-size: 0.7rem; color: var(--slate-400);">v2.5</span>
         </div>
+
+        <button type="button" id="btn-sidebar-logout" class="sidebar-logout-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Sign Out</span>
+        </button>
       </div>
     </aside>
 
+    
     <div class="app-main">
+      
       <header class="app-topbar">
         <div class="topbar-left">
           <button type="button" id="btn-sidebar-toggle" class="btn-sidebar-toggle" aria-label="Toggle navigation menu">
@@ -147,50 +120,28 @@
               <line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
-          <div class="topbar-title-block">
-            <h1 class="topbar-page-title" id="topbar-page-title">Overview</h1>
-            <span class="topbar-page-sub" id="breadcrumb-current-tab">Dashboard Overview</span>
-          </div>
-        </div>
-
-        <div class="topbar-center">
-          <div class="topbar-search-box">
-            <svg class="search-box-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" id="topbar-search-input" placeholder="Search students, admission or phone..." autocomplete="off">
-            <kbd class="kbd-chip" title="Press Ctrl+K or Cmd+K to search"><span class="cmd-symbol">⌘</span>K</kbd>
+          <div class="topbar-breadcrumb">
+            <span>Admin</span>
+            <span>/</span>
+            <span id="breadcrumb-current-tab" class="current">Dashboard Overview</span>
           </div>
         </div>
 
         <div class="topbar-right">
-          <div class="topbar-time-pill" id="topbar-live-clock">Tue, 2:08 pm</div>
-
-          <div class="topbar-live-pill">
-            <span class="live-dot-pulse"></span>
-            <span class="live-dot-text">Live</span>
+          <div class="topbar-system-pill">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--emerald-500);"></span>
+            <span>PostgreSQL Active</span>
           </div>
-
-          <button type="button" class="btn-topbar-bell" title="System Notifications" aria-label="Notifications">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span class="bell-badge">3</span>
-          </button>
 
           <div class="user-profile-pill">
             <div class="user-avatar" id="admin-avatar">IT</div>
             <div class="user-details">
               <span class="user-name" id="admin-header-username">inexpert_trifler</span>
+              <span class="user-role">Super Administrator</span>
             </div>
-            <svg class="user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
           </div>
 
-          <button type="button" id="btn-quick-logout" class="btn-quick-logout" title="Sign Out" aria-label="Sign Out">
+          <button type="button" id="btn-quick-logout" class="btn-quick-logout" title="Sign Out">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
@@ -200,313 +151,153 @@
         </div>
       </header>
 
+      
       <main class="page-content">
+
+        
         <section id="view-overview" class="tab-view active">
           
-          <div class="hero-greeting-section">
-            <div class="hero-left">
-              <div class="hero-overline">EXAM AUTOMATION OS</div>
-              <h2 class="hero-heading" id="hero-greeting">Good afternoon, <span id="overview-username">inexpert_trifler</span></h2>
-              <p class="hero-subtext" id="hero-live-date">Updated 2:08 pm · Tuesday, 10 November 2026</p>
+          <div class="welcome-banner">
+            <div class="welcome-content">
+              <h2>Welcome back, <span id="overview-username">inexpert_trifler</span></h2>
+              <p>Real-time analytics and student directory status for ABES Examination Portal.</p>
             </div>
-            <div class="hero-right">
-              <button type="button" id="btn-hero-action" class="btn-hero-action" title="Open student directory">
-                <span>Open Student Search</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-              <button type="button" id="btn-refresh-stats" class="btn-hero-icon" title="Refresh Live Statistics">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <div class="view-header-actions">
+              <button type="button" id="btn-refresh-stats" class="btn btn-secondary btn-sm" title="Refresh Live Statistics">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                 </svg>
+                <span>Refresh Stats</span>
+              </button>
+              <button type="button" id="btn-overview-import" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Upload Excel</span>
               </button>
             </div>
           </div>
 
-          <div class="kpi-grid">
-            <div class="metric-card glow-card" data-tilt>
-              <div class="metric-card-top">
-                <div class="squircle-icon icon-blue">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-                    <line x1="16" y1="2" x2="16" y2="6"/>
-                    <line x1="8" y1="2" x2="8" y2="6"/>
-                    <line x1="3" y1="10" x2="21" y2="10"/>
-                  </svg>
-                </div>
-                <div class="category-pill pill-blue">
-                  <span class="pill-dot"></span>
-                  <span>Directory</span>
-                </div>
-              </div>
-              <div class="metric-body">
-                <span class="metric-label">Total Students</span>
-                <div class="metric-value counter-value" id="stat-total-students">0</div>
-              </div>
-              <div class="metric-footer-row">
-                <a href="#students" class="metric-link" id="link-metric-directory">
-                  <span>Directory view</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </a>
-              </div>
-            </div>
-
-            <div class="metric-card glow-card" data-tilt>
-              <div class="metric-card-top">
-                <div class="squircle-icon icon-purple">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          
+          <div class="metrics-grid">
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Total Students</span>
+                <div class="metric-icon-box metric-icon-indigo">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                     <circle cx="9" cy="7" r="4"/>
                     <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
                 </div>
-                <div class="category-pill pill-purple">
-                  <span class="pill-dot"></span>
-                  <span>Ready</span>
-                </div>
               </div>
-              <div class="metric-body">
-                <span class="metric-label">With Usernames</span>
-                <div class="metric-value counter-value" id="stat-with-usernames">0</div>
-              </div>
-              <div class="metric-footer-row">
-                <a href="#students" class="metric-link" id="link-metric-usernames">
-                  <span>Active credentials</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </a>
+              <div class="metric-value" id="stat-total-students">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Enrolled</span>
+                <span>Active directory records</span>
               </div>
             </div>
 
-            <div class="metric-card glow-card" data-tilt>
-              <div class="metric-card-top">
-                <div class="squircle-icon icon-amber">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Total Sections</span>
+                <div class="metric-icon-box metric-icon-blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                    <polyline points="2 17 12 22 22 17"/>
+                    <polyline points="2 12 12 17 22 12"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-total-sections">0</div>
+              <div class="metric-footer">
+                <span>Across department cohorts</span>
+              </div>
+            </div>
+
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">With Usernames</span>
+                <div class="metric-icon-box metric-icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <polyline points="16 11 18 13 22 9"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-with-usernames">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Ready</span>
+                <span>Portal logins mapped</span>
+              </div>
+            </div>
+
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Without Usernames</span>
+                <div class="metric-icon-box metric-icon-amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <line x1="17" y1="8" x2="22" y2="13"/>
+                    <line x1="22" y1="8" x2="17" y2="13"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="metric-value" id="stat-without-usernames">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-warning">Attention</span>
+                <span>Missing institutional ID</span>
+              </div>
+            </div>
+
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">With Passwords</span>
+                <div class="metric-icon-box metric-icon-teal">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
                 </div>
-                <div class="category-pill pill-amber">
-                  <span class="pill-dot"></span>
-                  <span>Encrypted</span>
-                </div>
               </div>
-              <div class="metric-body">
-                <span class="metric-label">With Passwords</span>
-                <div class="metric-value counter-value" id="stat-with-passwords">0</div>
-              </div>
-              <div class="metric-footer-row">
-                <a href="#students" class="metric-link" id="link-metric-passwords">
-                  <span>Synced passwords</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </a>
+              <div class="metric-value" id="stat-with-passwords">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-success">Encrypted</span>
+                <span>Automation credentials active</span>
               </div>
             </div>
 
-            <div class="metric-card glow-card" data-tilt>
-              <div class="metric-card-top">
-                <div class="squircle-icon icon-rose">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    <line x1="11" y1="8" x2="11" y2="12"/>
-                    <line x1="11" y1="15" x2="11.01" y2="15"/>
+            
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-title">Without Passwords</span>
+                <div class="metric-icon-box metric-icon-rose">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
                   </svg>
                 </div>
-                <div class="category-pill pill-rose">
-                  <span class="pill-dot"></span>
-                  <span>Action needed</span>
-                </div>
               </div>
-              <div class="metric-body">
-                <span class="metric-label">Without Passwords</span>
-                <div class="metric-value counter-value" id="stat-without-passwords">0</div>
-              </div>
-              <div class="metric-footer-row">
-                <a href="#students" class="metric-link" id="link-metric-without-passwords">
-                  <span>Resolve missing</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </a>
+              <div class="metric-value" id="stat-without-passwords">0</div>
+              <div class="metric-footer">
+                <span class="metric-badge metric-badge-danger">Action Required</span>
+                <span>Cannot automate lookup</span>
               </div>
             </div>
           </div>
 
-          <div class="middle-dashboard-grid">
-            <div class="activity-hero-card glow-card">
-              <div class="middle-card-header">
-                <div class="middle-header-left">
-                  <span class="middle-overline">ENGINE STATUS</span>
-                  <h3 class="middle-title">Automation Relay Today</h3>
-                </div>
-                <div class="engine-live-chip">
-                  <span class="pulse-dot"></span>
-                  <span>Active</span>
-                </div>
-              </div>
-
-              <div class="engine-radial-layout">
-                <div class="radial-ring-wrapper">
-                  <svg class="radial-ring-svg" width="120" height="120" viewBox="0 0 120 120">
-                    <circle class="ring-bg" cx="60" cy="60" r="50"/>
-                    <circle class="ring-glow" cx="60" cy="60" r="50"/>
-                    <circle class="ring-fill" id="radial-ring-fill" cx="60" cy="60" r="50"/>
-                  </svg>
-                  <div class="radial-center-content">
-                    <span class="radial-main-val" id="engine-searches-count">0</span>
-                    <span class="radial-sub-val">today</span>
-                  </div>
-                </div>
-                <div class="engine-status-details">
-                  <h4 class="engine-status-headline" id="engine-status-headline">Relay Engine Active</h4>
-                  <p class="engine-status-desc">Live examination query relay &amp; credential synchronization operational with Neon PostgreSQL store.</p>
-                  <div class="engine-feature-tags">
-                    <span class="tag-pill tag-blue">⚡ Fast Relay</span>
-                    <span class="tag-pill tag-teal">🛡️ Encrypted</span>
-                    <span class="tag-pill tag-emerald">📦 Neon DB</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="middle-card-cta">
-                <button type="button" id="btn-middle-open-search" class="btn-middle-pill">
-                  <span>Open Student Search</span>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="credentials-health-card glow-card">
-              <div class="middle-card-header">
-                <div class="middle-header-left">
-                  <span class="middle-overline">CREDENTIAL HEALTH</span>
-                  <h3 class="middle-title">Directory Credentials Breakdown</h3>
-                </div>
-                <div class="health-header-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect width="20" height="14" x="2" y="5" rx="2"/>
-                    <line x1="2" y1="10" x2="22" y2="10"/>
-                  </svg>
-                </div>
-              </div>
-
-              <div class="health-bars-container">
-                <div class="health-row">
-                  <div class="health-row-header">
-                    <span class="health-label">Complete Credentials (User &amp; Pass)</span>
-                    <span class="health-status-chip chip-healthy">Healthy</span>
-                    <span class="health-val-num counter-value" id="health-count-complete">0</span>
-                  </div>
-                  <div class="health-progress-track">
-                    <div class="health-progress-bar bar-emerald" id="health-bar-complete" style="width: 0%;"></div>
-                  </div>
-                </div>
-
-                <div class="health-row">
-                  <div class="health-row-header">
-                    <span class="health-label">Missing Password (Username Only)</span>
-                    <span class="health-status-chip chip-soon">Attention</span>
-                    <span class="health-val-num counter-value" id="health-count-pending">0</span>
-                  </div>
-                  <div class="health-progress-track">
-                    <div class="health-progress-bar bar-amber" id="health-bar-pending" style="width: 0%;"></div>
-                  </div>
-                </div>
-
-                <div class="health-row">
-                  <div class="health-row-header">
-                    <span class="health-label">Missing All Credentials</span>
-                    <span class="health-status-chip chip-lapsed">Action Req</span>
-                    <span class="health-val-num counter-value" id="health-count-missing">0</span>
-                  </div>
-                  <div class="health-progress-track">
-                    <div class="health-progress-bar bar-rose" id="health-bar-missing" style="width: 0%;"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="health-footer-row">
-                <a href="#students" class="health-footer-link" id="link-manage-credentials">
-                  <span>Manage student records</span>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div class="mini-kpi-grid">
-            <div class="mini-kpi-card glow-card">
-              <div class="mini-kpi-icon icon-rose">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-              </div>
-              <div class="mini-kpi-info">
-                <span class="mini-kpi-val counter-value" id="stat-mini-missing">0</span>
-                <span class="mini-kpi-title">Missing Passwords</span>
-                <span class="mini-kpi-sub text-rose">Action required</span>
-              </div>
-            </div>
-
-            <div class="mini-kpi-card glow-card">
-              <div class="mini-kpi-icon icon-teal">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                  <polyline points="2 17 12 22 22 17"/>
-                  <polyline points="2 12 12 17 22 12"/>
-                </svg>
-              </div>
-              <div class="mini-kpi-info">
-                <span class="mini-kpi-val counter-value" id="stat-total-sections">0</span>
-                <span class="mini-kpi-title">Total Cohorts</span>
-                <span class="mini-kpi-sub text-teal">Across batches</span>
-              </div>
-            </div>
-
-            <div class="mini-kpi-card glow-card">
-              <div class="mini-kpi-icon icon-emerald">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-                  <polyline points="17 6 23 6 23 12"/>
-                </svg>
-              </div>
-              <div class="mini-kpi-info">
-                <span class="mini-kpi-val counter-value" id="stat-successful-lookups">0</span>
-                <span class="mini-kpi-title">Successful Lookups</span>
-                <span class="mini-kpi-sub text-emerald">Neon DB relay</span>
-              </div>
-            </div>
-
-            <div class="mini-kpi-card glow-card">
-              <div class="mini-kpi-icon icon-purple">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-              </div>
-              <div class="mini-kpi-info">
-                <span class="mini-kpi-val counter-value" id="stat-total-searches">0</span>
-                <span class="mini-kpi-title">Total Queries</span>
-                <span class="mini-kpi-sub text-purple">Audit logs recorded</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-breakdown-card glow-card" id="section-breakdown-card" style="display: none;">
+          
+          <div class="section-breakdown-card" id="section-breakdown-card" style="display: none;">
             <div class="card-title-row">
               <div>
                 <h3>Enrollment by Section</h3>
@@ -514,11 +305,15 @@
               </div>
               <span id="section-breakdown-count-badge" class="metric-badge metric-badge-success">0 Sections</span>
             </div>
-            <div id="section-chips-container" class="chips-container"></div>
+            <div id="section-chips-container" class="chips-container">
+              
+            </div>
           </div>
 
+          
           <div class="activity-grid">
-            <div class="activity-card glow-card">
+            
+            <div class="activity-card">
               <div class="card-title-row">
                 <h3>Recently Added Students</h3>
                 <a href="#students" class="btn btn-secondary btn-sm" id="link-view-all-added">View All</a>
@@ -533,12 +328,15 @@
                       <th>Date Added</th>
                     </tr>
                   </thead>
-                  <tbody id="recently-added-tbody"></tbody>
+                  <tbody id="recently-added-tbody">
+                    
+                  </tbody>
                 </table>
               </div>
             </div>
 
-            <div class="activity-card glow-card">
+            
+            <div class="activity-card">
               <div class="card-title-row">
                 <h3>Recently Updated Students</h3>
                 <a href="#students" class="btn btn-secondary btn-sm" id="link-view-all-updated">View All</a>
@@ -553,13 +351,16 @@
                       <th>Updated At</th>
                     </tr>
                   </thead>
-                  <tbody id="recently-updated-tbody"></tbody>
+                  <tbody id="recently-updated-tbody">
+                    
+                  </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          <div class="search-activity-overview-card glow-card">
+          
+          <div class="search-activity-overview-card">
             <div class="card-title-row">
               <div>
                 <h3>Search Activity &amp; Credential Resolution</h3>
@@ -570,31 +371,30 @@
             <div class="search-stats-grid">
               <div class="search-stat-pill">
                 <span class="search-stat-label">Total Searches</span>
-                <span class="search-stat-val counter-value" id="stat-total-searches-pill">0</span>
+                <span class="search-stat-val" id="stat-total-searches">0</span>
               </div>
               <div class="search-stat-pill">
                 <span class="search-stat-label">Successful Lookups</span>
-                <span class="search-stat-val text-emerald counter-value" id="stat-successful-lookups-pill">0</span>
+                <span class="search-stat-val text-emerald" id="stat-successful-lookups">0</span>
               </div>
               <div class="search-stat-pill">
                 <span class="search-stat-label">API Errors</span>
-                <span class="search-stat-val text-rose counter-value" id="stat-api-errors">0</span>
+                <span class="search-stat-val text-rose" id="stat-api-errors">0</span>
               </div>
               <div class="search-stat-pill">
                 <span class="search-stat-label">Students Not Found</span>
-                <span class="search-stat-val text-slate counter-value" id="stat-students-not-found">0</span>
+                <span class="search-stat-val text-slate" id="stat-students-not-found">0</span>
               </div>
               <div class="search-stat-pill">
                 <span class="search-stat-label">Searches Today</span>
-                <span class="search-stat-val text-indigo counter-value" id="stat-searches-today">0</span>
-              </div>
-              <div class="search-stat-pill" style="display: none;">
-                <span id="stat-without-usernames">0</span>
+                <span class="search-stat-val text-indigo" id="stat-searches-today">0</span>
               </div>
             </div>
           </div>
         </section>
 
+
+        
         <section id="view-students" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -628,6 +428,7 @@
             </div>
           </div>
 
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -654,10 +455,12 @@
                 </button>
               </div>
 
+              
               <select id="student-section-filter" class="filter-select" style="display: none;">
                 <option value="">All Sections</option>
               </select>
 
+              
               <select id="student-credential-filter" class="filter-select">
                 <option value="">All Students</option>
                 <option value="with_credentials">With Credentials</option>
@@ -681,6 +484,7 @@
             </div>
           </div>
 
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="students-table">
@@ -694,9 +498,12 @@
                     <th style="text-align: right;">Actions</th>
                   </tr>
                 </thead>
-                <tbody id="students-table-body"></tbody>
+                <tbody id="students-table-body">
+                  
+                </tbody>
               </table>
 
+              
               <div id="students-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="11" cy="11" r="8"/>
@@ -709,6 +516,7 @@
               </div>
             </div>
 
+            
             <div class="pagination-bar">
               <div class="pagination-info" id="pagination-info">
                 Showing 0 to 0 of 0 students
@@ -725,21 +533,26 @@
                   <span>per page</span>
                 </div>
 
-                <div class="page-btn-group" id="pagination-buttons"></div>
+                <div class="page-btn-group" id="pagination-buttons">
+                  
+                </div>
               </div>
             </div>
           </div>
         </section>
 
+
+        
         <section id="view-upload" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
-              <h1>Excel Batch Upload &amp; Data Ingestion</h1>
+              <h1>Excel Batch Upload & Data Ingestion</h1>
               <p>Upload student master sheets (.xlsx, .xls) to populate portal credentials and section rosters.</p>
             </div>
           </div>
 
           <div class="upload-grid">
+            
             <div class="upload-card">
               <div id="excel-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Dropzone to upload Excel file">
                 <input type="file" id="excel-file-input" accept=".xlsx, .xlxs, .xls, .xlsm, .xlsb, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" style="display: none;">
@@ -766,6 +579,7 @@
               </div>
             </div>
 
+            
             <div class="guide-card">
               <h3>Supported Format &amp; Column Mapping</h3>
               <p style="font-size: 0.85rem; color: var(--slate-600); margin-bottom: 1rem;">
@@ -787,6 +601,7 @@
             </div>
           </div>
 
+          
           <div id="import-preview-box" class="import-preview-box">
             <div class="preview-header-bar">
               <div class="preview-title-group">
@@ -804,6 +619,7 @@
               </div>
             </div>
 
+            
             <div class="preview-metrics-grid">
               <div class="preview-metric-pill">
                 <div class="preview-metric-label">Total Records</div>
@@ -831,11 +647,13 @@
               </div>
             </div>
 
+            
             <div id="preview-warnings-alert" class="preview-warning-alert">
               <strong>Data Validation Warnings:</strong>
               <div id="preview-warnings-list" style="margin-top: 0.35rem;"></div>
             </div>
 
+            
             <div class="table-card">
               <div class="table-responsive" style="max-height: 380px;">
                 <table class="data-table">
@@ -849,12 +667,15 @@
                       <th>Password</th>
                     </tr>
                   </thead>
-                  <tbody id="preview-table-body"></tbody>
+                  <tbody id="preview-table-body">
+                    
+                  </tbody>
                 </table>
               </div>
             </div>
           </div>
 
+          
           <div id="import-result-card" class="import-summary-card">
             <div class="summary-hero-row">
               <div class="summary-check-icon">
@@ -894,6 +715,8 @@
           </div>
         </section>
 
+
+        
         <section id="view-logs" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -918,25 +741,27 @@
             </div>
           </div>
 
+          
           <div class="search-stats-grid" style="margin-bottom: 1.25rem;">
             <div class="search-stat-pill">
               <span class="search-stat-label">Total Public Searches</span>
-              <span class="search-stat-val counter-value" id="logs-view-total-searches">0</span>
+              <span class="search-stat-val" id="logs-view-total-searches">0</span>
             </div>
             <div class="search-stat-pill">
               <span class="search-stat-label">Success Count</span>
-              <span class="search-stat-val text-emerald counter-value" id="logs-view-success-searches">0</span>
+              <span class="search-stat-val text-emerald" id="logs-view-success-searches">0</span>
             </div>
             <div class="search-stat-pill">
               <span class="search-stat-label">Failed Search Count</span>
-              <span class="search-stat-val text-rose counter-value" id="logs-view-failed-searches">0</span>
+              <span class="search-stat-val text-rose" id="logs-view-failed-searches">0</span>
             </div>
             <div class="search-stat-pill">
               <span class="search-stat-label">Searches Today</span>
-              <span class="search-stat-val text-indigo counter-value" id="logs-view-today-searches">0</span>
+              <span class="search-stat-val text-indigo" id="logs-view-today-searches">0</span>
             </div>
           </div>
 
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -958,6 +783,7 @@
                 </button>
               </div>
 
+              
               <select id="log-result-filter" class="filter-select">
                 <option value="">All Result Statuses</option>
                 <option value="SUCCESS">SUCCESS</option>
@@ -971,6 +797,7 @@
                 <option value="DATABASE_ERROR">DATABASE_ERROR</option>
               </select>
 
+              
               <select id="log-type-filter" class="filter-select">
                 <option value="">All Search Types</option>
                 <option value="Admission Number">Admission Number</option>
@@ -979,6 +806,7 @@
                 <option value="Username">Username</option>
               </select>
 
+              
               <input type="date" id="log-date-filter" class="filter-select date-filter-input" title="Filter by date">
             </div>
 
@@ -987,6 +815,7 @@
             </div>
           </div>
 
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="search-logs-table">
@@ -999,9 +828,12 @@
                     <th>Time</th>
                   </tr>
                 </thead>
-                <tbody id="search-logs-tbody"></tbody>
+                <tbody id="search-logs-tbody">
+                  
+                </tbody>
               </table>
 
+              
               <div id="search-logs-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -1015,6 +847,7 @@
               </div>
             </div>
 
+            
             <div class="pagination-bar" id="log-pagination-bar">
               <div class="pagination-info" id="log-pagination-info">
                 Showing 0 to 0 of 0 logs
@@ -1031,12 +864,16 @@
                   <span>per page</span>
                 </div>
 
-                <div class="page-btn-group" id="log-pagination-buttons"></div>
+                <div class="page-btn-group" id="log-pagination-buttons">
+                  
+                </div>
               </div>
             </div>
           </div>
         </section>
 
+
+        
         <section id="view-exceptions" class="tab-view">
           <div class="view-header">
             <div class="view-header-content">
@@ -1054,6 +891,7 @@
             </div>
           </div>
 
+          
           <div class="filter-toolbar">
             <div class="filter-group-left">
               <div class="search-input-wrapper">
@@ -1086,6 +924,7 @@
             </div>
           </div>
 
+          
           <div class="table-card">
             <div class="table-responsive">
               <table class="data-table" id="exceptions-table">
@@ -1097,9 +936,12 @@
                     <th style="width: 150px; text-align: right;">Actions</th>
                   </tr>
                 </thead>
-                <tbody id="exceptions-tbody"></tbody>
+                <tbody id="exceptions-tbody">
+                  
+                </tbody>
               </table>
 
+              
               <div id="exceptions-empty-state" class="table-empty-state" style="display: none;">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -1118,6 +960,7 @@
               </div>
             </div>
 
+            
             <div class="pagination-bar" id="exception-pagination-bar">
               <div class="pagination-info" id="exception-pagination-info">
                 Showing 0 exceptions
@@ -1134,15 +977,19 @@
                   <span>per page</span>
                 </div>
 
-                <div class="page-btn-group" id="exception-pagination-buttons"></div>
+                <div class="page-btn-group" id="exception-pagination-buttons">
+                  
+                </div>
               </div>
             </div>
           </div>
         </section>
+
       </main>
     </div>
   </div>
 
+  
   <div id="modal-edit-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1215,6 +1062,7 @@
     </div>
   </div>
 
+  
   <div id="modal-add-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1282,6 +1130,7 @@
     </div>
   </div>
 
+  
   <div id="modal-delete-student" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1317,6 +1166,7 @@
     </div>
   </div>
 
+  
   <div id="modal-clear-logs" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-clear-logs-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1348,6 +1198,7 @@
     </div>
   </div>
 
+  
   <div id="modal-add-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-add-exc-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1390,6 +1241,7 @@
     </div>
   </div>
 
+  
   <div id="modal-edit-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-exc-title">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -1433,6 +1285,7 @@
     </div>
   </div>
 
+  
   <div id="modal-delete-exception" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-delete-exc-title">
     <div class="modal-dialog delete-dialog">
       <div class="modal-body">
@@ -1465,6 +1318,7 @@
     </div>
   </div>
 
+  
   <div id="modal-export-students" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-export-title">
     <div class="modal-dialog" style="max-width: 520px;">
       <div class="modal-header">
@@ -1490,6 +1344,7 @@
         </div>
 
         <div class="export-options-list">
+          
           <label class="export-option-card active" for="export-opt-all">
             <input type="radio" id="export-opt-all" name="exportOption" value="all" checked>
             <div class="export-option-icon">
@@ -1507,6 +1362,7 @@
             </div>
           </label>
 
+          
           <label class="export-option-card" for="export-opt-with">
             <input type="radio" id="export-opt-with" name="exportOption" value="with_credentials">
             <div class="export-option-icon icon-success">
@@ -1522,6 +1378,7 @@
             </div>
           </label>
 
+          
           <label class="export-option-card" for="export-opt-without">
             <input type="radio" id="export-opt-without" name="exportOption" value="without_credentials">
             <div class="export-option-icon icon-warning">
@@ -1548,15 +1405,17 @@
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          <span id="btn-confirm-export-text">Export &amp; Download</span>
+          <span id="btn-confirm-export-text">Export & Download</span>
           <span id="btn-confirm-export-spinner" class="spinner" style="display: none; width: 14px; height: 14px; border-width: 2px;" aria-hidden="true"></span>
         </button>
       </div>
     </div>
   </div>
 
+  
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+  
   <script src="/admin/admin.js"></script>
 </body>
 </html>
